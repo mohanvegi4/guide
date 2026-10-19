@@ -1,0 +1,85 @@
+# Publishes the three public packages (@guide-engine/core, /angular, /vue) to npm when a version
+# tag is pushed, then creates the GitHub Release. See RELEASING.md for the human side.
+#
+# Why tags only: the tag is the single statement "this commit is version X". The workflow
+# refuses to run when the package versions disagree with it, so nobody can publish 0.2.0 from a
+# commit that says 0.1.0. Each publish is skipped when that version is already on the registry,
+# so re-running the workflow after a partial failure publishes only what is missing.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write # the GitHub Release
+  id-token: write # npm provenance
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish to npm
+    runs-on: ubuntu-latest
+    env:
+      PACKAGES: packages/core packages/angular-wrapper packages/vue-wrapper
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+          cache: npm
+
+      - name: Install
+        run: npm ci --no-audit --no-fund
+
+      - name: Build
+        run: npm run build
+
+      - name: Test the public packages
+        run: |
+          for dir in $PACKAGES; do
+            npm test --workspace="$dir" --if-present
+          done
+
+      - name: Verify the tag matches the package versions
+        id: version
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          for dir in $PACKAGES; do
+            version=$(node -p "require('./$dir/package.json').version")
+            if [ "$version" != "$tag" ]; then
+              echo "::error::$dir is at $version but the tag is v$tag (run: npm run version:set $tag)"
+              exit 1
+            fi
+          done
+          echo "version=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Publish (core first, then the wrappers that depend on it)
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          version="${{ steps.version.outputs.version }}"
+          for dir in $PACKAGES; do
+            name=$(node -p "require('./$dir/package.json').name")
+            # `npm view` exits non-zero (E404) when the version, or the whole package, is not on the
+            # registry yet, which is exactly the "go ahead" we need.
+            if npm view "$name@$version" version >/dev/null 2>&1; then
+              echo "$name@$version is already published, skipping"
+              continue
+            fi
+            npm publish --workspace="$dir" --provenance --access public
+          done
+
+      - name: GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            echo "release $GITHUB_REF_NAME already exists, skipping"
+          else
+            gh release create "$GITHUB_REF_NAME" --verify-tag --generate-notes --title "$GITHUB_REF_NAME"
+          fi
