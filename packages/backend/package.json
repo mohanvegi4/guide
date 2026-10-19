@@ -10,7 +10,9 @@
     "test": "tsc -p tsconfig.test.json && vitest run",
     "mint-token": "node dist/scripts/mint-token.js",
     "sign-identity": "node dist/scripts/sign-identity.js",
-    "seed": "node dist/scripts/seed.js"
+    "seed": "node dist/scripts/seed.js",
+    "retention": "node dist/scripts/retention.js",
+    "encrypt-secrets": "node dist/scripts/encrypt-secrets.js"
   },
   "dependencies": {
     "cors": "^2.8.6",

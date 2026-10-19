@@ -38,9 +38,9 @@ The login page asks the backend how to sign in (`GET /api/auth/config`):
   ```bash
   npm run mint-token --workspace=packages/backend -- --sub you --email you@example.com
   ```
-- **Mock SSO** (`npm run idp:up`): any username, no password; optional claims JSON for email
-  and name. The same username is the same user every time. See "Studio login details" in the
-  root README.
+- **Keycloak** (`npm run idp:up`): sign in as `olivia`, `eddie` or `root` (password = username).
+  The same provider is used in staging and production. See "Studio login details" in the root
+  README.
 
 Either way, the Studio asks the backend who you are (`GET /api/v1/me`). It shows only what your
 memberships allow, and the backend enforces the same rules on every request. If your session

@@ -6,7 +6,7 @@ export class HttpError extends Error {
   constructor(
     readonly status: number,
     readonly code: string,
-    readonly details?: unknown
+    readonly details?: unknown,
   ) {
     super(code);
   }

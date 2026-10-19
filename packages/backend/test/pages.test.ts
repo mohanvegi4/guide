@@ -64,7 +64,7 @@ describe('saved pages', () => {
 
   it('validates pages: patterns need a start page, paths stay on-site, names are unique per app', async () => {
     const { appId } = await signUp('alice');
-    const post = (body: unknown) =>
+    const post = (body: object) =>
       request(app).post(`/v1/apps/${appId}/pages`).set('Authorization', as('alice')).send(body);
 
     expect((await post({ name: 'P', routeMatch: { type: 'pattern', value: '/p/*' } })).status).toBe(400);
@@ -137,7 +137,7 @@ describe('saved pages', () => {
       .post(`/v1/apps/${appId}/guides`)
       .set('Authorization', as('alice'))
       .send({ name: 'G', type: 'tooltip' });
-    const draft = (body: unknown) =>
+    const draft = (body: object) =>
       request(app)
         .put(`/v1/apps/${appId}/guides/${g.body.id}/draft`)
         .set('Authorization', as('alice'))

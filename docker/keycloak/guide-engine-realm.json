@@ -1,0 +1,102 @@
+{
+  "realm": "guide-engine",
+  "displayName": "Guide Engine",
+  "enabled": true,
+  "sslRequired": "external",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "verifyEmail": false,
+  "accessTokenLifespan": 900,
+  "ssoSessionIdleTimeout": 28800,
+  "ssoSessionMaxLifespan": 36000,
+  "clients": [
+    {
+      "clientId": "guide-studio",
+      "name": "Guide Studio",
+      "description": "The authoring Studio (browser). Public client: Authorization Code + PKCE, no secret.",
+      "enabled": true,
+      "publicClient": true,
+      "protocol": "openid-connect",
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "fullScopeAllowed": false,
+      "rootUrl": "http://localhost:4300",
+      "baseUrl": "/",
+      "redirectUris": [
+        "http://localhost:4300/*"
+      ],
+      "webOrigins": [
+        "http://localhost:4300"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "http://localhost:4300/*",
+        "use.refresh.tokens": "true"
+      },
+      "protocolMappers": [
+        {
+          "name": "guide-engine-api audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.custom.audience": "guide-engine-api",
+            "access.token.claim": "true",
+            "id.token.claim": "false",
+            "introspection.token.claim": "true"
+          }
+        }
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "olivia",
+      "email": "olivia@acme.test",
+      "emailVerified": true,
+      "firstName": "Olivia",
+      "lastName": "Owner",
+      "enabled": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "olivia",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "username": "eddie",
+      "email": "eddie@acme.test",
+      "emailVerified": true,
+      "firstName": "Eddie",
+      "lastName": "Editor",
+      "enabled": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "eddie",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "username": "root",
+      "email": "root@guide-engine.test",
+      "emailVerified": true,
+      "firstName": "Guide Engine",
+      "lastName": "Admin",
+      "enabled": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "root",
+          "temporary": false
+        }
+      ]
+    }
+  ]
+}

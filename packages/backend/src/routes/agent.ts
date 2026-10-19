@@ -8,7 +8,7 @@ import { AgentApp, findAppByPublicKey, withAgentSession } from '../db';
 import { HttpError, notFound } from '../httpError';
 import { identityInputSchema, resolveVisitor, Visitor } from '../auth/visitor';
 import { previewSecret, verifyPreviewToken } from '../preview';
-import { createRateLimiter } from '../rateLimit';
+import { rateLimiterFromEnv } from '../rateLimit';
 import { RESOLVED_ROUTE_MATCH_SQL } from './studio/context';
 
 /**
@@ -87,7 +87,8 @@ export function clearAgentCacheForTests(): void {
   appCache.clear();
 }
 
-const allow = createRateLimiter(Number(process.env.AGENT_RATE_LIMIT_PER_MIN ?? 600));
+// In-process in development; shared through Postgres in production (RATE_LIMIT_STORE).
+const allow = rateLimiterFromEnv();
 
 agentApiRouter.use(
   asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
@@ -114,7 +115,7 @@ agentApiRouter.use(
         .end();
       return;
     }
-    if (!allow(`${key}|${req.ip}`)) throw new HttpError(429, 'rate_limited');
+    if (!(await allow(`${key}|${req.ip}`))) throw new HttpError(429, 'rate_limited');
 
     (req as AgentRequest).agentApp = app;
     next();

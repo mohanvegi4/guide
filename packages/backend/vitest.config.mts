@@ -29,6 +29,11 @@ export default defineConfig({
       OIDC_JWKS_URI: '',
       OIDC_STUDIO_CLIENT_ID: '',
       AGENT_RATE_LIMIT_PER_MIN: '600',
+      RATE_LIMIT_STORE: 'memory',
+      // Encryption at rest is on in tests, so every path that stores or reads
+      // a signing secret exercises it.
+      SECRETS_KEY: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+      EVENT_RETENTION_DAYS: '',
     },
   },
 });

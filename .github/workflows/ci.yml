@@ -1,0 +1,97 @@
+# Every push and pull request: install, build everything, migrate a throwaway
+# Postgres, run all four test suites, and prove both images build. On main the
+# images are also pushed to GitHub Container Registry, tagged with the commit.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Build and test
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports: ["5433:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install
+        run: npm ci --no-audit --no-fund
+      - name: Create the app role and databases (same as docker/init.sql)
+        run: psql postgres://postgres:postgres@localhost:5433/postgres -v ON_ERROR_STOP=1 -f docker/init.sql
+      - name: Build
+        run: npm run build
+      - name: Migrate the test database (exactly what tests do, surfaced as its own step)
+        run: node packages/backend/dist/migrate.js
+        env:
+          DATABASE_URL: postgres://guide_engine:guide_engine@localhost:5433/guide_engine_test
+          NODE_ENV: test
+      - name: Test
+        run: npm test
+        env:
+          CI: "true"
+
+  images:
+    name: Docker images
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Log in to GHCR
+        if: github.event_name == 'push'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Image names
+        id: names
+        run: |
+          echo "backend=ghcr.io/${GITHUB_REPOSITORY,,}/backend" >> "$GITHUB_OUTPUT"
+          echo "studio=ghcr.io/${GITHUB_REPOSITORY,,}/studio" >> "$GITHUB_OUTPUT"
+      - name: Backend image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: packages/backend/Dockerfile
+          push: ${{ github.event_name == 'push' }}
+          tags: |
+            ${{ steps.names.outputs.backend }}:${{ github.sha }}
+            ${{ steps.names.outputs.backend }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Studio image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/studio/Dockerfile
+          push: ${{ github.event_name == 'push' }}
+          tags: |
+            ${{ steps.names.outputs.studio }}:${{ github.sha }}
+            ${{ steps.names.outputs.studio }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

@@ -5,6 +5,7 @@ import { StudioRequest } from '../../auth/studio';
 import { HttpError, notFound } from '../../httpError';
 import { generatePublicKey, generateSigningSecret } from '../../keys';
 import { sanitizePlainText } from '../../sanitize';
+import { encryptSecret, getSecretsKey } from '../../secrets';
 import {
   APP_COLUMNS,
   AppRow,
@@ -245,7 +246,11 @@ orgsRouter.post(
     const secret = generateSigningSecret();
     await studio(req, async (client, ctx) => {
       requireAppRole(ctx, appId, 'app_admin');
-      await client.query(`UPDATE application SET signing_secret = $2 WHERE id = $1`, [appId, secret]);
+      // Encrypted at rest (secrets.ts); the plaintext goes to the caller once.
+      await client.query(`UPDATE application SET signing_secret = $2 WHERE id = $1`, [
+        appId,
+        encryptSecret(secret, getSecretsKey()),
+      ]);
     });
     res.status(201).json({ secret });
   }),
