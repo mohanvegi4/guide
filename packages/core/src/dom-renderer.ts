@@ -17,6 +17,7 @@ const SPOTLIGHT_PAD = 4;
  */
 export function createDomRenderer(engine: {
   advanceStep(guideId: string): void;
+  previousStep(guideId: string): void;
   dismissGuide(guideId: string): void;
 }): GuideRenderer {
   const hosts = new Map<string, { host: HTMLElement; spotlight: HTMLElement }>();
@@ -133,6 +134,7 @@ export function createDomRenderer(engine: {
           button { border: none; border-radius: 6px; padding: 6px 12px; cursor: pointer; font-size: 14px; }
           .primary { background: #4f46e5; color: #fff; }
           .secondary { background: #f3f4f6; color: #111; }
+          button:disabled { opacity: .5; cursor: default; }
           .preview-badge { display: inline-block; margin-bottom: 8px; padding: 1px 8px; border-radius: 999px;
                            background: #fef0c7; color: #7a2e0e; font-size: 11px; font-weight: 600; }
         </style>
@@ -147,14 +149,20 @@ export function createDomRenderer(engine: {
       // action names come from guide data, and interpolating them into
       // innerHTML would bypass the server-side content sanitization.
       const actionsEl = shadow.querySelector('.actions');
+      // On the first step a "Back" button is shown but disabled: authors
+      // usually give every step the same buttons, and a button that vanishes
+      // on one step would shift the others around.
+      const firstStep = guide.steps[0]?.id === step.id;
       for (const a of step.actions) {
         const btn = document.createElement('button');
-        btn.className = a.action === 'dismiss' ? 'secondary' : 'primary';
+        btn.className = a.action === 'dismiss' || a.action === 'back' ? 'secondary' : 'primary';
         btn.textContent = a.label;
+        if (a.action === 'back' && firstStep) btn.disabled = true;
         btn.addEventListener('click', () => {
           if (a.action === 'dismiss') engine.dismissGuide(guide.id);
           else if (a.action === 'next' || a.action === 'complete') engine.advanceStep(guide.id);
-          // 'back' / 'custom' left as an exercise — wire up per your actions schema
+          else if (a.action === 'back') engine.previousStep(guide.id);
+          // 'custom' left as an exercise — wire up per your actions schema
         });
         actionsEl?.appendChild(btn);
       }

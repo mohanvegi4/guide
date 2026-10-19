@@ -33,6 +33,14 @@ export interface RouteMatch {
   value: string; // exact path or a wildcard/regex-ish pattern like '/dashboard/*'
 }
 
+/**
+ * How the host app's router addresses pages (an app setting the server sends
+ * with every /guides and /help response):
+ *   'path'  /settings/team     routes are matched on location.pathname
+ *   'hash'  /#/settings/team   routes are matched on the path inside location.hash
+ */
+export type RouteMode = 'path' | 'hash';
+
 export interface Guide {
   id: string;
   versionId: string;
@@ -81,8 +89,17 @@ export interface HelpButtonSettings {
 
 /** Help-center UI, injected like the renderer (see help-widget.ts for the default). */
 export interface HelpUi {
-  /** New list / settings. showButton=false hides the floating button (the panel still opens via openHelp()). */
-  update(state: { items: HelpItem[]; button: HelpButtonSettings; showButton: boolean }): void;
+  /**
+   * New list / settings. showButton=false hides the floating button (the
+   * panel still opens via openHelp()). routeMode says how to read the
+   * current page and how to show start pages ("/team" vs "/#/team").
+   */
+  update(state: {
+    items: HelpItem[];
+    button: HelpButtonSettings;
+    showButton: boolean;
+    routeMode?: RouteMode;
+  }): void;
   open(): void;
   close(): void;
   isOpen(): boolean;
@@ -133,8 +150,9 @@ export interface SdkInitOptions extends IdentityOptions {
 }
 
 export interface GuideEventPayload {
-  guideId: string;
-  guideVersionId: string;
+  /** Absent on help-center events (help_opened / help_searched), which are about the panel, not a guide. */
+  guideId?: string;
+  guideVersionId?: string;
   stepId?: string;
   sessionId: string;
   eventType:
@@ -144,10 +162,15 @@ export interface GuideEventPayload {
     | 'guide_dismissed'
     | 'guide_completed'
     | 'guide_error'
-    | 'survey_response';
+    | 'survey_response'
+    | 'help_opened'
+    | 'help_searched';
   occurredAt: string;
   metadata?: Record<string, unknown>;
 }
+
+/** The longest search query recorded on a help_searched event (the server caps it too). */
+export const HELP_QUERY_MAX = 200;
 
 // Renderer is injected — the core engine never touches the DOM directly.
 export interface GuideRenderer {
@@ -359,6 +382,21 @@ function stripQueryAndHash(path: string): string {
   return path.split(/[?#]/)[0] || '/';
 }
 
+/**
+ * The page the visitor is on, as routes are written for this app: the URL
+ * path, or for hash routers the path inside the fragment ("#/team?x=1" is
+ * "/team"; no fragment is the root).
+ */
+export function currentRoutePath(mode: RouteMode, loc: Location = window.location): string {
+  if (mode === 'hash') return loc.hash.slice(1).split('?')[0] || '/';
+  return stripQueryAndHash(loc.pathname);
+}
+
+/** How a start page is shown to visitors: "/team", or "/#/team" for hash routers. */
+export function displayRoutePath(mode: RouteMode, path: string): string {
+  return mode === 'hash' ? `/#${path}` : path;
+}
+
 // ------------------------------------------------------------
 // Core Engine
 // ------------------------------------------------------------
@@ -388,6 +426,12 @@ export class GuideEngine {
   private helpLoaded = false;
   /** Error reports sent during this page load (see reportError). */
   private errorReports = 0;
+  private helpButton: HelpButtonSettings = { label: 'Help', color: '#4f46e5' };
+  /**
+   * Where routes live in the URL. The server sends it with every /guides and
+   * /help response; until the first one arrives the engine assumes paths.
+   */
+  private routeMode: RouteMode = 'path';
   /**
    * How a help guide on another page is reached: a normal page load (like
    * Pendo). Overridable for tests.
@@ -424,7 +468,7 @@ export class GuideEngine {
         stripLaunchParam();
       }
 
-      await this.evaluateGuidesForRoute(stripQueryAndHash(window.location.pathname));
+      await this.evaluateGuidesForRoute();
       if (!this.disabled && !this.helpLoaded) await this.loadHelp();
     } catch (err) {
       this.disabled = true;
@@ -461,6 +505,20 @@ export class GuideEngine {
     }
   }
 
+  /** The page the visitor is on, as routes are written for this app (see RouteMode). */
+  currentPath(): string {
+    return currentRoutePath(this.routeMode);
+  }
+
+  /** Reads the app's route mode from a /guides or /help response; anything unknown means paths. */
+  private applyRouteMode(data: { routeMode?: unknown } | null): void {
+    const mode: RouteMode = data?.routeMode === 'hash' ? 'hash' : 'path';
+    if (mode === this.routeMode) return;
+    this.routeMode = mode;
+    // The help list shows "Opens on …" per mode, so it needs to know too.
+    if (this.helpLoaded) this.pushHelpState();
+  }
+
   // ------------------------------------------------------------
   // Help center
   // ------------------------------------------------------------
@@ -490,18 +548,27 @@ export class GuideEngine {
   launchHelpGuide(guideId: string): void {
     const item = this.helpItems.find((g) => g.id === guideId);
     if (!item || this.disabled) return;
-    const here = stripQueryAndHash(window.location.pathname);
-    if (matchesRoute(item.routeMatch, here)) {
+    if (matchesRoute(item.routeMatch, this.currentPath())) {
       this.helpUi?.close();
       this.startOnDemand(item, 'help');
       return;
     }
     let target: string;
     try {
-      const url = new URL(item.help.startPath, window.location.origin);
-      if (url.origin !== window.location.origin) return; // help links never leave the site
-      url.searchParams.set(LAUNCH_PARAM, `help:${item.id}`);
-      target = url.pathname + url.search + url.hash;
+      if (this.routeMode === 'hash') {
+        // A hash router keeps the document where it is; the start page goes
+        // in the fragment. The launch parameter goes in the REAL query string
+        // (before the hash), where readLaunchParam() looks on any page.
+        const url = new URL(window.location.pathname, window.location.origin);
+        url.searchParams.set(LAUNCH_PARAM, `help:${item.id}`);
+        url.hash = item.help.startPath;
+        target = url.pathname + url.search + url.hash;
+      } else {
+        const url = new URL(item.help.startPath, window.location.origin);
+        if (url.origin !== window.location.origin) return; // help links never leave the site
+        url.searchParams.set(LAUNCH_PARAM, `help:${item.id}`);
+        target = url.pathname + url.search + url.hash;
+      }
     } catch {
       return; // malformed start page: do nothing rather than break the page
     }
@@ -532,34 +599,56 @@ export class GuideEngine {
       if (res.ok) {
         const data = (await res.json()) as {
           enabled?: unknown;
+          routeMode?: unknown;
           guides?: unknown;
           button?: HelpButtonSettings;
         } | null;
         if (data?.enabled === true && Array.isArray(data.guides)) {
           items = (data.guides as HelpItem[]).filter((g) => g?.help && typeof g.help.title === 'string');
           if (data.button) button = data.button;
+          this.applyRouteMode(data);
         }
       }
     } catch {
       // fail closed: no help center
     }
     this.helpItems = items;
+    this.helpButton = button;
+    this.pushHelpState();
+  }
+
+  private pushHelpState(): void {
     try {
       this.helpUi?.update({
-        items,
-        button,
-        showButton: this.options?.helpButton !== false && items.length > 0,
+        items: this.helpItems,
+        button: this.helpButton,
+        showButton: this.options?.helpButton !== false && this.helpItems.length > 0,
+        routeMode: this.routeMode,
       });
     } catch (err) {
       this.reportError(err, 'help');
     }
   }
 
-  /** Call on every SPA route change. The install-snippet agent does this automatically. */
-  async onRouteChange(newPath: string): Promise<void> {
+  /** The help panel opened (the floating button, or openHelp()). Called by the help UI. */
+  trackHelpOpened(): void {
+    this.emitHelpEvent('help_opened');
+  }
+
+  /** The visitor searched the help center: what for, and how many topics matched. Called by the help UI. */
+  trackHelpSearched(query: string, results: number): void {
+    this.emitHelpEvent('help_searched', { query: query.slice(0, HELP_QUERY_MAX), results });
+  }
+
+  /**
+   * Call on every SPA route change. The install-snippet agent does this
+   * automatically. `newPath` is the route as the app's router sees it ("/team"
+   * for both path and hash routers); omit it to read the current location.
+   */
+  async onRouteChange(newPath?: string): Promise<void> {
     if (this.disabled || this.previewMode || !this.client) return;
     try {
-      await this.evaluateGuidesForRoute(stripQueryAndHash(newPath));
+      await this.evaluateGuidesForRoute(newPath === undefined ? undefined : stripQueryAndHash(newPath));
     } catch (err) {
       // never throw into the host app's router hooks
       this.reportError(err, 'route');
@@ -579,7 +668,7 @@ export class GuideEngine {
       for (const id of [...this.activeGuides.keys()]) this.teardownGuide(id);
       this.finished.clear();
       if (!this.disabled && !this.previewMode) {
-        await this.evaluateGuidesForRoute(stripQueryAndHash(window.location.pathname));
+        await this.evaluateGuidesForRoute();
         if (!this.disabled) await this.loadHelp(); // the new user's help list (account targeting)
       }
     } catch (err) {
@@ -610,25 +699,29 @@ export class GuideEngine {
   }
 
   /**
-   * One request returns the kill-switch state and this visitor's candidate
-   * guides. Fail closed: an explicit enabled:false disables the agent for the
-   * rest of the page's life; any other failure (network, non-2xx, malformed
-   * body) shows nothing for this navigation.
+   * One request returns the kill-switch state, the app's route mode and this
+   * visitor's candidate guides. Fail closed: an explicit enabled:false
+   * disables the agent for the rest of the page's life; any other failure
+   * (network, non-2xx, malformed body) shows nothing for this navigation.
+   *
+   * `path` is the route to match; omitted, the current location is read
+   * AFTER the response, because that's when the route mode is known.
    */
-  private async evaluateGuidesForRoute(path: string): Promise<void> {
+  private async evaluateGuidesForRoute(path?: string): Promise<void> {
     if (!this.client) return;
 
     let guides: Guide[];
     try {
       const res = await this.client.post('/guides');
       if (!res.ok) return;
-      const data = (await res.json()) as { enabled?: unknown; guides?: unknown } | null;
+      const data = (await res.json()) as { enabled?: unknown; routeMode?: unknown; guides?: unknown } | null;
       if (data?.enabled === false) {
         this.disabled = true;
         return;
       }
       if (data?.enabled !== true || !Array.isArray(data.guides)) return;
       guides = data.guides as Guide[];
+      this.applyRouteMode(data);
     } catch (err) {
       // Silent failure — never block the host app. Reported because a
       // non-JSON 200 (a CDN or proxy error page) is a deployment problem
@@ -638,7 +731,8 @@ export class GuideEngine {
       return;
     }
 
-    const matched = guides.filter((g) => g?.routeMatch && matchesRoute(g.routeMatch, path));
+    const here = path ?? this.currentPath();
+    const matched = guides.filter((g) => g?.routeMatch && matchesRoute(g.routeMatch, here));
 
     for (const guide of matched) {
       if (this.activeGuides.has(guide.id)) continue; // already showing/tracked
@@ -658,7 +752,13 @@ export class GuideEngine {
     this.showCurrentStep(state);
   }
 
-  private showCurrentStep(state: GuideRuntimeState): void {
+  /**
+   * Shows the step at currentStepIndex. The first step records guide_shown
+   * and every later one guide_step_viewed — unless `revisit` (the visitor
+   * went back), when it's always guide_step_viewed: the guide didn't start
+   * again, a step was just seen again.
+   */
+  private showCurrentStep(state: GuideRuntimeState, revisit = false): void {
     const step = state.guide.steps[state.currentStepIndex];
     if (!step) {
       this.completeGuide(state);
@@ -669,7 +769,7 @@ export class GuideEngine {
 
     if (step.targetSelector && !targetEl) {
       // Target not yet in the DOM (common in SPAs) — watch for it to appear.
-      this.watchForTarget(state, step);
+      this.watchForTarget(state, step, revisit);
       return;
     }
 
@@ -692,7 +792,11 @@ export class GuideEngine {
       this.reportError(err, 'render');
       return;
     }
-    this.emitEvent(state, step.id, state.currentStepIndex === 0 ? 'guide_shown' : 'guide_step_viewed');
+    this.emitEvent(
+      state,
+      step.id,
+      state.currentStepIndex === 0 && !revisit ? 'guide_shown' : 'guide_step_viewed',
+    );
 
     if (targetEl) {
       this.observeTarget(state.guide.id, step);
@@ -704,7 +808,7 @@ export class GuideEngine {
     this.targetObservers.delete(guideId);
   }
 
-  private watchForTarget(state: GuideRuntimeState, step: Step, attempt = 0): void {
+  private watchForTarget(state: GuideRuntimeState, step: Step, revisit: boolean, attempt = 0): void {
     const maxAttempts = 10;
     if (attempt >= maxAttempts) {
       state.status = 'error';
@@ -716,9 +820,9 @@ export class GuideEngine {
       () => {
         const el = document.querySelector(step.targetSelector!);
         if (el) {
-          this.showCurrentStep(state);
+          this.showCurrentStep(state, revisit);
         } else {
-          this.watchForTarget(state, step, attempt + 1);
+          this.watchForTarget(state, step, revisit, attempt + 1);
         }
       },
       300 * (attempt + 1),
@@ -779,6 +883,19 @@ export class GuideEngine {
     }
   }
 
+  /**
+   * Called by the renderer when the user clicks "Back": shows the previous
+   * step again (a guide_step_viewed, no guide_step_completed — nothing was
+   * completed). On the first step there is nothing to go back to.
+   */
+  previousStep(guideId: string): void {
+    const state = this.activeGuides.get(guideId);
+    if (!state || state.currentStepIndex === 0) return;
+
+    state.currentStepIndex -= 1;
+    this.showCurrentStep(state, true);
+  }
+
   /** Called by the renderer when the user dismisses the guide. */
   dismissGuide(guideId: string): void {
     const state = this.activeGuides.get(guideId);
@@ -812,6 +929,20 @@ export class GuideEngine {
     }
     this.stopObserving(guideId);
     this.activeGuides.delete(guideId);
+  }
+
+  /** Help-center events carry no guide; otherwise they're queued like guide events. */
+  private emitHelpEvent(
+    eventType: 'help_opened' | 'help_searched',
+    metadata?: Record<string, unknown>,
+  ): void {
+    if (!this.options || !this.eventQueue || this.disabled || this.previewMode) return;
+    this.eventQueue.push({
+      sessionId: this.sessionId,
+      eventType,
+      occurredAt: new Date().toISOString(),
+      metadata,
+    });
   }
 
   private emitEvent(

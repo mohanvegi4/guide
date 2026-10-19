@@ -6,7 +6,7 @@ import { Observable } from 'rxjs';
 import { ApiService, describeError } from '../core/api.service';
 import { runRequest } from '../core/request';
 import { AuthService } from '../core/auth.service';
-import { AgentError, App, HELP_POSITIONS, HelpPosition } from '../core/models';
+import { AgentError, App, HELP_POSITIONS, HelpAnalytics, HelpPosition, ROUTE_MODES } from '../core/models';
 import { parseWebsites } from './websites';
 
 /**
@@ -14,6 +14,8 @@ import { parseWebsites } from './websites';
  *  - the <head> snippet with this app's public key
  *  - websites allowed to load guides
  *  - optional signed visitor identity (secret shown once)
+ *  - how the app routes (path or hash), which decides what guides match on
+ *  - the help center's button and placement, with its usage over the last 30 days
  *  - app on/off, key rotation
  *  - the newest errors the agent reported from the app's pages
  */
@@ -81,6 +83,25 @@ import { parseWebsites } from './websites';
         <div class="toolbar">
           <button type="button" (click)="saveWebsites()" [disabled]="busy()">Save websites</button>
         </div>
+        <div class="inline-form">
+          <label>
+            Routing
+            <select
+              aria-label="Routing"
+              [ngModel]="a.route_mode"
+              [disabled]="busy()"
+              (ngModelChange)="save({ routeMode: $event })"
+            >
+              @for (m of routeModes; track m[0]) {
+                <option [value]="m[0]">{{ m[1] }}</option>
+              }
+            </select>
+          </label>
+        </div>
+        <p class="muted small">
+          How your app addresses pages. Guides are matched on the URL path, or, for a hash router, on the part
+          after <code>#</code>. Write page URLs the same way in both cases (<code>/settings/team</code>).
+        </p>
       </section>
 
       <section class="card">
@@ -164,6 +185,63 @@ import { parseWebsites } from './websites';
           Using your own help button instead? Hide ours and open the help center from yours:
         </p>
         <pre class="snippet code">{{ customButtonExample }}</pre>
+
+        <div class="card nested help-analytics">
+          <div class="section-head">
+            <h3 class="subhead">Help center analytics</h3>
+            <button type="button" class="link" (click)="loadAnalytics()">Refresh</button>
+          </div>
+          @if (analyticsError()) {
+            <p class="error">{{ analyticsError() }}</p>
+          } @else if (analytics(); as s) {
+            <p class="muted small">Last {{ s.days }} days.</p>
+            <table class="table compact">
+              <tbody>
+                <tr>
+                  <th scope="row">Opened</th>
+                  <td class="num">{{ s.opens }}</td>
+                </tr>
+                <tr>
+                  <th scope="row">Searches</th>
+                  <td class="num">{{ s.searches }}</td>
+                </tr>
+                <tr>
+                  <th scope="row">Guides started from here</th>
+                  <td class="num">{{ s.guidesStarted }}</td>
+                </tr>
+              </tbody>
+            </table>
+            @if (s.topQueries.length > 0) {
+              <h4 class="subhead">Top searches</h4>
+              <p class="muted small">
+                What visitors looked for, and how many topics each search found on average. A search that
+                finds nothing is a topic worth adding.
+              </p>
+              <table class="table compact">
+                <thead>
+                  <tr>
+                    <th>Query</th>
+                    <th class="num">Times</th>
+                    <th class="num">Topics found</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (q of s.topQueries; track q.query) {
+                    <tr [class.bad]="q.avgResults === 0">
+                      <td>{{ q.query }}</td>
+                      <td class="num">{{ q.count }}</td>
+                      <td class="num">{{ q.avgResults ?? '–' }}</td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            } @else if (s.opens === 0) {
+              <p class="muted small">No help-center activity yet.</p>
+            }
+          } @else {
+            <p class="muted small">Loading…</p>
+          }
+        </div>
       </section>
 
       <section class="card" data-testid="agent-errors">
@@ -227,12 +305,15 @@ export class AppSettingsComponent {
   protected readonly error = signal<string | null>(null);
   protected readonly message = signal<string | null>(null);
   protected readonly copied = signal<string | null>(null);
+  protected readonly analytics = signal<HelpAnalytics | null>(null);
+  protected readonly analyticsError = signal<string | null>(null);
   protected readonly justCreated = inject(ActivatedRoute).snapshot.queryParamMap.has('new');
   protected websites = '';
   protected helpLabel = 'Help';
   protected helpColor = '#4f46e5';
   protected helpPosition: HelpPosition = 'bottom-right';
   protected readonly positions = HELP_POSITIONS;
+  protected readonly routeModes = ROUTE_MODES;
   protected readonly customButtonExample = `guideEngine.initialize({ visitor: { id: 'USER_ID' }, helpButton: false });
 
 // your button:
@@ -261,7 +342,17 @@ const token = jwt.sign(
         this.api
           .listErrors(appId)
           .subscribe({ next: (list) => this.errors.set(list), error: () => undefined });
+        this.loadAnalytics(appId);
       });
+    });
+  }
+
+  /** Help-center usage; its own error signal so a failure here doesn't hide the settings. */
+  loadAnalytics(appId = this.appId()): void {
+    this.analyticsError.set(null);
+    this.api.helpAnalytics(appId).subscribe({
+      next: (s) => this.analytics.set(s),
+      error: (err) => this.analyticsError.set(describeError(err)),
     });
   }
 

@@ -10,6 +10,7 @@ import {
   APP_COLUMNS,
   AppRow,
   HELP_POSITIONS,
+  ROUTE_MODES,
   createApp,
   createOrgWithApp,
   installSnippet,
@@ -171,6 +172,7 @@ const appPatchSchema = z
       .regex(/^#[0-9a-fA-F]{6}$/, 'must be a hex color like #4f46e5')
       .optional(),
     helpPosition: z.enum(HELP_POSITIONS).optional(),
+    routeMode: z.enum(ROUTE_MODES).optional(),
   })
   .refine((v) => Object.keys(v).length > 0, 'nothing to update');
 
@@ -198,7 +200,8 @@ orgsRouter.patch(
            help_enabled = COALESCE($6, help_enabled),
            help_button_label = COALESCE($7, help_button_label),
            help_button_color = COALESCE($8, help_button_color),
-           help_position = COALESCE($9, help_position)
+           help_position = COALESCE($9, help_position),
+           route_mode = COALESCE($10, route_mode)
          WHERE id = $1 RETURNING ${APP_COLUMNS}`,
         [
           appId,
@@ -210,11 +213,67 @@ orgsRouter.patch(
           body.helpButtonLabel ? sanitizePlainText(body.helpButtonLabel) || null : null,
           body.helpButtonColor ?? null,
           body.helpPosition ?? null,
+          body.routeMode ?? null,
         ],
       );
       return result.rows[0];
     });
     res.json(app);
+  }),
+);
+
+// ------------------------------------------------------------
+// GET /apps/:appId/help-analytics — how the help center is used, last 30
+// days: opens, searches (with the most common queries and how many topics
+// each found on average), and guides started from it. These events carry no
+// guide, which is why they're an app-level view rather than part of a guide's
+// own analytics.
+// ------------------------------------------------------------
+const HELP_ANALYTICS_DAYS = 30;
+
+orgsRouter.get(
+  '/apps/:appId/help-analytics',
+  asyncHandler(async (req, res) => {
+    const appId = idParam(req, 'appId');
+    const stats = await studio(req, async (client, ctx) => {
+      requireAppRole(ctx, appId, 'viewer');
+      const since = new Date(Date.now() - HELP_ANALYTICS_DAYS * 86_400_000).toISOString();
+      const totals = await client.query<{ opens: number; searches: number; guides_started: number }>(
+        `SELECT COUNT(*) FILTER (WHERE event_type = 'help_opened')::int AS opens,
+                COUNT(*) FILTER (WHERE event_type = 'help_searched')::int AS searches,
+                COUNT(*) FILTER (WHERE event_type = 'guide_shown' AND metadata ->> 'source' = 'help')::int
+                  AS guides_started
+         FROM guide_event
+         WHERE app_id = $1 AND occurred_at >= $2
+           AND event_type IN ('help_opened', 'help_searched', 'guide_shown')`,
+        [appId, since],
+      );
+      // Queries are grouped case-insensitively and trimmed, so "Invite" and
+      // "invite " count as one. A result count that isn't a number (older
+      // agents, tampered metadata) is left out of the average, not read as 0.
+      const top = await client.query<{ query: string; count: number; avg_results: number | null }>(
+        `SELECT lower(trim(metadata ->> 'query')) AS query,
+                COUNT(*)::int AS count,
+                ROUND(AVG(CASE WHEN jsonb_typeof(metadata -> 'results') = 'number'
+                               THEN (metadata ->> 'results')::numeric END), 1)::float AS avg_results
+         FROM guide_event
+         WHERE app_id = $1 AND occurred_at >= $2 AND event_type = 'help_searched'
+           AND trim(metadata ->> 'query') <> ''
+         GROUP BY 1
+         ORDER BY count DESC, query
+         LIMIT 20`,
+        [appId, since],
+      );
+      const t = totals.rows[0];
+      return {
+        days: HELP_ANALYTICS_DAYS,
+        opens: t.opens,
+        searches: t.searches,
+        guidesStarted: t.guides_started,
+        topQueries: top.rows.map((r) => ({ query: r.query, count: r.count, avgResults: r.avg_results })),
+      };
+    });
+    res.json(stats);
   }),
 );
 

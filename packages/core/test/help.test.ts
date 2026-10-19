@@ -378,3 +378,112 @@ describe('engine help center', () => {
     expect(help.updates).toEqual([]);
   });
 });
+
+describe('help-center analytics', () => {
+  function mount(onOpen = vi.fn(), onSearch = vi.fn()) {
+    const ui = createHelpWidget({ onSelect: vi.fn(), onOpen, onSearch });
+    ui.update({
+      items: [helpItem('a', 'Invite a teammate'), helpItem('b', 'Invoice history'), helpItem('c', 'Export')],
+      button: { label: 'Help', color: '#4f46e5' },
+      showButton: true,
+    });
+    const root = document.querySelector('[data-guide-help]')!.shadowRoot!;
+    const search = root.querySelector<HTMLInputElement>('.search')!;
+    const type = (value: string) => {
+      search.value = value;
+      search.dispatchEvent(new Event('input'));
+    };
+    return { ui, root, type, onOpen, onSearch };
+  }
+
+  it('reports an open from the button or openHelp(), but not "Stay here" bringing the list back', () => {
+    const { ui, root, onOpen } = mount();
+    root.querySelector<HTMLButtonElement>('.launcher')!.click();
+    expect(onOpen).toHaveBeenCalledTimes(1);
+    ui.close();
+    ui.open();
+    expect(onOpen).toHaveBeenCalledTimes(2);
+
+    ui.confirmNavigation!(helpItem('b', 'Export', { startPath: '/reports' }, '/reports'), vi.fn());
+    root.querySelector<HTMLButtonElement>('.stay')!.click();
+    expect(ui.isOpen()).toBe(true);
+    expect(onOpen).toHaveBeenCalledTimes(2);
+  });
+
+  it('reports a search once typing pauses for 500 ms, with the query and how many topics matched', () => {
+    vi.useFakeTimers();
+    try {
+      const { ui, type, onSearch } = mount();
+      ui.open();
+      type('i');
+      vi.advanceTimersByTime(1000);
+      expect(onSearch).not.toHaveBeenCalled(); // one letter says nothing
+
+      type('in');
+      vi.advanceTimersByTime(200);
+      type('inv');
+      vi.advanceTimersByTime(200);
+      type('invi');
+      expect(onSearch).not.toHaveBeenCalled(); // still typing
+      vi.advanceTimersByTime(500);
+      expect(onSearch).toHaveBeenCalledTimes(1);
+      expect(onSearch).toHaveBeenCalledWith('invi', 1);
+
+      type('  zzz  ');
+      vi.advanceTimersByTime(500);
+      expect(onSearch).toHaveBeenLastCalledWith('zzz', 0);
+
+      // Clearing the box, or closing the panel, cancels a pending report.
+      type('inv');
+      type('');
+      vi.advanceTimersByTime(500);
+      type('inv');
+      ui.close();
+      vi.advanceTimersByTime(500);
+      expect(onSearch).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('the engine queues help events without a guide, with the query capped at 200 characters', async () => {
+    const fetchMock = mockFetch({
+      [R.guides]: serving(),
+      [HELP]: helpBody(helpItem('a', 'Invite')),
+      [R.events]: () => ({ status: 202 }),
+    });
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      const engine = new GuideEngine();
+      await engine.init(baseOptions, fakeRenderer().renderer, fakeHelpUi().ui);
+      engine.trackHelpOpened();
+      engine.trackHelpSearched('x'.repeat(300), 2);
+      await vi.advanceTimersByTimeAsync(5000);
+      const sent = callsTo(fetchMock, R.events).flatMap((c) => bodyOf(c).events as Record<string, unknown>[]);
+      expect(sent).toEqual([
+        expect.objectContaining({ eventType: 'help_opened', sessionId: expect.any(String) }),
+        expect.objectContaining({
+          eventType: 'help_searched',
+          metadata: { query: 'x'.repeat(200), results: 2 },
+        }),
+      ]);
+      expect(sent[0]).not.toHaveProperty('guideId');
+      expect(sent[1]).not.toHaveProperty('guideVersionId');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('records nothing while the engine is off', async () => {
+    const fetchMock = mockFetch({
+      [R.guides]: () => ({ body: { enabled: false, guides: [] } }),
+      [R.events]: () => ({ status: 202 }),
+    });
+    const engine = new GuideEngine();
+    await engine.init(baseOptions, fakeRenderer().renderer, fakeHelpUi().ui);
+    engine.trackHelpOpened();
+    engine.trackHelpSearched('invite', 0);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(callsTo(fetchMock, R.events)).toHaveLength(0);
+  });
+});

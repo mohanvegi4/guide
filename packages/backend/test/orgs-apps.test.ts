@@ -106,6 +106,28 @@ describe('app settings', () => {
       .send({ websites: [SITE, 'https://beta.acme.test/x'], enabled: false });
     expect(res.body).toMatchObject({ allowed_origins: [SITE, 'https://beta.acme.test'], enabled: false });
   });
+
+  it('defaults routing to path, and round-trips a change to hash', async () => {
+    const { appId } = await signUp('alice');
+    const auth = as('alice');
+    expect((await request(app).get(`/v1/apps/${appId}`).set('Authorization', auth)).body.route_mode).toBe(
+      'path',
+    );
+    const res = await request(app)
+      .patch(`/v1/apps/${appId}`)
+      .set('Authorization', auth)
+      .send({ routeMode: 'hash' });
+    expect(res.status).toBe(200);
+    expect(res.body.route_mode).toBe('hash');
+    expect((await request(app).get(`/v1/apps/${appId}`).set('Authorization', auth)).body.route_mode).toBe(
+      'hash',
+    );
+    const bad = await request(app)
+      .patch(`/v1/apps/${appId}`)
+      .set('Authorization', auth)
+      .send({ routeMode: 'query' });
+    expect(bad.status).toBe(400);
+  });
 });
 
 describe('roles', () => {

@@ -114,6 +114,13 @@ export const HELP_POSITIONS = [
 ] as const;
 export type HelpPosition = (typeof HELP_POSITIONS)[number][0];
 
+/** How the app's router addresses pages; decides which part of the URL guides are matched on. */
+export const ROUTE_MODES = [
+  ['path', 'Path (/settings/team)'],
+  ['hash', 'Hash (/#/settings/team)'],
+] as const;
+export type RouteMode = (typeof ROUTE_MODES)[number][0];
+
 export interface App {
   id: string;
   org_id: string;
@@ -127,6 +134,7 @@ export interface App {
   help_button_label: string;
   help_button_color: string;
   help_position: HelpPosition;
+  route_mode: RouteMode;
   created_at: string;
   role: AppRole;
   /** Present on GET /v1/apps/:id — the exact <head> snippet for this app. */
@@ -292,6 +300,17 @@ export interface AppAnalytics {
   visitors: number;
   accounts: number;
   windowDays: number;
+}
+
+/** GET /v1/apps/:appId/help-analytics — how the help center was used over the last `days`. */
+export interface HelpAnalytics {
+  days: number;
+  opens: number;
+  searches: number;
+  /** Guides started from the help center (guide_shown with source = help). */
+  guidesStarted: number;
+  /** The most common search queries (normalized), with the average number of topics they matched. */
+  topQueries: Array<{ query: string; count: number; avgResults: number | null }>;
 }
 
 /** GET /v1/apps/:appId/pages — a saved page: a named, reusable URL rule. */

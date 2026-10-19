@@ -126,3 +126,53 @@ describe('help center API', () => {
     expect(document.querySelector('[data-guide-help]')!.shadowRoot!.querySelector<HTMLElement>('.launcher')!.hidden).toBe(true);
   });
 });
+
+describe('hash-routed apps', () => {
+  // Agents from earlier tests still listen for hashchange (only the history
+  // patches are undone between tests), so count only this test's own agent:
+  // the calls carrying its visitor id.
+  const guidesCallsBy = (f: ReturnType<typeof mockApi>, visitorId: string) =>
+    guidesCalls(f).filter((c) => body(c as [string, RequestInit?]).visitor?.id === visitorId);
+
+  it('matches routes on the hash path and follows hash navigation when the app says routeMode: hash', async () => {
+    const guide = {
+      id: 'g1',
+      versionId: 'v1',
+      name: 'Team',
+      type: 'modal',
+      routeMatch: { type: 'exact', value: '/team' },
+      steps: [{ id: 's1', order: 0, type: 'modal', content: '<p>Hi</p>', actions: [] }],
+    };
+    const fetchMock = vi.fn(async (url: string) =>
+      new Response(
+        JSON.stringify(
+          String(url).endsWith('/help')
+            ? { enabled: true, routeMode: 'hash', button: { label: 'Help', color: '#4f46e5' }, guides: [] }
+            : { enabled: true, routeMode: 'hash', guides: [guide] }
+        ),
+        { status: 200 }
+      )
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    window.history.replaceState({}, '', '/app/#/home');
+    installSnippet([['initialize', { visitor: { id: 'hash-user' } }]]);
+    await import('../src/index');
+    await vi.waitFor(() => expect(guidesCallsBy(fetchMock, 'hash-user')).toHaveLength(1));
+    expect(document.querySelector('[data-guide-host]')).toBeNull(); // /home: no guide
+
+    window.location.hash = '#/team'; // a hashchange, no pushState
+    await vi.waitFor(() => expect(guidesCallsBy(fetchMock, 'hash-user')).toHaveLength(2));
+    await vi.waitFor(() => expect(document.querySelector('[data-guide-host]')).not.toBeNull());
+  });
+
+  it('ignores hash changes for path-routed apps (no re-evaluation on anchor links)', async () => {
+    const fetchMock = mockApi();
+    window.history.replaceState({}, '', '/docs');
+    installSnippet([['initialize', { visitor: { id: 'path-user' } }]]);
+    await import('../src/index');
+    await vi.waitFor(() => expect(guidesCallsBy(fetchMock, 'path-user')).toHaveLength(1));
+    window.location.hash = '#section-2';
+    await new Promise((r) => setTimeout(r, 50));
+    expect(guidesCallsBy(fetchMock, 'path-user')).toHaveLength(1);
+  });
+});

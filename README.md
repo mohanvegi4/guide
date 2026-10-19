@@ -261,8 +261,13 @@ app.directive('guide-anchor', vGuideAnchor);   // <button v-guide-anchor="'invit
 import { GuideEngine, createDomRenderer } from '@guide-engine/core';
 const engine = new GuideEngine();
 void engine.init({ apiBaseUrl, appKey, visitor, account, jwt },
-  createDomRenderer({ advanceStep: (id) => engine.advanceStep(id), dismissGuide: (id) => engine.dismissGuide(id) }));
-// call engine.onRouteChange(location.pathname) on navigation, engine.identify(...) after login
+  createDomRenderer({
+    advanceStep: (id) => engine.advanceStep(id),
+    previousStep: (id) => engine.previousStep(id),
+    dismissGuide: (id) => engine.dismissGuide(id),
+  }));
+// call engine.onRouteChange() on navigation (or pass the route, e.g. engine.onRouteChange('/team')),
+// engine.identify(...) after login
 ```
 
 `provideAppInitializer` needs Angular 19+. On older versions, call `init` from an
@@ -355,6 +360,9 @@ A floating **Help** button (bottom right by default; the corner is an app settin
   gets a normal page load to the guide's **start page** with `?guideEngine=help:<guide id>`; the
   agent starts the guide on arrival and removes the parameter. This is the same approach as
   Pendo's guide permalinks, plus the confirmation.
+- **Hash-routed apps** (Routing set to *Hash* in the app's settings) show the start page as
+  `/#/team`, and the visitor is sent to `/?guideEngine=help:<guide id>#/team`: the route goes in
+  the fragment and the launch parameter stays in the real query string, where the agent reads it.
 - A plain `?guideEngine=<guide id>` link (for example from support staff) does the same for any
   help-center guide.
 
@@ -378,6 +386,14 @@ packages they're `GuideService.openHelp()` (Angular), `useGuideEngine().openHelp
   sits in the chosen corner (bottom right when the list is centered).
 - Guides started from the help center are tagged `source: help` on their events. The guide's
   Analytics panel shows how often that happened.
+- **Help center analytics** (the card under the help-center settings; viewers can read it):
+  over the last 30 days, how often the panel was opened (`help_opened`), how many searches were
+  made (`help_searched`, recorded once typing pauses for 500 ms on a query of at least two
+  characters, with the query and how many topics it matched), the 20 most common queries with
+  the average number of topics each found (a query that finds nothing is a topic worth adding),
+  and how many guides were started from the help center. Opening the list again after
+  *Stay here* doesn't count as a new open. These events belong to no guide, so they're an
+  app-level view rather than part of a guide's analytics.
 
 ---
 
@@ -400,8 +416,12 @@ packages they're `GuideService.openHelp()` (Angular), `useGuideEngine().openHelp
 
    `enabled: false` stops the agent for the rest of the page's life. Any other failure shows
    nothing for that navigation (fail closed).
-4. **Route matching** uses the URL **path** only: `exact` compares the whole path, and in
-   `pattern` each `*` matches anything.
+4. **Route matching** uses the URL **path** only (query strings and fragments are ignored):
+   `exact` compares the whole path, and in `pattern` each `*` matches anything. For an app whose
+   **Routing** setting is *Hash* (`/#/settings/team`), the path inside the fragment is matched
+   instead (`/settings/team`; a fragment-less page is `/`), the agent re-evaluates on every
+   `hashchange`, and page URLs are written the same way as for path routing. The server says
+   which mode applies in every `/guides` and `/help` response (`routeMode`).
 5. **Finding the target.** If the anchor isn't in the DOM yet, the agent retries with backoff (10
    attempts, about 16.5 s), then records `guide_error` with `target_not_found`.
 6. **Rendering** happens in a Shadow DOM card, so your styles don't leak in. A targeted step
@@ -558,14 +578,15 @@ Bodies may be `text/plain` or `application/json`. Each one carries an identity:
 
 | Method & path | Body → response |
 |---|---|
-| `POST /v1/agent/:key/guides` | identity → `{ enabled, guides: [{ id, versionId, name, type, steps, routeMatch }] }` |
-| `POST /v1/agent/:key/events` | identity + `{ events: [{ guideId, guideVersionId, stepId?, sessionId, eventType, occurredAt, metadata? }] }` (1–100) → `202 { accepted }` |
+| `POST /v1/agent/:key/guides` | identity → `{ enabled, routeMode, guides: [{ id, versionId, name, type, steps, routeMatch }] }`. `routeMode` is `path` or `hash`. |
+| `POST /v1/agent/:key/events` | identity + `{ events: [{ guideId, guideVersionId, stepId?, sessionId, eventType, occurredAt, metadata? }] }` (1–100) → `202 { accepted }`. Help-center events (`help_opened`, `help_searched`) carry no `guideId` / `guideVersionId`; a `help_searched` event's `metadata` is `{ query, results }` (the query is cut to 200 characters; other keys are dropped). |
 | `POST /v1/agent/:key/preview` | `{ token }` → the previewed guide with `preview: true` |
 | `POST /v1/agent/:key/errors` | `{ message (1–500 chars), stack? (≤ 4000), url? (≤ 2000), agentVersion? }` → `202 { accepted }`. `accepted: false` once the app already has 1000 reports in the last hour. |
-| `POST /v1/agent/:key/help` | identity → `{ enabled, button: { label, color }, guides: [{ …guide, help: { title, description, keywords, startPath } }] }`. The help-center list; not route-filtered, and includes guides the visitor already finished. |
+| `POST /v1/agent/:key/help` | identity → `{ enabled, routeMode, button: { label, color, position }, guides: [{ …guide, help: { title, description, keywords, startPath } }] }`. The help-center list; not route-filtered, and includes guides the visitor already finished. |
 
 `eventType` is one of `guide_shown`, `guide_step_viewed`, `guide_step_completed`,
-`guide_dismissed`, `guide_completed`, `guide_error`, `survey_response`.
+`guide_dismissed`, `guide_completed`, `guide_error`, `survey_response`, `help_opened`,
+`help_searched`.
 
 ### Studio API (`/v1`, bearer token from OIDC, or a dev token)
 
@@ -582,7 +603,8 @@ Bodies may be `text/plain` or `application/json`. Each one carries an identity:
 | `POST /orgs` | anyone | `{ name, app: { name, websites[] } }` → you become owner. |
 | `GET` / `PATCH /orgs/:orgId` | member / admin | `PATCH` takes `{ name }`. |
 | `GET` / `POST /orgs/:orgId/apps` | member / admin | members see only the apps they can access. |
-| `GET` / `PATCH /apps/:appId` | viewer / app_admin | `GET` includes `snippet`. `PATCH` takes `{ name?, websites?, identityMode?, enabled?, helpEnabled?, helpButtonLabel?, helpButtonColor?, helpPosition? }`; the color must be hex, the position one of `bottom-right`, `bottom-left`, `top-right`, `top-left`, `center`. |
+| `GET` / `PATCH /apps/:appId` | viewer / app_admin | `GET` includes `snippet`. `PATCH` takes `{ name?, websites?, identityMode?, enabled?, helpEnabled?, helpButtonLabel?, helpButtonColor?, helpPosition?, routeMode? }`; the color must be hex, the position one of `bottom-right`, `bottom-left`, `top-right`, `top-left`, `center`, the route mode `path` or `hash` (returned as `route_mode`). |
+| `GET /apps/:appId/help-analytics` | viewer | Help-center usage over the last 30 days: `{ days, opens, searches, guidesStarted, topQueries: [{ query, count, avgResults }] }` (top 20 queries, normalized to lower case). |
 | `POST /apps/:appId/rotate-key` | app_admin | New public key; old snippets stop working. |
 | `POST /apps/:appId/signing-secret` | app_admin | `{ secret }`, shown once. |
 | `GET /apps/:appId/errors?limit=50` | viewer | The newest agent errors (1–200): `[{ id, message, stack, agentVersion, url, occurredAt }]`. |
@@ -644,14 +666,14 @@ A `VersionBody` is:
 | Table | Purpose |
 |---|---|
 | `organization` | A customer workspace (`created_by`), plus `suspended_at` and the support window (`support_access_until`, `support_access_granted_by`). |
-| `application` | `public_key`, `allowed_origins`, `identity_mode`, `signing_secret`, `enabled` (the app switch), and the help center: `help_enabled`, `help_button_label`, `help_button_color`, `help_position`. |
+| `application` | `public_key`, `allowed_origins`, `identity_mode`, `signing_secret`, `enabled` (the app switch), `route_mode` (`path` or `hash`), and the help center: `help_enabled`, `help_button_label`, `help_button_color`, `help_position`. |
 | `studio_user` | People who use the Studio, keyed by (`oidc_issuer`, `oidc_sub`); created on first sign-in. `platform_admin` marks Guide Engine staff. |
 | `support_access_log` | Every request a platform admin made under an organization's support access (who, when, method, path). |
 | `org_member` / `app_member` | Org role (owner / admin / member) and per-app role (viewer → app_admin). |
 | `invitation` | Invite links: hashed token, org role, app roles, expiry, single use. |
 | `app_page` | Saved pages per app: `name`, `match_type`, `match_value`, `start_path`. |
 | `guide` / `guide_version` | Guides per app. Numbered versions hold steps (JSONB), `page_id` (a saved page) and/or `route_match` (a custom route, or the page's route snapshot), dates, `account_ids` and `help` (the help-center listing). `published_at IS NULL` means the draft, at most one per guide. Published rows are immutable. |
-| `guide_event` | Analytics: app, guide, version, step, `visitor_id`, `account_id`. |
+| `guide_event` | Analytics: app, guide, version, step, `visitor_id`, `account_id`. Help-center events (`help_opened`, `help_searched`) have no guide; a CHECK ties a NULL `guide_id` to exactly those two types. |
 | `agent_error` | Exceptions the agent reported from an app's pages: `message`, `stack`, `agent_version`, `url`, `occurred_at`. Written by the agent, read by the app's members and platform admins, deleted by retention. Free text: only ever rendered as text. |
 | `user_guide_state` | Per (app, visitor, guide): dismissed or completed, plus `last_seen_version`. |
 | `system_config` | The global kill switch (`guide_engine_enabled`). |
@@ -666,6 +688,7 @@ A `VersionBody` is:
 | `008_help_position.sql` | Adds `help_position`: where the help list and its confirmation open (a corner or `center`, CHECK-limited). |
 | `009_platform_admin.sql` | Platform admins, organization suspension, support access and its log, the `*_platform_select` policies, and a stricter `guide_version` select policy. |
 | `011_agent_delivery.sql` | `agent_error` with its RLS: agent insert/select for its own app (the hourly cap counts in the same session), Studio and platform select, retention select/delete. |
+| `012_engine_gaps.sql` | Adds `application.route_mode` (CHECK-limited to `path` / `hash`), the `help_opened` / `help_searched` event types, and makes `guide_event.guide_id` nullable for those two types only (a CHECK constraint; the foreign keys stay). |
 
 ---
 
@@ -926,9 +949,6 @@ stack) uses `/ready`.
 
 ## Known gaps and roadmap
 
-- **"back" buttons do nothing yet.** The Studio offers the action, but the renderer doesn't handle
-  it.
-- **Hash-based routers** (`/#/route`) aren't matched. Route matching uses `location.pathname`.
 - **The app-key cache is per process** (10 s TTL): a rotated key can keep working on another
   replica for up to 10 s.
 - **Signing secrets are encrypted with one key from the environment.** A KMS-held key, or
@@ -940,6 +960,5 @@ stack) uses `/ready`.
 - **Analytics have no per-visitor breakdown**, and the per-account one is a top-50 list, not
   a searchable one.
 - **Shared `?guideEngine=` links** work for help-center guides only.
-- **Help-center opens and searches aren't tracked** yet. Only guides started from it are.
 - **Deferred:** metadata segments, surveys, i18n, rollout percentages, cross-app guides, staging
   environments, and a visual point-and-click designer.

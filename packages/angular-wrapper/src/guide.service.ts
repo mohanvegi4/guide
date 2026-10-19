@@ -19,11 +19,17 @@ export class GuideService implements OnDestroy {
   async init(options: SdkInitOptions): Promise<void> {
     const renderer = createDomRenderer({
       advanceStep: (id) => this.engine.advanceStep(id),
+      previousStep: (id) => this.engine.previousStep(id),
       dismissGuide: (id) => this.engine.dismissGuide(id),
     });
 
     // Help center: floating button (unless options.helpButton === false) + openHelp().
-    const help = createHelpWidget({ onSelect: (item) => this.engine.launchHelpGuide(item.id) });
+    // Opens and searches are reported for the Studio's help-center analytics.
+    const help = createHelpWidget({
+      onSelect: (item) => this.engine.launchHelpGuide(item.id),
+      onOpen: () => this.engine.trackHelpOpened(),
+      onSearch: (query, results) => this.engine.trackHelpSearched(query, results),
+    });
     await this.engine.init(options, renderer, help);
 
     this.routerSub = this.router.events

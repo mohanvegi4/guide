@@ -11,6 +11,7 @@ import {
   GuideDetail,
   GuideSummary,
   GuideType,
+  HelpAnalytics,
   HelpPosition,
   Invitation,
   InvitationPreview,
@@ -25,6 +26,7 @@ import {
   PreviewLink,
   PublishPayload,
   PublishedVersion,
+  RouteMode,
 } from './models';
 
 /**
@@ -69,9 +71,14 @@ export class ApiService {
       helpButtonLabel?: string;
       helpButtonColor?: string;
       helpPosition?: HelpPosition;
+      routeMode?: RouteMode;
     },
   ): Observable<App> {
     return this.http.patch<App>(`${this.base}/apps/${appId}`, patch);
+  }
+
+  helpAnalytics(appId: string): Observable<HelpAnalytics> {
+    return this.http.get<HelpAnalytics>(`${this.base}/apps/${appId}/help-analytics`);
   }
 
   rotateKey(appId: string): Observable<App> {

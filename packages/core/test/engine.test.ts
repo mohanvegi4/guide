@@ -333,7 +333,11 @@ describe('EventQueue', () => {
 
 describe('DOM renderer', () => {
   it('renders labels as text, never as HTML', () => {
-    const renderer = createDomRenderer({ advanceStep: vi.fn(), dismissGuide: vi.fn() });
+    const renderer = createDomRenderer({
+      advanceStep: vi.fn(),
+      previousStep: vi.fn(),
+      dismissGuide: vi.fn(),
+    });
     renderer.renderStep(
       makeGuide(),
       makeStep({ actions: [{ label: '<img src=x onerror="window.__pwned=1">Next', action: 'next' }] }),
@@ -346,7 +350,11 @@ describe('DOM renderer', () => {
   });
 
   it('spotlights the target and scrolls it into view once per step; untargeted steps get no spotlight', () => {
-    const renderer = createDomRenderer({ advanceStep: vi.fn(), dismissGuide: vi.fn() });
+    const renderer = createDomRenderer({
+      advanceStep: vi.fn(),
+      previousStep: vi.fn(),
+      dismissGuide: vi.fn(),
+    });
     const target = document.createElement('button');
     document.body.appendChild(target);
     // Off-screen (below the fold), 100x40 at (20, 900).
@@ -399,6 +407,7 @@ describe('DOM renderer', () => {
     const engine = new GuideEngine();
     const real = createDomRenderer({
       advanceStep: (id) => engine.advanceStep(id),
+      previousStep: (id) => engine.previousStep(id),
       dismissGuide: (id) => engine.dismissGuide(id),
     });
     const renderSpy = vi.fn(real.renderStep);

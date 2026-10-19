@@ -69,13 +69,20 @@ export function locateInstall(doc: Document): { apiBaseUrl: string; appKey: stri
 }
 
 /**
- * Calls onChange(path) whenever the URL path changes: history.pushState /
- * replaceState (what SPA routers use), back/forward, and hash changes.
+ * Calls onChange(path) whenever the app's current route changes: after
+ * history.pushState / replaceState (what SPA routers use), back/forward, and
+ * hash changes. `current` reads the route (the engine's currentPath(): the
+ * URL path, or the hash path for hash routers), so a hash change only counts
+ * when hashes are routes.
  */
-export function watchNavigation(onChange: (path: string) => void, win: Window = window): void {
-  let last = win.location.pathname;
+export function watchNavigation(
+  current: () => string,
+  onChange: (path: string) => void,
+  win: Window = window,
+): void {
+  let last = current();
   const check = () => {
-    const path = win.location.pathname;
+    const path = current();
     if (path === last) return;
     last = path;
     try {
@@ -105,9 +112,14 @@ export function startAgent(win: Window = window): void {
   const engine = new GuideEngine();
   const renderer = createDomRenderer({
     advanceStep: (id) => engine.advanceStep(id),
+    previousStep: (id) => engine.previousStep(id),
     dismissGuide: (id) => engine.dismissGuide(id),
   });
-  const help = createHelpWidget({ onSelect: (item) => engine.launchHelpGuide(item.id) });
+  const help = createHelpWidget({
+    onSelect: (item) => engine.launchHelpGuide(item.id),
+    onOpen: () => engine.trackHelpOpened(),
+    onSearch: (query, results) => engine.trackHelpSearched(query, results),
+  });
   let started = false;
   const safely = (fn: () => void) => {
     try {
@@ -132,7 +144,11 @@ export function startAgent(win: Window = window): void {
         // agentVersion rides along on error reports, so operators can tell
         // which build of the script misbehaved.
         void engine.init({ ...options, apiBaseUrl, appKey, agentVersion: AGENT_VERSION }, renderer, help);
-        watchNavigation((path) => void engine.onRouteChange(path), win);
+        watchNavigation(
+          () => engine.currentPath(),
+          (path) => void engine.onRouteChange(path),
+          win,
+        );
       } catch {
         // fail silent
       }
