@@ -196,13 +196,18 @@ supervisory authority. `[List the rights under the laws that apply to you.]`
 leave an organization yourself in the Studio; an organization admin can remove you. We delete
 your Studio record on request once you are not a member of any organization.
 
+**Organizations (customers)**: an organization owner can export the organization's data and
+delete the organization, immediately and without our involvement, in the Studio under
+**Members → Danger zone** (see the [Terms](terms.md), section 11). Deletion removes everything
+the organization holds, including all end-user events and state for its applications.
+
 **End users**: because the customer is the controller, please contact the website operator
 whose site you were using; their privacy notice tells you how. When a customer asks us to
 assist, it identifies the visitor by the visitor id its website used, and we delete or export
-that visitor's events and guide state for the customer's applications. `[TODO: the Service has
-no self-service per-visitor export or deletion in the Studio; this is a manual database
-operation performed by the operator within [number] days of a verified request.]` Visitors can
-also clear their anonymous id by clearing the customer website's site data in their browser.
+that visitor's events and guide state for the customer's applications. There is no per-visitor
+export or deletion function in the Studio: the Operator performs it directly in the database
+within `[number]` days of a verified request from the customer. Visitors can also clear their
+anonymous id by clearing the customer website's site data in their browser.
 
 ## 9. International transfers
 

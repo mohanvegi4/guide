@@ -152,16 +152,24 @@ incident.
    and switch applications off.
    Guide analytics are visible in the Studio for the retention period described in the
    [Privacy Policy](privacy.md).
-2. **Export and deletion of the organization.** `[TODO: the Service currently has no
-   self-service "export my organization" or "delete my organization" function. Until it does,
-   describe the manual process:]` an owner requests export or deletion by writing to
-   `{{CONTACT_EMAIL}}` from the email address of their Studio account. The Operator verifies the
-   request with the organization's owners, provides a copy of the organization's data in a
-   machine-readable form within `[number]` days, and deletes the organization's data (guides,
-   versions, pages, members, invitations, support-access log, analytics events, per-visitor
-   state and agent error reports) within `[number]` days of the request, except where retention
-   is required by law. Backups are overwritten on the Operator's backup schedule
-   (see the Privacy Policy, section 6).
+2. **Export and deletion of the organization (self-service).** An organization **owner** can,
+   at any time, in the Studio under **Members → Danger zone**:
+   - **export** the organization's data as one machine-readable JSON file: the organization,
+     its members and roles, pending invitations (without their tokens), applications (without
+     signing secrets), saved pages, every guide with all of its versions, and per-guide
+     analytics totals. Raw analytics events are not included, because they contain end users'
+     identifiers; see the [Privacy Policy](privacy.md), section 8, for end-user requests;
+   - **delete** the organization, after typing its name to confirm. Deletion is immediate and
+     irreversible: it removes the organization and everything in it — applications and their
+     public keys (installed snippets stop working at once), guides, versions, saved pages,
+     members, invitations, the support-access log, analytics events, per-visitor guide state
+     and agent error reports. Nothing is kept except the Studio accounts of the people who were
+     members (section 11.3). Data in backups is overwritten on the Operator's backup schedule
+     (see the Privacy Policy, section 6).
+   Where no owner can act (for example, the owner has left the company), an owner-level
+   representative may request deletion by writing to `{{CONTACT_EMAIL}}`; the Operator verifies
+   the request and performs the same deletion from its administration console within `[number]`
+   days. Each such deletion is recorded in the Operator's logs.
 3. **Author accounts.** A person's Studio record (identifier, email, name) is kept while they
    are a member of any organization, and is deleted on request to `{{CONTACT_EMAIL}}` once they
    have left or been removed from all organizations.

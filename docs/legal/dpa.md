@@ -111,7 +111,8 @@ decrease.
    assists the Customer in responding to requests from end users. The Customer identifies the
    data subject by the visitor id its website used; the Processor then exports or deletes that
    visitor's events and guide state for the Customer's applications within `[number]` days.
-   `[Note: today this is a manual database operation by the Processor, not a Studio feature.]`
+   (Per-visitor requests are performed by the Processor in the database; the Studio offers no
+   per-visitor function. Organization-wide export and deletion are self-service: section 9.)
 2. **Security, breach notification and impact assessments.** The Processor assists the Customer
    with its security obligations, notifies the Customer without undue delay `[and within
    [number] hours]` after becoming aware of a personal data breach affecting the Customer's data,
@@ -120,14 +121,23 @@ decrease.
 
 ## 9. Deletion and return at the end of the Service
 
-On termination of the Agreement, or on the Customer's earlier request, the Processor:
+The Customer controls this itself. At any time during the Agreement and on its termination, an
+owner of the Customer's organization can, in the Studio (**Members → Danger zone**):
 
-1. provides the Customer, on request made within `[number]` days, with a copy of the Customer's
-   organization data (guides, versions, pages, settings, members, analytics events, per-visitor
-   state and error reports) in a machine-readable form; and
-2. deletes the organization's data within `[number]` days, except where the law requires
-   retention, and in any case stops processing it. Data in backups is deleted when the backups
-   rotate (`[backup retention]`).
+1. **export** the organization's data in a machine-readable form (JSON): the organization,
+   members and roles, pending invitations, applications, saved pages, all guides with every
+   version, and per-guide analytics totals. Raw analytics events, which contain end users'
+   identifiers, are not part of the export; where the Customer needs them for a data subject
+   request, section 8.1 applies; and
+2. **delete** the organization, immediately and irreversibly: applications, guides, versions,
+   saved pages, members, invitations, the support-access log, analytics events, per-visitor
+   state and error reports are all removed in one transaction. Studio user accounts are not
+   deleted, since a person may belong to other organizations.
+
+If the Customer no longer has an owner able to act, the Processor performs the same deletion on
+the Customer's verified written request within `[number]` days, except where the law requires
+retention, and records the deletion in its logs. In either case the Processor stops processing
+the Customer's data; data in backups is deleted when the backups rotate (`[backup retention]`).
 
 Independently of termination, analytics events and error reports are deleted by the Service's
 retention job after `[EVENT_RETENTION_DAYS]` days (default 400 in production).
