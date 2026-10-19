@@ -106,6 +106,9 @@ after that, grants happen here.
   `guideEngine.identify(...)`.
 - **Websites:** the only origins where guides load. Include your development URL if you test
   locally.
+- **Routing:** how your app addresses pages: **Path** (`/settings/team`, the default) or
+  **Hash** (`/#/settings/team`). It decides which part of the URL guides are matched on; page
+  URLs are written the same way in both cases. Saved on change.
 - **Signed identity:**
   - Generate a secret (shown once; keep it on your server). Your server signs
     `{ visitor: { id }, account: { id } }` with it (HS256, with an expiry) and the page passes
@@ -116,6 +119,10 @@ after that, grants happen here.
   dialog follows it). It
   also shows the code for using your own button: `initialize({ helpButton: false })` +
   `guideEngine.openHelp()`.
+  - **Help center analytics** (same card, last 30 days): how often the panel was opened, how
+    many searches were made, how many guides were started from it, and the top 20 search
+    queries with the average number of topics each found. A query that finds nothing is marked
+    in red: a topic worth adding.
 - **Guides on/off** for the whole app, and **Rotate public key**, which breaks old snippets
   until they're updated.
 

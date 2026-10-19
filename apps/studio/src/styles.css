@@ -19,6 +19,10 @@ code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-si
 .notice { background: var(--badge-archived); padding: 8px 12px; border-radius: 6px; }
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px; margin-bottom: 16px; }
 .card.narrow { max-width: 560px; margin: 48px auto; }
+/* A card inside a card (the help-center analytics under the help settings). */
+.card.nested { background: var(--bg); margin: 16px 0 0; }
+.card.nested .subhead { margin-top: 0; }
+.table tr.bad td { color: var(--danger); }
 .page-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 16px; }
 .section-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
 .section-head h2 { margin: 0; }

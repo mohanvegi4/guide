@@ -3,7 +3,7 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { provideRouter } from '@angular/router';
 import { AppSettingsComponent } from './app-settings.component';
-import { App } from '../core/models';
+import { App, HelpAnalytics } from '../core/models';
 
 const app: App = {
   id: 'a1',
@@ -18,15 +18,27 @@ const app: App = {
   help_button_label: 'Help',
   help_button_color: '#4f46e5',
   help_position: 'bottom-right',
+  route_mode: 'path',
   created_at: '2026-10-19T00:00:00Z',
   role: 'app_admin',
   snippet: "<script>…'ge_pk_0123'…</script>",
 };
 
+const analytics: HelpAnalytics = {
+  days: 30,
+  opens: 12,
+  searches: 5,
+  guidesStarted: 3,
+  topQueries: [
+    { query: 'invite', count: 3, avgResults: 1 },
+    { query: 'billing', count: 2, avgResults: 0 },
+  ],
+};
+
 describe('AppSettingsComponent', () => {
   let http: HttpTestingController;
 
-  async function render(overrides: Partial<App> = {}) {
+  async function render(overrides: Partial<App> = {}, stats: HelpAnalytics = analytics) {
     TestBed.configureTestingModule({
       imports: [AppSettingsComponent],
       providers: [provideHttpClient(), provideHttpClientTesting(), provideRouter([])],
@@ -37,6 +49,7 @@ describe('AppSettingsComponent', () => {
     fixture.detectChanges();
     await fixture.whenStable();
     http.expectOne('/api/v1/apps/a1').flush({ ...app, ...overrides });
+    http.expectOne('/api/v1/apps/a1/help-analytics').flush(stats);
     await fixture.whenStable();
     return fixture.nativeElement as HTMLElement;
   }
@@ -83,5 +96,44 @@ describe('AppSettingsComponent', () => {
       helpPosition: 'center',
     });
     req.flush({ ...app, help_button_label: 'Need help?', help_button_color: '#0ea5e9' });
+  });
+
+  it('offers path or hash routing and saves a change right away', async () => {
+    const el = await render();
+    const select = el.querySelector<HTMLSelectElement>('select[aria-label="Routing"]')!;
+    expect(select.value).toBe('path');
+    expect(Array.from(select.options).map((o) => o.textContent?.trim())).toEqual([
+      'Path (/settings/team)',
+      'Hash (/#/settings/team)',
+    ]);
+    select.value = 'hash';
+    select.dispatchEvent(new Event('change'));
+    const req = http.expectOne('/api/v1/apps/a1');
+    expect(req.request.method).toBe('PATCH');
+    expect(req.request.body).toEqual({ routeMode: 'hash' });
+    req.flush({ ...app, route_mode: 'hash' });
+  });
+
+  it('shows the help-center analytics for the last 30 days, with the top searches', async () => {
+    const el = await render();
+    const card = el.querySelector('.help-analytics')!;
+    expect(card.textContent).toContain('Last 30 days');
+    const totals = Array.from(card.querySelectorAll('tbody tr')).map((tr) =>
+      Array.from(tr.querySelectorAll('th, td')).map((c) => c.textContent?.trim()),
+    );
+    expect(totals).toEqual([
+      ['Opened', '12'],
+      ['Searches', '5'],
+      ['Guides started from here', '3'],
+      ['invite', '3', '1'],
+      ['billing', '2', '0'],
+    ]);
+    // A search that found nothing is flagged.
+    expect(card.querySelectorAll('tr.bad')).toHaveLength(1);
+  });
+
+  it('says so when the help center has not been used', async () => {
+    const el = await render({}, { days: 30, opens: 0, searches: 0, guidesStarted: 0, topQueries: [] });
+    expect(el.querySelector('.help-analytics')!.textContent).toContain('No help-center activity yet.');
   });
 });
