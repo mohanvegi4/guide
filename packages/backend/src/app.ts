@@ -35,10 +35,17 @@ export function createApp(): express.Express {
   // rejection crash the process for a single bad request.
   app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
     if (err instanceof HttpError) {
-      res.status(err.status).json(err.details ? { error: err.code, details: err.details } : { error: err.code });
+      res
+        .status(err.status)
+        .json(err.details ? { error: err.code, details: err.details } : { error: err.code });
       return;
     }
-    if (err && typeof err === 'object' && 'type' in err && (err as { type: string }).type === 'entity.too.large') {
+    if (
+      err &&
+      typeof err === 'object' &&
+      'type' in err &&
+      (err as { type: string }).type === 'entity.too.large'
+    ) {
       res.status(413).json({ error: 'payload_too_large' });
       return;
     }

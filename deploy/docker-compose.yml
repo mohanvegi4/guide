@@ -1,0 +1,123 @@
+# Staging / single-host production: Postgres, Keycloak, the backend, the
+# Studio and Caddy (automatic HTTPS) on one machine.
+#
+#   cp .env.example .env            # fill in domains, passwords, secrets
+#   ./render-realm.sh               # Keycloak realm with your Studio URL
+#   docker compose up -d --wait
+#
+# Three hostnames point at this host: STUDIO_HOST, API_HOST, AUTH_HOST.
+# Images come from CI (ghcr.io) or `docker compose build`.
+name: guide-engine
+
+services:
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_SUPERUSER_PASSWORD:?set POSTGRES_SUPERUSER_PASSWORD}
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:?set APP_DB_PASSWORD}
+      KEYCLOAK_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD:?set KEYCLOAK_DB_PASSWORD}
+    volumes:
+      - ./init.sh:/docker-entrypoint-initdb.d/init.sh:ro
+      - pg_data:/var/lib/postgresql/data
+      - ./backups:/backups
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d guide_engine"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0
+    restart: unless-stopped
+    # `start` (not start-dev): production mode, behind Caddy which terminates TLS.
+    command: ["start", "--import-realm"]
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD}
+      KC_HOSTNAME: https://${AUTH_HOST:?set AUTH_HOST}
+      KC_HTTP_ENABLED: "true"
+      KC_PROXY_HEADERS: xforwarded
+      KC_HEALTH_ENABLED: "true"
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN_USER:-admin}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?set KEYCLOAK_ADMIN_PASSWORD}
+    volumes:
+      - ./keycloak-import:/opt/keycloak/data/import:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/9000 && printf 'GET /health/ready HTTP/1.0\\r\\n\\r\\n' >&3 && grep -q UP <&3"]
+      interval: 10s
+      timeout: 5s
+      retries: 60
+
+  backend:
+    image: ${BACKEND_IMAGE:-ghcr.io/mohanvegi4/guide/backend:latest}
+    build:
+      context: ..
+      dockerfile: packages/backend/Dockerfile
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      DATABASE_URL: postgres://guide_engine:${APP_DB_PASSWORD}@postgres:5432/guide_engine
+      PUBLIC_API_URL: https://${API_HOST:?set API_HOST}
+      TRUST_PROXY: "true"
+      # Keycloak: tokens name the public issuer; the backend fetches keys over the internal network.
+      OIDC_ISSUER: https://${AUTH_HOST}/realms/guide-engine
+      OIDC_AUDIENCE: guide-engine-api
+      OIDC_JWKS_URI: http://keycloak:8080/realms/guide-engine/protocol/openid-connect/certs
+      OIDC_STUDIO_CLIENT_ID: guide-studio
+      OIDC_STUDIO_SCOPE: openid profile email
+      PREVIEW_TOKEN_SECRET: ${PREVIEW_TOKEN_SECRET:?set PREVIEW_TOKEN_SECRET}
+      SECRETS_KEY: ${SECRETS_KEY:?set SECRETS_KEY}
+      RATE_LIMIT_STORE: postgres
+      AGENT_RATE_LIMIT_PER_MIN: ${AGENT_RATE_LIMIT_PER_MIN:-600}
+      EVENT_RETENTION_DAYS: ${EVENT_RETENTION_DAYS:-400}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+    deploy:
+      replicas: ${BACKEND_REPLICAS:-1}
+
+  studio:
+    image: ${STUDIO_IMAGE:-ghcr.io/mohanvegi4/guide/studio:latest}
+    build:
+      context: ..
+      dockerfile: apps/studio/Dockerfile
+    restart: unless-stopped
+    environment:
+      BACKEND_URL: http://backend:3000
+    depends_on:
+      - backend
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      STUDIO_HOST: ${STUDIO_HOST:?set STUDIO_HOST}
+      API_HOST: ${API_HOST}
+      AUTH_HOST: ${AUTH_HOST}
+      ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - studio
+      - backend
+      - keycloak
+
+volumes:
+  pg_data:
+  caddy_data:
+  caddy_config:

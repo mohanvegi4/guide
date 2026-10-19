@@ -20,19 +20,35 @@ services:
       timeout: 3s
       retries: 30
 
-  # DEV-ONLY mock OpenID Connect provider for exercising Studio SSO locally
-  # (https://github.com/navikt/mock-oauth2-server). Opt-in: `npm run idp:up`.
-  # Its login page lets you type any username plus optional claims (email,
-  # email_verified, name); docker/mock-idp.json sets the access-token audience.
-  mock-idp:
-    image: ghcr.io/navikt/mock-oauth2-server:2.1.10
+  # Keycloak for Studio SSO in development (the same provider staging and
+  # production use). Opt-in: `npm run idp:up`. Imports docker/keycloak/
+  # guide-engine-realm.json on first start: realm "guide-engine", public
+  # client "guide-studio" (PKCE) and three test users (olivia / eddie / root,
+  # password = username). Admin console: http://localhost:8081 (admin / admin).
+  #   OIDC_ISSUER=http://localhost:8081/realms/guide-engine
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0
     profiles: ["sso"]
+    command: ["start-dev", "--import-realm"]
     ports:
-      - "8080:8080"
+      - "8081:8080"
     environment:
-      JSON_CONFIG_PATH: /config/mock-idp.json
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+      KC_HEALTH_ENABLED: "true"
     volumes:
-      - ./docker/mock-idp.json:/config/mock-idp.json:ro
+      # The whole data dir (not a subfolder): a named volume on a path the image
+      # already owns stays writable by the keycloak user. Users keep their ids
+      # across restarts, which is what ties them to Studio memberships.
+      - guide_engine_keycloak:/opt/keycloak/data
+      - ./docker/keycloak:/opt/keycloak/data/import:ro
+    healthcheck:
+      # The image has no curl; talk HTTP to the management port over /dev/tcp.
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/9000 && printf 'GET /health/ready HTTP/1.0\r\n\r\n' >&3 && grep -q UP <&3"]
+      interval: 5s
+      timeout: 5s
+      retries: 40
 
 volumes:
   guide_engine_pg:
+  guide_engine_keycloak:

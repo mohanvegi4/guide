@@ -1,4 +1,5 @@
 import { Pool, PoolClient } from 'pg';
+import { decryptSecret, getSecretsKey } from './secrets';
 
 export const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -254,7 +255,7 @@ async function loadAgentApp(client: PoolClient, publicKey: string): Promise<Agen
     enabled: row.enabled,
     suspendedAt: row.suspended_at,
     identityMode: row.identity_mode,
-    signingSecret: row.signing_secret,
+    signingSecret: row.signing_secret ? readSigningSecret(row.signing_secret, row.id) : null,
     allowedOrigins: row.allowed_origins,
   };
 }
@@ -293,7 +294,42 @@ export async function presentInvitation(client: PoolClient, tokenHash: string): 
   await setVar(client, 'app.invite_token_hash', tokenHash);
 }
 
-/** For tables that genuinely aren't scoped (system_config, schema_migrations). */
+/**
+ * Signing secrets are encrypted at rest when SECRETS_KEY is set (secrets.ts).
+ * One that can't be decrypted (the key changed, or isn't set) counts as no
+ * secret: signed identities for that app stop verifying — fail closed — and
+ * the operator sees why in the log.
+ */
+function readSigningSecret(stored: string, appId: string): string | null {
+  try {
+    return decryptSecret(stored, getSecretsKey());
+  } catch (err) {
+    console.error(`app ${appId}: signing secret unreadable (${(err as Error).message})`);
+    return null;
+  }
+}
+
+/** The retention job (retention.ts): may read and delete guide_event rows, nothing else. */
+export function withRetentionSession<T>(fn: (client: PoolClient) => Promise<T>): Promise<T> {
+  return inTransaction(async (client) => {
+    await setVar(client, 'app.retention', 'true');
+    return fn(client);
+  });
+}
+
+/**
+ * Operator scripts only (encrypt-secrets): the platform-admin scope without
+ * a user — the same trust as running a migration. Never reachable from a
+ * request.
+ */
+export function withMaintenanceSession<T>(fn: (client: PoolClient) => Promise<T>): Promise<T> {
+  return inTransaction(async (client) => {
+    await setVar(client, 'app.platform_admin', 'true');
+    return fn(client);
+  });
+}
+
+/** For tables that genuinely aren't scoped (system_config, schema_migrations, agent_rate_limit). */
 export async function withoutScope<T>(fn: (client: PoolClient) => Promise<T>): Promise<T> {
   const client = await pool.connect();
   try {

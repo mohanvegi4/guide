@@ -62,8 +62,9 @@ deliberately for this project's scale and constraints:
 - **Fail closed, fail silent.** The agent shows nothing when anything can't be verified, and
   never throws into or blocks the host page.
 - **No new infrastructure** (queues, caches, search, analytics warehouses) unless a task
-  explicitly calls for it. A single Postgres instance is the v1 target. The agent rate
-  limiter is in-process on purpose.
+  explicitly calls for it. Postgres is the only store: the agent rate limiter counts in
+  Postgres in production (`RATE_LIMIT_STORE`), in memory in development. Keycloak is the
+  identity provider in every environment (`docker/keycloak/`, `deploy/`).
 
 ## Conventions to follow
 - TypeScript strict mode everywhere (extend `tsconfig.base.json`, don't loosen it)
@@ -104,7 +105,9 @@ deliberately for this project's scale and constraints:
 ```bash
 npm install                                    # from repo root, installs all workspaces
 npm run db:up                                  # Postgres 16 in docker on :5433 (non-superuser app role)
-npm run idp:up                                 # optional: mock OIDC provider on :8080 for Studio SSO
+npm run idp:up                                 # optional: Keycloak on :8081 (realm guide-engine) for Studio SSO
+npm run retention --workspace=packages/backend -- --days 400   # delete old events now
+npm run encrypt-secrets --workspace=packages/backend           # after turning on SECRETS_KEY
 npm run build                                  # builds all packages (core first; agent bundle via esbuild)
 npm run migrate                                # builds backend + applies pending migrations
 npm test                                       # all workspace tests (backend needs db:up)

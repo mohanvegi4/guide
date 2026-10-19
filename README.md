@@ -98,8 +98,10 @@ packages/
 apps/
   studio/            Guide Studio (Angular 21) — see apps/studio/README.md
   demo/              a plain host page that installs Guide Engine via the snippet (no SDK import)
-docker/              init.sql (non-superuser app role), mock-idp.json (dev-only OIDC provider)
-docker-compose.yml   Postgres 16 (:5433); mock OIDC provider (:8080, profile "sso")
+docker/              init.sql (non-superuser app role), keycloak/ (the realm Keycloak imports)
+docker-compose.yml   Postgres 16 (:5433); Keycloak (:8081, profile "sso")
+deploy/              single-host staging/production: compose, Caddyfile, Keycloak realm rendering
+.github/workflows/   CI: build, migrate, test, Docker images
 CLAUDE.md            conventions for contributors (including AI assistants)
 ```
 
@@ -146,24 +148,24 @@ npm run dev --workspace=apps/demo                       # demo site: http://loca
 
 ### Studio login details
 
-The Studio runs at **http://localhost:4300**. There are no fixed accounts: in development you
-either paste a token, or sign in through the mock SSO provider with any username.
+The Studio runs at **http://localhost:4300**. In development you either paste a token, or sign
+in through the local Keycloak with one of its test users.
 
-| | Developer sign-in (paste a token) | Sign in with SSO (mock provider) |
+| | Developer sign-in (paste a token) | Sign in with SSO (Keycloak) |
 |---|---|---|
-| When | Default; no extra setup | After `npm run idp:up` and `OIDC_ISSUER=http://localhost:8080/default` in `packages/backend/.env` (restart the backend) |
-| User | **Dev Admin** (`dev-admin@example.com`), owner of **Demo Org** / **Demo site** | Any username you type, e.g. `owner-1`; no password |
-| Credentials | The token `npm run seed` prints (valid 8 h) | Username only. Optional claims JSON: `{"email": "owner-1@example.com", "email_verified": true, "name": "Olivia Owner"}` |
-| Where | Login page → **Developer sign-in (paste a token)** → paste → **Sign in** | Login page → **Sign in with SSO** → the mock's form |
+| When | Default; no extra setup | After `npm run idp:up` and `OIDC_ISSUER=http://localhost:8081/realms/guide-engine` in `packages/backend/.env` (restart the backend) |
+| User | **Dev Admin** (`dev-admin@example.com`), owner of **Demo Org** / **Demo site** | `olivia` (Olivia Owner, `olivia@acme.test`), `eddie` (Eddie Editor) or `root` (Guide Engine Admin) |
+| Credentials | The token `npm run seed` prints (valid 8 h) | Password = username (`olivia` / `olivia`, …). Admin console at http://localhost:8081, `admin` / `admin` |
+| Where | Login page → **Developer sign-in (paste a token)** → paste → **Sign in** | Login page → **Sign in with SSO** → Keycloak's form |
 
 Notes:
 - A new token for Dev Admin, or for any other dev user (new users start with no organization):
   ```bash
   npm run mint-token --workspace=packages/backend -- --sub dev-admin --email dev-admin@example.com --name "Dev Admin"
   ```
-- The same SSO username always gives the same user, so `owner-1` keeps their organizations
-  across sign-ins. Different usernames are different people: use `editor-1`, `viewer-1`, … to
-  try the roles, and invite them from **Members**.
+- Each Keycloak user is one Studio user, so `olivia` keeps her organizations across sign-ins.
+  Add more people in the Keycloak admin console (realm **guide-engine → Users**) to try the
+  roles, and invite them from **Members**. `root` is meant to become the platform admin.
 - SSO users are *not* members of the seeded Demo Org (identity comes from the provider,
   memberships from our database). A new SSO user lands on **Welcome** to create their own
   organization, or accepts an invitation link from Dev Admin.
@@ -173,7 +175,7 @@ Notes:
   [Guide Engine administration](#guide-engine-administration).
 
 ```bash
-npm run idp:up      # dev-only mock OIDC provider on http://localhost:8080
+npm run idp:up      # Keycloak on http://localhost:8081 with the guide-engine realm imported
 ```
 
 ---
@@ -503,7 +505,11 @@ process at boot.
 | `JWT_SECRET` | — | **Dev/test only:** HS256 secret for `mint-token` / `seed` Studio tokens. Ignored in production. |
 | `PREVIEW_TOKEN_SECRET` | — | Signs preview links. ≥ 32 chars, must differ from `JWT_SECRET`. Empty disables preview. |
 | `AGENT_RATE_LIMIT_PER_MIN` | `600` | Agent requests allowed per app key and client IP, per minute. |
+| `RATE_LIMIT_STORE` | `memory` (`postgres` in production) | Where that budget is counted: in the process, or in Postgres so every replica shares it. **Must be `postgres` in production.** |
 | `TRUST_PROXY` | `false` | Set `true` behind a reverse proxy so rate limiting sees real client IPs. |
+| `SECRETS_KEY` | — | 32 bytes (hex or base64) that encrypt apps' signing secrets at rest (AES-256-GCM). **Required in production.** After turning it on, `npm run encrypt-secrets` re-writes secrets stored earlier. |
+| `EVENT_RETENTION_DAYS` | `400` in production, off elsewhere | The daily job deletes `guide_event` rows older than this. `0` turns it off. |
+| `RUN_MIGRATIONS` | `true` | Container only: apply pending migrations before starting. `false` when a release step runs `node packages/backend/dist/migrate.js`. |
 | `AGENT_BUNDLE_PATH` | `packages/agent/dist/guide-engine.js` | Where the backend reads the agent script from. |
 
 The Studio has no runtime config. It calls `/api/*` on its own origin: the dev server proxies
@@ -649,7 +655,7 @@ npm test --workspace=apps/studio          # Studio components and services
 
 | Suite | Tests | Covers |
 |---|---|---|
-| **Backend** | 166 | self-serve orgs; apps and settings; the role matrix; invitations; members; saved pages; platform admins and support access (consent, read-only, logging, RLS); org/app isolation through the API **and directly in RLS** (including replaying the owner bootstrap and forging memberships); the agent API (origins, keys, identity modes, account targeting, kill switches, events and per-visitor state, preview); the guide lifecycle; sanitization; stable step ids; analytics; OIDC (a local JWKS server, algorithm confusion); and migration 005's data conversion |
+| **Backend** | 177 | self-serve orgs; apps and settings; the role matrix; invitations; members; saved pages; platform admins and support access (consent, read-only, logging, RLS); secrets at rest, the shared rate limiter, retention, production boot checks; org/app isolation through the API **and directly in RLS** (including replaying the owner bootstrap and forging memberships); the agent API (origins, keys, identity modes, account targeting, kill switches, events and per-visitor state, preview); the guide lifecycle; sanitization; stable step ids; analytics; OIDC (a local JWKS server, algorithm confusion); and migration 005's data conversion |
 | **Core** | 58 | includes the help widget (search, keyboard, safe rendering) and help launches (same page, other page, arrival, shared links) |
 | **Agent** | 6 | includes `openHelp` queued before load |
 | **Studio** | 28 | guide list and editor (saved pages), Pages, app settings, the Administration page |
@@ -660,43 +666,61 @@ Type-checking is part of every `test` script, with strict TypeScript throughout.
 
 ## Deploying
 
-There's no pipeline in this repo. This is the checklist:
+Everything needed to run Guide Engine for real is in the repo:
 
-**Database**
+- **CI** (`.github/workflows/ci.yml`): on every push and pull request, installs, builds every
+  package, migrates a throwaway Postgres, runs all four test suites, and builds both images.
+  On `main` the images are pushed to GitHub Container Registry as
+  `ghcr.io/<owner>/<repo>/backend` and `/studio`, tagged with the commit and `latest`.
+- **Images:** `packages/backend/Dockerfile` (the API plus the agent script; runs pending
+  migrations at start unless `RUN_MIGRATIONS=false`) and `apps/studio/Dockerfile` (the Angular
+  build behind nginx, which also proxies `/api/*` to `BACKEND_URL`).
+- **`deploy/`:** a single-host staging/production stack — Postgres, **Keycloak**, the backend,
+  the Studio and Caddy (automatic HTTPS) — on three hostnames.
 
-- [ ] Postgres **15+**, with an app role that is `NOSUPERUSER NOBYPASSRLS` and owns the database
-  (see `docker/init.sql`).
-- [ ] Run migrations as that role.
+### Staging or production on one host
 
-**Backend**
+1. Point three DNS names at the host: the Studio, the API, and Keycloak (for example
+   `studio.`, `api.` and `auth.example.com`).
+2. `cd deploy && cp .env.example .env` and fill it in: the hostnames, Postgres passwords, the
+   Keycloak admin password, and two secrets from `openssl rand -hex 32`
+   (`PREVIEW_TOKEN_SECRET`, `SECRETS_KEY`).
+3. `./render-realm.sh` writes the Keycloak realm with your Studio URL in the client's redirect
+   URIs. The realm carries three **test users** (`olivia`, `eddie`, `root`, password = username)
+   for staging; delete them in the admin console on a real deployment and create your own.
+4. `docker compose up -d --wait`. Postgres creates the two application roles on first start
+   (`init.sh`); Keycloak imports the realm; the backend migrates; Caddy fetches certificates.
+5. Sign in to the Studio, then grant yourself the platform-admin flag (see
+   [Guide Engine administration](#guide-engine-administration)).
 
-- [ ] `NODE_ENV=production`, with no `JWT_SECRET` needed. Set `PUBLIC_API_URL` to the public
-  https URL, and a strong `PREVIEW_TOKEN_SECRET`.
-- [ ] Behind HTTPS, with `TRUST_PROXY=true` if there's a proxy in front.
-- [ ] Run it with `npm run build && node packages/backend/dist/index.js`, giving settings as
-  environment variables.
-- [ ] The **agent script** is served at `/agent/v1/<key>/guides.js`. It's a static, cacheable
-  file, so a CDN in front of that path is a drop-in.
+More than one backend replica: set `BACKEND_REPLICAS`. The rate limiter is already shared
+through Postgres (`RATE_LIMIT_STORE=postgres`); the app-key cache is per process with a 10 s
+TTL, which is the most a rotated key can linger.
 
-**Identity provider**
+### Any other platform
 
-- [ ] A public SPA client (`OIDC_STUDIO_CLIENT_ID`).
-- [ ] Redirect URI `https://<studio>/auth/callback`; post-logout URI `https://<studio>/login`.
-- [ ] JWT access tokens with `aud` = `OIDC_AUDIENCE`.
+Use the two images with these guarantees in place:
 
-**Studio**
+- Postgres **15+**, an app role that is `NOSUPERUSER NOBYPASSRLS` and owns the database (the
+  backend refuses to start otherwise), automated backups.
+- `NODE_ENV=production`, which makes the backend **refuse to start** unless `SECRETS_KEY`,
+  `PREVIEW_TOKEN_SECRET`, an `https://` `PUBLIC_API_URL` and `RATE_LIMIT_STORE=postgres` are
+  set; `TRUST_PROXY=true` behind a proxy.
+- Any OpenID Connect provider for `OIDC_ISSUER` / `OIDC_AUDIENCE` / `OIDC_STUDIO_CLIENT_ID`:
+  a public (PKCE) client with `https://<studio>/auth/callback` as redirect URI and
+  `https://<studio>/login` for logout, issuing JWT access tokens whose `aud` is
+  `OIDC_AUDIENCE`. `docker/keycloak/guide-engine-realm.json` shows the exact Keycloak setup
+  (an audience mapper on a client scope).
+- Serve the Studio statically with an SPA fallback and proxy `/api/*` to the backend with the
+  prefix removed (`apps/studio/nginx.conf.template` does both).
+- A CDN in front of `/agent/v1/*/guides.js` is a drop-in: it's a static, cacheable file.
 
-- [ ] Build it with `npm run build --workspace=apps/studio`, which outputs
-  `apps/studio/dist/studio/browser`.
-- [ ] Serve it statically with an SPA fallback, and proxy `/api/*` to the backend, removing the
-  `/api` prefix.
+### Keycloak in development
 
-**Scale**
-
-- [ ] The rate limiter and the app lookup cache are per process. That's fine for one instance;
-  a shared store is needed before running several (see the roadmap).
-
-Never run the mock OIDC provider (`docker compose --profile sso`) in a real environment.
+`npm run idp:up` starts the same Keycloak (`:8081`, admin console `admin` / `admin`) with the
+realm imported, so development, staging and production all authenticate the same way. Set
+`OIDC_ISSUER=http://localhost:8081/realms/guide-engine` in `packages/backend/.env`, restart the
+backend, and sign in as `olivia` / `olivia` (see [Studio login details](#studio-login-details)).
 
 ---
 
@@ -714,6 +738,13 @@ Never run the mock OIDC provider (`docker compose --profile sso`) in a real envi
   serve nothing until lifted.
 - **A key leaked somewhere unexpected:** **Rotate public key** in the app's settings, then
   update the snippet.
+- **Event retention:** the backend deletes events older than `EVENT_RETENTION_DAYS` once a day
+  (and sweeps spent rate-limit windows). To run it now: `npm run retention --workspace=packages/backend -- --days 400`.
+- **Turning on `SECRETS_KEY` on an existing database:** set it, restart, then run
+  `npm run encrypt-secrets --workspace=packages/backend` once. Losing the key means every app
+  must generate a new signing secret (visitor identities signed with the old one stop verifying).
+- **Backups:** `deploy/` mounts `./backups`; `docker compose exec postgres pg_dump -U postgres guide_engine > backups/$(date +%F).sql`
+  works for a single host, and a managed Postgres should have point-in-time recovery on.
 - **Reset a visitor's dismissal**, as a database operator:
   ```sql
   DELETE FROM user_guide_state WHERE app_id = '<app>' AND visitor_id = '<visitor>' AND guide_id = '<guide>';
@@ -762,10 +793,12 @@ Never run the mock OIDC provider (`docker compose --profile sso`) in a real envi
 - **"back" buttons do nothing yet.** The Studio offers the action, but the renderer doesn't handle
   it.
 - **Hash-based routers** (`/#/route`) aren't matched. Route matching uses `location.pathname`.
-- **Rate limiting and the app cache are per process.** They need a shared store (e.g. Postgres or
-  Redis) before horizontal scaling.
-- **Signing secrets are stored in plaintext**, for HS256 verification. Encrypting them at rest
-  with a KMS, or supporting customer JWKS (RS256), is on the roadmap.
+- **The app-key cache is per process** (10 s TTL): a rotated key can keep working on another
+  replica for up to 10 s.
+- **Signing secrets are encrypted with one key from the environment.** A KMS-held key, or
+  customer JWKS (RS256) so we never hold a verification secret at all, is on the roadmap.
+- **`guide_event` isn't partitioned.** Retention deletes in batches, which is fine for years of
+  normal volume; monthly partitions would make it instant at very high volume.
 - **Invites are links you copy.** There's no email sending.
 - **Analytics have no per-account or per-visitor breakdown** in the Studio yet.
 - **Shared `?guideEngine=` links** work for help-center guides only.

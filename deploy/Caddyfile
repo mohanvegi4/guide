@@ -1,0 +1,22 @@
+# Automatic HTTPS (Let's Encrypt) for the three public hostnames.
+{
+	email {$ACME_EMAIL}
+}
+
+# The Studio: static files, and /api/* proxied to the backend by nginx inside.
+{$STUDIO_HOST} {
+	encode gzip
+	reverse_proxy studio:80
+}
+
+# The public agent API and the agent script. Customers' pages call this from
+# their own origins; the backend does per-app CORS itself.
+{$API_HOST} {
+	encode gzip
+	reverse_proxy backend:3000
+}
+
+# Keycloak. Caddy sets X-Forwarded-* headers, which Keycloak trusts (KC_PROXY_HEADERS).
+{$AUTH_HOST} {
+	reverse_proxy keycloak:8080
+}
