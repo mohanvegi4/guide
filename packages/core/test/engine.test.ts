@@ -1,16 +1,27 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { EventQueue, GuideEngine, GuideEventPayload, createDomRenderer, matchesRoute } from '../src';
+import {
+  AgentClient,
+  EventQueue,
+  GuideEngine,
+  GuideEventPayload,
+  anonymousVisitorId,
+  createDomRenderer,
+  matchesRoute,
+} from '../src';
 import {
   API,
+  KEY,
+  R,
   baseOptions,
+  bodyOf,
   callsTo,
   eventsSent,
   fakeRenderer,
-  flagsOn,
   flushPromises,
   makeGuide,
   makeStep,
   mockFetch,
+  serving,
 } from './helpers';
 
 afterEach(() => {
@@ -18,6 +29,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
   document.body.innerHTML = '';
   window.history.replaceState({}, '', '/');
+  localStorage.clear();
 });
 
 describe('matchesRoute', () => {
@@ -33,44 +45,82 @@ describe('matchesRoute', () => {
   });
 });
 
-describe('kill switches (fail closed)', () => {
-  it.each([
-    ['global switch off', () => ({ body: { globalEnabled: false, tenantEnabled: true } })],
-    ['tenant switch off', () => ({ body: { globalEnabled: true, tenantEnabled: false } })],
-    ['401 from flag endpoint', () => ({ status: 401, body: { error: 'invalid_token' } })],
-    ['500 from flag endpoint', () => ({ status: 500, body: { error: 'internal_error' } })],
-    ['malformed flag body', () => ({ body: { something: 'else' } })],
-    ['network failure', () => Promise.reject(new TypeError('Failed to fetch'))],
-  ])('%s → no guides fetched or rendered, init resolves', async (_name, flagRoute) => {
+describe('talking to the agent API', () => {
+  it('POSTs JSON as text/plain (no CORS preflight), with only the ids of visitor and account', async () => {
     window.history.replaceState({}, '', '/dashboard');
-    const fetchMock = mockFetch({ '/system/flag': flagRoute, '/guides/active': () => ({ body: [makeGuide()] }) });
-    const { renderer, rendered } = fakeRenderer();
-    const engine = new GuideEngine();
+    const fetchMock = mockFetch({ [R.guides]: serving() });
+    await new GuideEngine().init(baseOptions, fakeRenderer().renderer);
 
-    await expect(engine.init(baseOptions, renderer)).resolves.toBeUndefined();
-    await engine.onRouteChange('/dashboard');
-
-    expect(callsTo(fetchMock, '/guides/active')).toHaveLength(0);
-    expect(rendered).toHaveLength(0);
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe(`${API}/v1/agent/${KEY}/guides`);
+    expect(init).toMatchObject({
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      credentials: 'omit',
+    });
+    expect(bodyOf(fetchMock.mock.calls[0])).toEqual({ visitor: { id: 'user-1' }, account: { id: 'acme' } });
   });
 
-  it('sends the bearer token on every request', async () => {
-    const fetchMock = mockFetch({ '/system/flag': flagsOn, '/guides/active': () => ({ body: [] }) });
-    await new GuideEngine().init(baseOptions, fakeRenderer().renderer);
-    for (const [, init] of fetchMock.mock.calls) {
-      expect((init!.headers as Record<string, string>).Authorization).toBe('Bearer token-123');
-    }
+  it('sends a signed identity when given one', async () => {
+    const fetchMock = mockFetch({ [R.guides]: serving() });
+    await new GuideEngine().init(
+      { apiBaseUrl: API, appKey: KEY, jwt: 'signed.jwt.here' },
+      fakeRenderer().renderer,
+    );
+    expect(bodyOf(fetchMock.mock.calls[0])).toEqual({ jwt: 'signed.jwt.here' });
+  });
+
+  it('gives unidentified visitors a stable anonymous id per browser', async () => {
+    const fetchMock = mockFetch({ [R.guides]: serving() });
+    await new GuideEngine().init({ apiBaseUrl: API, appKey: KEY }, fakeRenderer().renderer);
+    await new GuideEngine().init({ apiBaseUrl: `${API}/`, appKey: KEY }, fakeRenderer().renderer);
+    const [a, b] = fetchMock.mock.calls.map((c) => (bodyOf(c).visitor as { id: string }).id);
+    expect(a).toMatch(/^anon-[0-9a-f-]{36}$/);
+    expect(b).toBe(a);
+    expect(anonymousVisitorId()).toBe(a);
+  });
+});
+
+describe('kill switches and failures (fail closed)', () => {
+  it('enabled:false disables the agent for the rest of the page', async () => {
+    window.history.replaceState({}, '', '/dashboard');
+    const fetchMock = mockFetch({ [R.guides]: () => ({ body: { enabled: false, guides: [makeGuide()] } }) });
+    const { renderer, rendered } = fakeRenderer();
+    const engine = new GuideEngine();
+    await engine.init(baseOptions, renderer);
+    await engine.onRouteChange('/dashboard');
+
+    expect(rendered).toHaveLength(0);
+    expect(callsTo(fetchMock, R.guides)).toHaveLength(1); // no further requests
+  });
+
+  it.each([
+    [
+      '401 (e.g. signed identity required)',
+      () => ({ status: 401, body: { error: 'signed_identity_required' } }),
+    ],
+    ['500', () => ({ status: 500, body: { error: 'internal_error' } })],
+    ['malformed body', () => ({ body: { something: 'else' } })],
+    ['guides not an array', () => ({ body: { enabled: true, guides: 'nope' } })],
+    ['network failure', () => Promise.reject(new TypeError('Failed to fetch'))],
+  ])('%s → nothing rendered, init resolves', async (_name, route) => {
+    window.history.replaceState({}, '', '/dashboard');
+    mockFetch({ [R.guides]: route });
+    const { renderer, rendered } = fakeRenderer();
+    await expect(new GuideEngine().init(baseOptions, renderer)).resolves.toBeUndefined();
+    expect(rendered).toHaveLength(0);
   });
 });
 
 describe('route matching → showing', () => {
   it('renders a guide whose route matches and emits guide_shown', async () => {
     window.history.replaceState({}, '', '/dashboard');
-    const guide = makeGuide();
     const fetchMock = mockFetch({
-      '/system/flag': flagsOn,
-      '/guides/active': () => ({ body: [guide, makeGuide({ id: 'other', routeMatch: { type: 'exact', value: '/settings' } })] }),
-      '/events': () => ({ status: 202 }),
+      [R.guides]: serving(
+        makeGuide(),
+        makeGuide({ id: 'other', routeMatch: { type: 'exact', value: '/settings' } }),
+      ),
+      [R.events]: () => ({ status: 202 }),
     });
     const { renderer, rendered } = fakeRenderer();
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
@@ -84,7 +134,7 @@ describe('route matching → showing', () => {
 
   it('re-evaluates on route change, ignoring query strings, and does not restart a showing guide', async () => {
     window.history.replaceState({}, '', '/home');
-    const fetchMock = mockFetch({ '/system/flag': flagsOn, '/guides/active': () => ({ body: [makeGuide()] }) });
+    const fetchMock = mockFetch({ [R.guides]: serving(makeGuide()) });
     const { renderer, rendered } = fakeRenderer();
     const engine = new GuideEngine();
 
@@ -96,15 +146,25 @@ describe('route matching → showing', () => {
 
     await engine.onRouteChange('/dashboard');
     expect(rendered).toHaveLength(1);
-    expect(callsTo(fetchMock, '/guides/active')).toHaveLength(3);
+    expect(callsTo(fetchMock, R.guides)).toHaveLength(3);
   });
+});
 
-  it('shows nothing (and never throws) when /guides/active returns a non-array', async () => {
+describe('identify()', () => {
+  it('switches users: clears what the old user saw and re-evaluates as the new one', async () => {
     window.history.replaceState({}, '', '/dashboard');
-    mockFetch({ '/system/flag': flagsOn, '/guides/active': () => ({ body: { error: 'oops' } }) });
-    const { renderer, rendered } = fakeRenderer();
-    await expect(new GuideEngine().init(baseOptions, renderer)).resolves.toBeUndefined();
-    expect(rendered).toHaveLength(0);
+    const fetchMock = mockFetch({ [R.guides]: serving(makeGuide()), [R.events]: () => ({ status: 202 }) });
+    const { renderer, rendered, cleared } = fakeRenderer();
+    const engine = new GuideEngine();
+    await engine.init({ apiBaseUrl: API, appKey: KEY }, renderer); // anonymous first
+    expect(rendered).toHaveLength(1);
+
+    await engine.identify({ visitor: { id: 'u-42' }, account: { id: 'globex' } });
+
+    expect(cleared).toEqual(['guide-1']);
+    expect(rendered).toHaveLength(2); // shown again for the new user
+    const last = callsTo(fetchMock, R.guides).slice(-1)[0];
+    expect(bodyOf(last)).toEqual({ visitor: { id: 'u-42' }, account: { id: 'globex' } });
   });
 });
 
@@ -114,9 +174,8 @@ describe('step progression', () => {
     const s1 = makeStep({ id: 's1' });
     const s2 = makeStep({ id: 's2', actions: [{ label: 'Done', action: 'complete' }] });
     const fetchMock = mockFetch({
-      '/system/flag': flagsOn,
-      '/guides/active': () => ({ body: [makeGuide({ steps: [s1, s2] })] }),
-      '/events': () => ({ status: 202 }),
+      [R.guides]: serving(makeGuide({ steps: [s1, s2] })),
+      [R.events]: () => ({ status: 202 }),
     });
     const { renderer, rendered, cleared } = fakeRenderer();
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
@@ -141,9 +200,8 @@ describe('step progression', () => {
   it('dismiss emits guide_dismissed for the current step and tears down', async () => {
     window.history.replaceState({}, '', '/dashboard');
     const fetchMock = mockFetch({
-      '/system/flag': flagsOn,
-      '/guides/active': () => ({ body: [makeGuide({ steps: [makeStep({ id: 's1' })] })] }),
-      '/events': () => ({ status: 202 }),
+      [R.guides]: serving(makeGuide({ steps: [makeStep({ id: 's1' })] })),
+      [R.events]: () => ({ status: 202 }),
     });
     const { renderer, cleared } = fakeRenderer();
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
@@ -168,11 +226,7 @@ describe('target-not-found retries', () => {
   });
 
   it('retries with backoff, then errors and tears down after max attempts', async () => {
-    const fetchMock = mockFetch({
-      '/system/flag': flagsOn,
-      '/guides/active': () => ({ body: [targeted()] }),
-      '/events': () => ({ status: 202 }),
-    });
+    const fetchMock = mockFetch({ [R.guides]: serving(targeted()), [R.events]: () => ({ status: 202 }) });
     const { renderer, rendered } = fakeRenderer();
     const engine = new GuideEngine();
     await engine.init(baseOptions, renderer);
@@ -184,15 +238,17 @@ describe('target-not-found retries', () => {
     await vi.advanceTimersByTimeAsync(500 + 5000); // final attempt + event flush
     expect(rendered).toHaveLength(0);
     const errors = eventsSent(fetchMock).filter((e) => e.eventType === 'guide_error');
-    expect(errors).toEqual([expect.objectContaining({ stepId: 's1', metadata: { reason: 'target_not_found' } })]);
+    expect(errors).toEqual([
+      expect.objectContaining({ stepId: 's1', metadata: { reason: 'target_not_found' } }),
+    ]);
 
     // Torn down: the guide can be picked up again on a later navigation.
     await engine.onRouteChange('/dashboard');
-    expect(callsTo(fetchMock, '/guides/active')).toHaveLength(2);
+    expect(callsTo(fetchMock, R.guides)).toHaveLength(2);
   });
 
   it('renders as soon as the target appears mid-retry', async () => {
-    mockFetch({ '/system/flag': flagsOn, '/guides/active': () => ({ body: [targeted()] }), '/events': () => ({ status: 202 }) });
+    mockFetch({ [R.guides]: serving(targeted()), [R.events]: () => ({ status: 202 }) });
     const { renderer, rendered } = fakeRenderer();
     await new GuideEngine().init(baseOptions, renderer);
 
@@ -211,68 +267,67 @@ describe('target-not-found retries', () => {
 
 describe('EventQueue', () => {
   const event = (i: number): GuideEventPayload => ({
-    tenantId: 't',
     guideId: 'g',
     guideVersionId: 'v',
-    userId: 'u',
     sessionId: 's',
     eventType: 'guide_shown',
     occurredAt: new Date(0).toISOString(),
     metadata: { i },
   });
+  const client = () => new AgentClient(API, KEY, () => ({ visitor: { id: 'u' } }));
 
   beforeEach(() => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
   });
 
-  it('batches events and flushes once after 5s', async () => {
-    const fetchMock = mockFetch({ '/events': () => ({ status: 202 }) });
-    const q = new EventQueue(API, () => 'tok');
+  it('batches events and flushes once after 5s, with the identity and keepalive', async () => {
+    const fetchMock = mockFetch({ [R.events]: () => ({ status: 202 }) });
+    const q = new EventQueue(client());
     q.push(event(1));
     q.push(event(2));
     q.push(event(3));
 
     await vi.advanceTimersByTimeAsync(4999);
-    expect(callsTo(fetchMock, '/events')).toHaveLength(0);
+    expect(callsTo(fetchMock, R.events)).toHaveLength(0);
     await vi.advanceTimersByTimeAsync(1);
 
-    const calls = callsTo(fetchMock, '/events');
+    const calls = callsTo(fetchMock, R.events);
     expect(calls).toHaveLength(1);
-    expect(JSON.parse(String(calls[0][1]!.body)).events).toHaveLength(3);
-    expect((calls[0][1]!.headers as Record<string, string>).Authorization).toBe('Bearer tok');
+    expect(bodyOf(calls[0])).toMatchObject({ visitor: { id: 'u' } });
+    expect(bodyOf(calls[0]).events).toHaveLength(3);
     expect(calls[0][1]!.keepalive).toBe(true);
   });
 
   it('flushes immediately at 20 events, in a single POST', async () => {
-    const fetchMock = mockFetch({ '/events': () => ({ status: 202 }) });
-    const q = new EventQueue(API, () => 'tok');
+    const fetchMock = mockFetch({ [R.events]: () => ({ status: 202 }) });
+    const q = new EventQueue(client());
     for (let i = 0; i < 20; i++) q.push(event(i));
     await flushPromises();
 
-    const calls = callsTo(fetchMock, '/events');
+    const calls = callsTo(fetchMock, R.events);
     expect(calls).toHaveLength(1);
-    expect(JSON.parse(String(calls[0][1]!.body)).events.map((e: GuideEventPayload) => e.metadata)).toEqual(
-      Array.from({ length: 20 }, (_, i) => ({ i }))
+    expect((bodyOf(calls[0]).events as GuideEventPayload[]).map((e) => e.metadata)).toEqual(
+      Array.from({ length: 20 }, (_, i) => ({ i })),
     );
 
     await vi.advanceTimersByTimeAsync(10_000); // the pending timer was cleared: no empty extra POST
-    expect(callsTo(fetchMock, '/events')).toHaveLength(1);
+    expect(callsTo(fetchMock, R.events)).toHaveLength(1);
   });
 
   it('drops a batch on network failure without throwing, and keeps working', async () => {
     let fail = true;
     const fetchMock = mockFetch({
-      '/events': () => (fail ? Promise.reject(new TypeError('offline')) : { status: 202 }),
+      [R.events]: () => (fail ? Promise.reject(new TypeError('offline')) : { status: 202 }),
     });
-    const q = new EventQueue(API, () => 'tok');
+    const q = new EventQueue(client());
     q.push(event(1));
     await expect(vi.advanceTimersByTimeAsync(5000)).resolves.not.toThrow();
 
     fail = false;
     q.push(event(2));
     await vi.advanceTimersByTimeAsync(5000);
-    const last = callsTo(fetchMock, '/events').slice(-1)[0];
-    expect(JSON.parse(String(last[1]!.body)).events).toEqual([event(2)]); // failed batch not retried
+    const last = callsTo(fetchMock, R.events).slice(-1)[0];
+    expect(bodyOf(last).events).toEqual([event(2)]); // failed batch not retried
   });
 });
 
@@ -282,7 +337,7 @@ describe('DOM renderer', () => {
     renderer.renderStep(
       makeGuide(),
       makeStep({ actions: [{ label: '<img src=x onerror="window.__pwned=1">Next', action: 'next' }] }),
-      null
+      null,
     );
     const shadow = document.querySelector('[data-guide-host]')!.shadowRoot!;
     const button = shadow.querySelector('button')!;
@@ -295,17 +350,21 @@ describe('DOM renderer', () => {
     const target = document.createElement('button');
     target.setAttribute('data-guide-id', 'invite-button');
     document.body.appendChild(target);
+    // 'top' matters: positionNear() resets then re-sets host.style.transform on
+    // every render, so each render genuinely mutates a <body> descendant.
     mockFetch({
-      '/system/flag': flagsOn,
-      '/guides/active': () => ({
-        // 'top' matters: positionNear() resets then re-sets host.style.transform on
-        // every render, so each render genuinely mutates a <body> descendant.
-        body: [makeGuide({ steps: [makeStep({ targetSelector: '[data-guide-id="invite-button"]', position: 'top' })] })],
-      }),
+      [R.guides]: serving(
+        makeGuide({
+          steps: [makeStep({ targetSelector: '[data-guide-id="invite-button"]', position: 'top' })],
+        }),
+      ),
     });
 
     const engine = new GuideEngine();
-    const real = createDomRenderer({ advanceStep: (id) => engine.advanceStep(id), dismissGuide: (id) => engine.dismissGuide(id) });
+    const real = createDomRenderer({
+      advanceStep: (id) => engine.advanceStep(id),
+      dismissGuide: (id) => engine.dismissGuide(id),
+    });
     const renderSpy = vi.fn(real.renderStep);
     await engine.init(baseOptions, { renderStep: renderSpy, clear: real.clear });
     expect(renderSpy).toHaveBeenCalledTimes(1);
@@ -326,18 +385,15 @@ describe('step change vs. target observer (regression)', () => {
     target.setAttribute('data-guide-id', 'invite-button');
     document.body.appendChild(target);
     mockFetch({
-      '/system/flag': flagsOn,
-      '/guides/active': () => ({
-        body: [
-          makeGuide({
-            steps: [
-              makeStep({ id: 's1', targetSelector: '[data-guide-id="invite-button"]' }),
-              makeStep({ id: 's2', type: 'modal', position: 'center' }),
-            ],
-          }),
-        ],
-      }),
-      '/events': () => ({ status: 202 }),
+      [R.guides]: serving(
+        makeGuide({
+          steps: [
+            makeStep({ id: 's1', targetSelector: '[data-guide-id="invite-button"]' }),
+            makeStep({ id: 's2', type: 'modal', position: 'center' }),
+          ],
+        }),
+      ),
+      [R.events]: () => ({ status: 202 }),
     });
     const { renderer, rendered } = fakeRenderer();
     const engine = new GuideEngine();
@@ -359,10 +415,9 @@ describe('step change vs. target observer (regression)', () => {
     first.setAttribute('data-guide-id', 'invite-button');
     document.body.appendChild(first);
     mockFetch({
-      '/system/flag': flagsOn,
-      '/guides/active': () => ({
-        body: [makeGuide({ steps: [makeStep({ targetSelector: '[data-guide-id="invite-button"]' })] })],
-      }),
+      [R.guides]: serving(
+        makeGuide({ steps: [makeStep({ targetSelector: '[data-guide-id="invite-button"]' })] }),
+      ),
     });
     const { renderer, rendered } = fakeRenderer();
     await new GuideEngine().init(baseOptions, renderer);

@@ -9,7 +9,8 @@
     "migrate": "node dist/migrate.js",
     "test": "tsc -p tsconfig.test.json && vitest run",
     "mint-token": "node dist/scripts/mint-token.js",
-    "create-tenant": "node dist/scripts/create-tenant.js"
+    "sign-identity": "node dist/scripts/sign-identity.js",
+    "seed": "node dist/scripts/seed.js"
   },
   "dependencies": {
     "cors": "^2.8.6",

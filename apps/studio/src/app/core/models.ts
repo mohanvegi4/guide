@@ -1,5 +1,5 @@
-// Mirrors the backend's request/response shapes (packages/backend/src/routes/guides.ts).
-// Admin endpoints return DB rows (snake_case); request bodies are camelCase.
+// Mirrors the backend's Studio API (packages/backend/src/routes/studio/*).
+// Responses that are database rows use snake_case; request bodies use camelCase.
 
 export const GUIDE_TYPES = ['tooltip', 'modal', 'banner', 'tour', 'checklist', 'survey', 'beacon'] as const;
 export type GuideType = (typeof GUIDE_TYPES)[number];
@@ -12,11 +12,72 @@ export type StepActionType = (typeof STEP_ACTIONS)[number];
 
 export type GuideStatus = 'draft' | 'published' | 'archived';
 
-/** 'tenant' = the signed-in tenant's own guides; 'global' = shown to every tenant (platform admins). */
-export type GuideScope = 'tenant' | 'global';
+export type OrgRole = 'owner' | 'admin' | 'member';
+export const APP_ROLES = ['viewer', 'editor', 'publisher', 'app_admin'] as const;
+export type AppRole = (typeof APP_ROLES)[number];
 
-export const GUIDE_ADMIN = 'guide_admin';
-export const PLATFORM_ADMIN = 'platform_admin';
+const APP_ROLE_RANK: Record<AppRole, number> = { viewer: 0, editor: 1, publisher: 2, app_admin: 3 };
+export function appRoleAtLeast(role: AppRole | undefined, min: AppRole): boolean {
+  return role !== undefined && APP_ROLE_RANK[role] >= APP_ROLE_RANK[min];
+}
+export const isOrgAdmin = (role: OrgRole | undefined) => role === 'owner' || role === 'admin';
+
+/** GET /v1/me */
+export interface Me {
+  user: { id: string; email: string | null; name: string | null };
+  orgs: MyOrg[];
+}
+export interface MyOrg {
+  id: string;
+  name: string;
+  role: OrgRole;
+  apps: Array<{ id: string; name: string; role: AppRole }>;
+}
+
+export interface App {
+  id: string;
+  org_id: string;
+  name: string;
+  public_key: string;
+  allowed_origins: string[];
+  identity_mode: 'optional' | 'required';
+  has_signing_secret: boolean;
+  enabled: boolean;
+  help_enabled: boolean;
+  help_button_label: string;
+  help_button_color: string;
+  created_at: string;
+  role: AppRole;
+  /** Present on GET /v1/apps/:id — the exact <head> snippet for this app. */
+  snippet?: string;
+}
+
+export interface Member {
+  userId: string;
+  email: string | null;
+  name: string | null;
+  orgRole: OrgRole;
+  appRoles: Record<string, AppRole>;
+}
+
+export interface Invitation {
+  id: string;
+  email: string | null;
+  org_role: OrgRole;
+  app_roles: Record<string, AppRole>;
+  expires_at: string;
+  token?: string; // only right after creation
+}
+
+export interface InvitationPreview {
+  orgId: string;
+  orgName: string;
+  email: string | null;
+  orgRole: OrgRole;
+  apps: Array<{ id: string; name: string; role: AppRole }>;
+  expired: boolean;
+  accepted: boolean;
+}
 
 export interface GuideSummary {
   id: string;
@@ -27,6 +88,9 @@ export interface GuideSummary {
   current_version_id: string | null;
   current_version_number: number | null;
   updated_at: string;
+  /** The saved page the live version shows on (null = custom route / nothing live). */
+  page_id: string | null;
+  page_name: string | null;
 }
 
 export interface StepAction {
@@ -55,9 +119,16 @@ export interface GuideVersion {
   guide_id: string;
   version_number: number;
   steps: Array<StepPayload & { id: string }>;
+  /** Custom route, or a snapshot of the saved page's route when page_id is set. */
   route_match: RouteMatch;
+  /** Saved page the version shows on; the guide follows the page's current URL. */
+  page_id: string | null;
   start_at: string | null;
   end_at: string | null;
+  /** null = every account */
+  account_ids: string[] | null;
+  /** null = not listed in the help center */
+  help: HelpListing | null;
   /** null = unpublished draft */
   published_at: string | null;
   created_at: string;
@@ -73,11 +144,23 @@ export interface GuideDetail {
   versions: GuideVersion[];
 }
 
+/** How a guide appears in the help center. startPath: where visitors are sent before it starts. */
+export interface HelpListing {
+  title: string;
+  description: string;
+  keywords: string[];
+  startPath?: string;
+}
+
+/** Exactly one of pageId (a saved page) or routeMatch (a custom route). */
 export interface PublishPayload {
   steps: StepPayload[];
-  routeMatch: RouteMatch;
+  pageId?: string;
+  routeMatch?: RouteMatch;
   startAt?: string;
   endAt?: string;
+  accountIds?: string[] | null;
+  help?: HelpListing | null;
 }
 
 export interface PublishedVersion {
@@ -87,7 +170,7 @@ export interface PublishedVersion {
 
 export interface PreviewLink {
   token: string;
-  /** Null when the backend has no PREVIEW_APP_BASE_URL configured. */
+  /** Null when the app has no websites configured. */
   url: string | null;
   expiresAt: string;
 }
@@ -96,4 +179,27 @@ export interface AnalyticsResponse {
   guideId: string;
   counts: Array<{ event_type: string; count: number }>;
   steps: Array<{ step_id: string; event_type: string; count: number }>;
+  /** Times the guide was started on demand from the help center. */
+  startedFromHelp: number;
+}
+
+/** GET /v1/apps/:appId/pages — a saved page: a named, reusable URL rule. */
+export interface AppPage {
+  id: string;
+  name: string;
+  routeMatch: RouteMatch;
+  /** Where the help center sends visitors for guides on this page (null = the exact URL). */
+  startPath: string | null;
+  createdAt: string;
+  updatedAt: string;
+  /** In lists: guides whose live version or draft is on the page. */
+  usage?: { guides: number; live: number };
+  /** In single-page reads and updates. */
+  guides?: Array<{ id: string; name: string; live: boolean; draft: boolean }>;
+}
+
+export interface PagePayload {
+  name: string;
+  routeMatch: RouteMatch;
+  startPath?: string | null;
 }

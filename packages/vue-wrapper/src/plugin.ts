@@ -1,7 +1,7 @@
 import type { App, InjectionKey } from 'vue';
 import { inject } from 'vue';
 import type { Router } from 'vue-router';
-import { GuideEngine, createDomRenderer, SdkInitOptions } from '@guide-engine/core';
+import { GuideEngine, createDomRenderer, createHelpWidget, SdkInitOptions } from '@guide-engine/core';
 
 export interface GuidePluginOptions extends SdkInitOptions {
   router: Router;
@@ -19,7 +19,10 @@ export const GuidePlugin = {
 
     // Fire-and-forget init; the engine fails closed/silently per its own
     // design, so we don't need to await this before the app mounts.
-    engine.init(options, renderer);
+    // Help center: floating button (unless options.helpButton === false);
+    // useGuideEngine().openHelp() from your own button.
+    const help = createHelpWidget({ onSelect: (item) => engine.launchHelpGuide(item.id) });
+    engine.init(options, renderer, help);
 
     options.router.afterEach((to) => {
       engine.onRouteChange(to.fullPath);

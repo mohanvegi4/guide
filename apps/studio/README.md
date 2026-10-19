@@ -1,7 +1,8 @@
 # Guide Studio
 
-The authoring UI for Guide Engine. Product people use it to create, preview, publish and measure
-in-app guides without touching code. It's built with Angular 21 standalone components, signals
+The authoring UI for Guide Engine. Product people use it to manage their organization's
+applications, create, preview, publish and measure in-app guides, and invite teammates, all
+without touching code. It's built with Angular 21 standalone components, signals
 and reactive forms. For the overall system, see the [root README](../../README.md).
 
 ## Running it
@@ -25,97 +26,147 @@ npm test --workspace=apps/studio        # unit tests (vitest via the Angular bui
 
 The login page asks the backend how to sign in (`GET /api/auth/config`):
 
-- **Sign in with SSO.** Shown when the backend has `OIDC_STUDIO_CLIENT_ID` set.
-  - Uses OpenID Connect Authorization Code + PKCE, via `oidc-client-ts`.
-  - The provider redirects back to `/auth/callback`; register that URI, plus `/login` for logout.
-  - The session lives in `sessionStorage`, so it ends when the tab closes. It renews silently if
-    the provider issues refresh tokens.
-- **Paste a token.** For local development, or when no SSO is configured. Mint one with:
+- **Sign in with SSO** appears when the backend has `OIDC_STUDIO_CLIENT_ID` set.
+  - It uses OpenID Connect Authorization Code + PKCE, via `oidc-client-ts`.
+  - The provider supplies **identity only**: who you are. Which organizations and apps you can
+    manage is stored in Guide Engine's database.
+  - Register `/auth/callback` as the redirect URI, and `/login` for logout.
+  - The session lives in `sessionStorage`. It renews silently if the provider issues refresh
+    tokens.
+- **Paste a token** is for local development only. Get one from `npm run seed` or:
   ```bash
-  npm run mint-token --workspace=packages/backend -- --tenant <tenant-id> --user you --role guide_admin
+  npm run mint-token --workspace=packages/backend -- --sub you --email you@example.com
   ```
 
-Either way, the Studio asks the backend who you are (`GET /api/auth/me`) and shows only what your
-roles allow. It never decodes tokens itself. The backend enforces roles on every request anyway.
+Either way, the Studio asks the backend who you are (`GET /api/v1/me`). It shows only what your
+memberships allow, and the backend enforces the same rules on every request. If your session
+expires, a 401 sends you back to the login page.
 
-| Role | What you see |
+**First sign-in:** you land on **Welcome**. Create your organization and its first app
+(name + website), and you go straight to that app's **Install & settings** page to copy the
+snippet.
+
+## Organizations, apps and roles
+
+The top bar has the **organization switcher**, the **app switcher**, and links for the current
+app: Guides, Install & settings, Apps and Members.
+
+| Role | What you can do |
 |---|---|
-| `guide_admin` | **Guides**: your tenant's own guides. |
-| `platform_admin` | **Global guides**: guides shown to *every* tenant. Analytics are totals across all tenants. |
+| org **owner** / **admin** | everything in every app of the org; create apps; manage members and invitations. Only owners can grant or remove ownership, and an org always keeps one owner. |
+| app **viewer** | read guides, versions and analytics |
+| app **editor** | + create guides, save drafts, make preview links |
+| app **publisher** | + publish, enable / disable, roll back |
+| app **app_admin** | + Install & settings: snippet, websites, signed identity, key rotation, app on / off |
 
-If your session expires, any request returning 401 sends you back to the login page.
+The UI adapts to your role: viewers get read-only screens, editors see no Publish button, and so
+on. The backend enforces the same rules regardless.
+
+**Members → Invite someone** creates a link. It's valid for 7 days and works once. If you enter
+an email, only that verified email can accept it. Choose the org role, plus a role per app for
+members. Send the link however you like; Guide Engine doesn't send email. Pending invitations can
+be revoked.
+
+## Install & settings (app admins)
+
+- **Install:** the exact `<head>` snippet for this app, with a copy button. Replace `USER_ID` /
+  `ACCOUNT_ID` with your signed-in user's ids. SPAs need nothing else. After a later login, call
+  `guideEngine.identify(...)`.
+- **Websites:** the only origins where guides load. Include your development URL if you test
+  locally.
+- **Signed identity:**
+  - Generate a secret (shown once; keep it on your server). Your server signs
+    `{ visitor: { id }, account: { id } }` with it (HS256, with an expiry) and the page passes
+    `jwt`.
+  - Then switch on **Require signed identity**. That toggle is locked until a secret exists.
+- **Help center:** on or off, plus the floating button's label and color (with a preview). It
+  also shows the code for using your own button: `initialize({ helpButton: false })` +
+  `guideEngine.openHelp()`.
+- **Guides on/off** for the whole app, and **Rotate public key**, which breaks old snippets
+  until they're updated.
 
 ## Working with a guide
 
-1. **Create.** On the list page, enter a name and type. New guides are disabled and have nothing
-   published.
-2. **Where and when.**
-   - **Route match:** *Exact path* (`/dashboard`), or *Pattern*, where `*` matches anything
-     (`/projects/*`). Query strings are ignored.
-   - **Start / End** (optional): the guide only shows between these times.
-3. **Steps.** Use **+ Add step**, **↑ / ↓** to reorder and **Remove**. For each step:
-   - **Anchor (data-guide-id):** the element to point at. Engineers set it with
-     `[guideAnchor]="'invite-button'"` (Angular) or `v-guide-anchor="'invite-button'"` (Vue).
-     Leave it blank for a centered card.
-   - **Position:** top / bottom / left / right / center.
-   - **Content:** HTML. Scripts, styles, event handlers, iframes and `javascript:` / `data:` URLs
-     are removed when you save. If nothing is left, saving fails with a message.
-   - **Buttons:** `next` (go to the next step), `complete` (finish), `dismiss` (close). `back` is
-     accepted but the default renderer doesn't handle it yet.
-4. **Save draft.** Stores your work without going live. There is one draft per guide; saving again
-   updates it.
-5. **Preview.** Saves the draft and gives you a **15-minute link** into the product (copy it or
-   **Open preview**). It shows exactly this version, even if the guide is disabled or unpublished,
-   with a "Preview" badge. It sends no analytics. You must be signed in to the product as a user of
-   the same tenant. **Preview** in the Versions panel previews any older version.
-6. **Publish new version.** Makes what's in the editor live as the next version number. Published
-   versions can never be changed.
-7. **Enabled.** The on/off switch, at the top right of the editor or in the list. Nothing shows to
-   end users until a version is published **and** the guide is enabled.
-8. **Versions.**
-   - **Roll back to this:** makes an older published version live again.
-   - **Load into editor:** starts a new edit from any version.
+1. **Create** a guide on the app's Guides page. It starts disabled, with nothing published.
+2. **Where and when:**
+   - **Show on:** *A saved page* (pick one from the app's **Pages**), or *A custom route*: an
+     exact path (`/dashboard`) or a pattern where `*` matches anything (`/projects/*`). A custom
+     route can be saved as a page in place (**Save as page**), so other guides can reuse it.
+     Guides on a saved page follow it when its URL changes, even live ones.
+   - **Dates:** optional start and end.
+   - **Audience:** *All accounts*, or *Only these accounts*, one id per line. Use the account ids
+     your site passes to `guideEngine.initialize({ account: { id } })`.
+3. **Steps:** add, reorder (↑ / ↓) and remove them. Each has:
+   - **Anchor:** the element's `data-guide-id`. Leave it blank for a centered card.
+   - **Position.**
+   - **Content:** HTML. Scripts, styles, event handlers and unsafe URLs are removed on save.
+   - **Buttons:** `next`, `complete`, `dismiss`. `back` is accepted but not handled by the
+     renderer yet.
+4. **Help center** (optional): tick **List in the help center**, then give a title (it defaults
+   to the guide name), a short description, search keywords and a **start page**: where people
+   are sent if they pick it on another page. The start page defaults to the saved page's start
+   page, or to an exact route. It's required for custom pattern routes. Visitors can then search for it in the help list and start it
+   any time, even if they've done it before.
+5. **Save draft** stores one working draft per guide. **Preview** saves it and gives a 15-minute
+   link to the app's first website. That version renders with a "Preview" badge and no
+   analytics.
+6. **Publish new version** makes it live as the next version. Published versions never change.
+7. **Enabled** is the guide's on/off switch. Nothing shows until a version is published **and**
+   the guide is enabled.
+8. **Versions:** **Roll back to this** makes an older version live; **Load into editor** starts
+   from any version.
 
-### End users and versions
+When a visitor dismisses or completes a guide, they don't see it again until you publish a
+**newer** version. Rolling back doesn't re-show it.
 
-When someone dismisses or completes a guide, they won't see it again until you **publish a newer
-version**. Use this for important updates. Rolling back to an older version does *not* show it to
-them again.
+### Pages
+
+**Pages** (top bar, per app) is the app's library of named URL rules: a name, an exact path or
+pattern, and a start page (required for patterns: the concrete URL the help center opens). The
+table shows how many guides use each page and how many of those are live. Click the count to list
+them.
+
+- **Edit** renames a page or changes its URL. Every guide on the page follows immediately, and
+  live guides are moved after a confirmation. Only publishers can change the URL of a page live
+  guides use; editors can still rename it.
+- **Delete** is disabled while any guide's live version or draft uses the page. Move those guides
+  to another page or a custom route first.
 
 ### Analytics
 
-- **Totals per event:**
-  - `guide_shown`: first step displayed;
-  - `guide_step_viewed`: later steps displayed;
-  - `guide_step_completed`;
-  - `guide_completed`;
-  - `guide_dismissed`;
-  - `guide_error`: usually the anchor element wasn't found on the page.
-- **Per step:** views, done and dismissed for each step of the live version. Steps keep their
-  identity across edits, so their numbers carry over between versions. Events for steps you've since
-  deleted are grouped under **Removed steps**.
-- Click **Refresh** to reload. Counts are your tenant's own; for global guides, platform admins see
-  totals across all tenants.
+Event totals (shown, step viewed, step completed, completed, dismissed, errors), plus a
+**per-step** table: views, done and dismissed. Step ids survive edits, so their numbers carry
+over between versions, and deleted steps are grouped as **Removed steps**. If a guide is in the
+help center, the panel also shows how many times it was started from there. `guide_error` usually
+means the anchor element wasn't on the page.
 
 ## Code map
 
 ```
 src/app/
   core/
-    auth.service.ts        sign-in (SSO + paste), session restore, roles (from /auth/me)
+    auth.service.ts        sign-in (SSO + paste), session restore, /v1/me (orgs, apps, roles)
     auth.interceptor.ts    adds the bearer token; 401 -> login
-    auth.guard.ts          roleGuard(role) for routes (UX only; the backend enforces)
-    api.service.ts         typed client; scope 'tenant' -> /api/guides, 'global' -> /api/platform/guides
-    models.ts              request/response types (mirror packages/backend routes)
+    auth.guard.ts          signedIn / orgMember / appRole(min) guards (UX only; the backend enforces)
+    api.service.ts         typed client for /api/v1 (orgs, apps, members, invitations, pages, guides)
+    models.ts              request/response types and the role ladder
   pages/
-    login.component.ts         SSO button and/or paste-a-token
-    auth-callback.component.ts finishes the OIDC redirect
-    guide-list.component.ts    list, create, enable toggle (optimistic, reverts on error)
-    guide-editor.component.*   form editor, draft/preview/publish, preview link panel
+    login, auth-callback   sign-in
+    onboarding             first org + first app
+    apps                   an org's applications; create app
+    app-settings           install snippet, websites, signed identity, key rotation, app switch
+    members                members, org and app roles, invite links
+    invite                 accept an invitation
+    guide-list             an app's guides, create, enable toggle (optimistic)
+    guide-editor           form editor: saved page or custom route, audience, help, draft / preview / publish
+    pages                  an app's saved pages: create, edit (guides follow), delete when unused
   components/
-    version-history.component.ts  versions, rollback, preview, load-into-editor
-    analytics.component.ts        totals + per-step funnel (CSS bars, no chart library)
-  app.routes.ts            /guides, /guides/:id (tenant) · /global, /global/:id (global) · /login · /auth/callback
+    version-history        versions, rollback, preview, load into editor
+    analytics              totals + per-step funnel (CSS bars, no chart library)
+  app.ts / app.html        top bar: org + app switchers, section links
+  app.routes.ts            /welcome, /invite/:token, /o/:orgId/{apps,members}, /o/:orgId/apps/:appId/{guides,guides/:id,pages,settings}
 ```
 
-List and editor are shared by both scopes. The route's `data.scope` picks the API.
+Route params are bound to component inputs, so switching orgs, apps or guides reloads the data
+in place. Data-loading `effect()`s call the API inside `untracked()`. The interceptor reads the
+auth token signal, so without it every token renewal would trigger re-fetches.

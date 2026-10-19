@@ -1,14 +1,13 @@
 import jwt from 'jsonwebtoken';
 import { JwksClient } from 'jwks-rsa';
-import { z } from 'zod';
 import type { OidcConfig } from './config';
-import type { TokenClaims } from '../middleware/tenant';
+import type { StudioIdentity } from './studio';
 
 /**
  * Asymmetric algorithms only. HS* is deliberately absent: with a JWKS, an
  * attacker could sign an HS256 token using the provider's PUBLIC key as the
  * HMAC secret (algorithm confusion). Our own HS256 tokens take a separate
- * path keyed on JWT_SECRET (see middleware/tenant.ts).
+ * path keyed on JWT_SECRET (see auth/studio.ts).
  */
 export const OIDC_ALGORITHMS: jwt.Algorithm[] = [
   'RS256',
@@ -21,12 +20,12 @@ export const OIDC_ALGORITHMS: jwt.Algorithm[] = [
   'ES384',
 ];
 
-export type OidcVerifier = (token: string) => Promise<TokenClaims | null>;
+export type OidcVerifier = (token: string) => Promise<StudioIdentity | null>;
 
 /**
  * Builds a verifier for tokens issued by an OIDC provider: signature via the
  * provider's JWKS (cached, rate-limited), then iss / aud / exp, then the
- * configured claims mapped onto tenantId / userId / roles.
+ * standard identity claims (sub, email, email_verified, name).
  */
 export function createOidcVerifier(config: OidcConfig): OidcVerifier {
   let clientPromise: Promise<JwksClient> | null = null;
@@ -88,31 +87,17 @@ async function resolveJwksUri(config: OidcConfig): Promise<string> {
   return doc.jwks_uri;
 }
 
-function claimAt(payload: Record<string, unknown>, path: string): unknown {
-  return path
-    .split('.')
-    .reduce<unknown>(
-      (v, key) => (v && typeof v === 'object' ? (v as Record<string, unknown>)[key] : undefined),
-      payload,
-    );
-}
-
-function mapClaims(payload: string | jwt.JwtPayload, config: OidcConfig): TokenClaims | null {
+function mapClaims(payload: string | jwt.JwtPayload, config: OidcConfig): StudioIdentity | null {
   if (typeof payload === 'string') return null;
   // jsonwebtoken only checks exp when present; require it (no eternal tokens).
   if (typeof payload.exp !== 'number') return null;
-
-  const tenant = z.string().uuid().safeParse(claimAt(payload, config.tenantClaim));
-  const user = z.string().min(1).safeParse(claimAt(payload, config.userClaim));
-  if (!tenant.success || !user.success) return null;
-
-  // Roles may be an array, or a space/comma separated string — providers differ.
-  const raw = claimAt(payload, config.rolesClaim);
-  const roles = Array.isArray(raw)
-    ? raw.filter((r): r is string => typeof r === 'string')
-    : typeof raw === 'string'
-      ? raw.split(/[\s,]+/).filter(Boolean)
-      : [];
-
-  return { tenantId: tenant.data, userId: user.data, roles };
+  if (typeof payload.sub !== 'string' || payload.sub.length === 0) return null;
+  const str = (v: unknown) => (typeof v === 'string' && v.length > 0 ? v : undefined);
+  return {
+    issuer: config.issuer,
+    sub: payload.sub,
+    email: str(payload.email),
+    emailVerified: payload.email_verified === true,
+    name: str(payload.name) ?? str(payload.preferred_username),
+  };
 }

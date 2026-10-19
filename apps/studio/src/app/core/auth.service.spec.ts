@@ -2,8 +2,9 @@ import { TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { AuthService } from './auth.service';
+import { Me } from './models';
 
-const tenantId = '3fa85f64-5717-4562-b3fc-2c963f66afa6';
+const me = (orgs: Me['orgs'] = []): Me => ({ user: { id: 'u1', email: 'a@example.com', name: 'Alice' }, orgs });
 
 describe('AuthService', () => {
   let auth: AuthService;
@@ -18,35 +19,42 @@ describe('AuthService', () => {
 
   afterEach(() => http.verify());
 
-  /** Starts a paste login and answers the backend's /auth/me probe. */
-  async function pasteLogin(raw: string, me: object | { status: number }) {
+  /** Starts a paste login and answers the backend's /v1/me probe. */
+  async function pasteLogin(raw: string, reply: Me | { status: number }) {
     const result = auth.loginWithToken(raw);
-    const req = http.expectOne('/api/auth/me');
-    if ('status' in me) req.flush({ error: 'invalid_token' }, { status: me.status as number, statusText: 'x' });
-    else req.flush(me);
+    const req = http.expectOne('/api/v1/me');
+    if ('status' in reply) req.flush({ error: 'invalid_token' }, { status: reply.status, statusText: 'x' });
+    else req.flush(reply);
     return { result: await result, req };
   }
 
   it('verifies a pasted token with the backend and adopts the identity it returns', async () => {
-    const { result, req } = await pasteLogin('Bearer abc.def.ghi', { tenantId, userId: 'alice', roles: ['guide_admin'] });
+    const { result, req } = await pasteLogin('Bearer abc.def.ghi', me());
     expect(req.request.headers.get('Authorization')).toBe('Bearer abc.def.ghi');
     expect(result).toBeNull();
     expect(auth.token()).toBe('abc.def.ghi');
-    expect(auth.info()?.userId).toBe('alice');
+    expect(auth.me()?.user.name).toBe('Alice');
     expect(sessionStorage.getItem('guide-studio-token')).toBe('abc.def.ghi');
   });
 
-  it('rejects tokens the backend rejects, and identities without an authoring role', async () => {
+  it('rejects tokens the backend rejects', async () => {
     expect((await pasteLogin('bad', { status: 401 })).result).toMatch(/rejected/);
-    expect((await pasteLogin('t', { tenantId, userId: 'bob', roles: [] })).result).toMatch(/guide_admin/);
     expect(auth.token()).toBeNull();
   });
 
-  it('lands platform-only admins on global guides, and dual-role admins on tenant guides', async () => {
-    await pasteLogin('t1', { tenantId, userId: 'pat', roles: ['platform_admin'] });
-    expect(auth.homePath()).toBe('/global');
-    await pasteLogin('t2', { tenantId, userId: 'x', roles: ['guide_admin', 'platform_admin'] });
-    expect(auth.homePath()).toBe('/guides');
+  it('sends new users to onboarding, members to their first app', async () => {
+    await pasteLogin('t1', me());
+    expect(auth.homePath()).toBe('/welcome');
+    await pasteLogin(
+      't2',
+      me([
+        { id: 'o-empty', name: 'Empty', role: 'member', apps: [] },
+        { id: 'o1', name: 'Acme', role: 'owner', apps: [{ id: 'a1', name: 'Web', role: 'app_admin' }] },
+      ])
+    );
+    expect(auth.homePath()).toBe('/o/o1/apps/a1/guides');
+    expect(auth.appRole('a1')).toBe('app_admin');
+    expect(auth.orgRole('o-empty')).toBe('member');
   });
 
   it('init() restores a stored token only if the backend still accepts it', async () => {
@@ -55,16 +63,15 @@ describe('AuthService', () => {
     http.expectOne('/api/auth/config').flush({ oidc: null, tokenPaste: true });
     await Promise.resolve();
     await Promise.resolve();
-    http.expectOne('/api/auth/me').flush({}, { status: 401, statusText: 'Unauthorized' });
+    http.expectOne('/api/v1/me').flush({}, { status: 401, statusText: 'Unauthorized' });
     await done;
     expect(auth.token()).toBeNull();
     expect(sessionStorage.getItem('guide-studio-token')).toBeNull();
   });
 
   it('logout clears the session', async () => {
-    await pasteLogin('t', { tenantId, userId: 'a', roles: ['guide_admin'] });
+    await pasteLogin('t', me());
     auth.logout();
-    expect([auth.token(), auth.info()]).toEqual([null, null]);
-    expect(sessionStorage.getItem('guide-studio-token')).toBeNull();
+    expect([auth.token(), auth.me()]).toEqual([null, null]);
   });
 });

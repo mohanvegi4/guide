@@ -1,18 +1,39 @@
 <header class="topbar">
   <a [routerLink]="auth.homePath()" class="brand">Guide Studio</a>
-  @if (auth.info()) {
-    <nav class="tabs">
-      @if (auth.hasRole('guide_admin')) {
-        <a routerLink="/guides" routerLinkActive="active">Guides</a>
+  @if (auth.me(); as me) {
+    @if (me.orgs.length) {
+      <nav class="switchers">
+        <select [value]="orgId() ?? ''" (change)="switchOrg($any($event.target).value)" aria-label="Organization">
+          @if (!orgId()) { <option value="" disabled>Choose organization</option> }
+          @for (o of me.orgs; track o.id) { <option [value]="o.id" [selected]="o.id === orgId()">{{ o.name }}</option> }
+        </select>
+        @if (org(); as o) {
+          @if (o.apps.length) {
+            <span class="sep">/</span>
+            <select [value]="appId() ?? ''" (change)="switchApp($any($event.target).value)" aria-label="Application">
+              @if (!appId()) { <option value="" disabled>Choose app</option> }
+              @for (a of o.apps; track a.id) { <option [value]="a.id" [selected]="a.id === appId()">{{ a.name }}</option> }
+            </select>
+          }
+        }
+      </nav>
+      @if (orgId()) {
+        <nav class="tabs">
+          @if (appId()) {
+            <a [routerLink]="['/o', orgId(), 'apps', appId(), 'guides']" routerLinkActive="active">Guides</a>
+            <a [routerLink]="['/o', orgId(), 'apps', appId(), 'pages']" routerLinkActive="active">Pages</a>
+            @if (appRole() === 'app_admin') {
+              <a [routerLink]="['/o', orgId(), 'apps', appId(), 'settings']" routerLinkActive="active">Install &amp; settings</a>
+            }
+          }
+          <a [routerLink]="['/o', orgId(), 'apps']" routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }">Apps</a>
+          <a [routerLink]="['/o', orgId(), 'members']" routerLinkActive="active">Members</a>
+        </nav>
       }
-      @if (auth.hasRole('platform_admin')) {
-        <a routerLink="/global" routerLinkActive="active">Global guides</a>
-      }
-    </nav>
-  }
-  @if (auth.info(); as who) {
+    }
     <div class="who">
-      <span class="muted small" [title]="'Tenant ' + who.tenantId">{{ who.userId }} · tenant {{ who.tenantId.slice(0, 8) }}…</span>
+      <span class="muted small">{{ me.user.name ?? me.user.email }}</span>
+      <a routerLink="/welcome" class="small">New org</a>
       <button type="button" class="link" (click)="logout()">Sign out</button>
     </div>
   }

@@ -2,19 +2,13 @@ import { HttpClient, HttpContext, HttpContextToken, HttpErrorResponse } from '@a
 import { Injectable, inject, signal } from '@angular/core';
 import { User, UserManager, WebStorageStateStore } from 'oidc-client-ts';
 import { firstValueFrom } from 'rxjs';
-import { GUIDE_ADMIN, PLATFORM_ADMIN } from './models';
+import { AppRole, Me, MyOrg, OrgRole } from './models';
 
 const STORAGE_KEY = 'guide-studio-token';
 
 /** Marks a request whose Authorization header is set explicitly (see auth.interceptor). */
 export const EXPLICIT_AUTH = new HttpContextToken<boolean>(() => false);
 
-/** The caller's identity as VERIFIED by the backend (GET /auth/me). */
-export interface Identity {
-  tenantId: string;
-  userId: string;
-  roles: string[];
-}
 
 /** What the backend says about how to sign in (GET /auth/config). */
 export interface AuthUiConfig {
@@ -29,9 +23,9 @@ export interface AuthUiConfig {
  *    the provider named by GET /auth/config; the access token is sent to the API.
  *  - Paste a token: local development, or when no SSO is configured.
  *
- * Identity and roles always come from GET /auth/me — the Studio never
- * decodes tokens itself, so it doesn't need to know a provider's claim names,
- * and what it shows can't disagree with what the backend enforces.
+ * Who you are and which organizations/apps you can manage always come from
+ * GET /v1/me — the Studio never decodes tokens itself, and what it shows
+ * can't disagree with what the backend enforces.
  */
 @Injectable({ providedIn: 'root' })
 export class AuthService {
@@ -39,7 +33,8 @@ export class AuthService {
   private userManager: UserManager | null = null;
 
   readonly token = signal<string | null>(null);
-  readonly info = signal<Identity | null>(null);
+  /** The signed-in user and their orgs/apps (with roles). */
+  readonly me = signal<Me | null>(null);
   readonly config = signal<AuthUiConfig>({ oidc: null, tokenPaste: true });
   readonly usingSso = signal(false);
 
@@ -77,13 +72,40 @@ export class AuthService {
     if (stored && (await this.adopt(stored, 'paste'))) clearStored();
   }
 
-  hasRole(role: string): boolean {
-    return this.info()?.roles.includes(role) ?? false;
+  org(orgId: string | null | undefined): MyOrg | undefined {
+    return this.me()?.orgs.find((o) => o.id === orgId);
   }
 
-  /** Where to land after sign-in: tenant guides if allowed, else global guides. */
+  orgRole(orgId: string | null | undefined): OrgRole | undefined {
+    return this.org(orgId)?.role;
+  }
+
+  appRole(appId: string | null | undefined): AppRole | undefined {
+    for (const o of this.me()?.orgs ?? []) {
+      const app = o.apps.find((a) => a.id === appId);
+      if (app) return app.role;
+    }
+    return undefined;
+  }
+
+  /** Where to land after sign-in: your first app's guides, else onboarding. */
   homePath(): string {
-    return this.hasRole(GUIDE_ADMIN) || !this.hasRole(PLATFORM_ADMIN) ? '/guides' : '/global';
+    const orgs = this.me()?.orgs ?? [];
+    const withApp = orgs.find((o) => o.apps.length > 0);
+    if (withApp) return `/o/${withApp.id}/apps/${withApp.apps[0].id}/guides`;
+    if (orgs[0]) return `/o/${orgs[0].id}/apps`;
+    return '/welcome';
+  }
+
+  /** Re-reads /v1/me (after creating an org, accepting an invitation, role changes). */
+  async refresh(): Promise<void> {
+    const token = this.token();
+    if (!token) return;
+    try {
+      this.me.set(await firstValueFrom(this.http.get<Me>('/api/v1/me')));
+    } catch {
+      // the interceptor handles 401s
+    }
   }
 
   /** Paste-a-token sign-in. Resolves to an error message, or null on success. */
@@ -127,16 +149,13 @@ export class AuthService {
     }
   }
 
-  /**
-   * Asks the backend who this token belongs to, and adopts it only if the
-   * backend accepts it and it carries an authoring role.
-   */
+  /** Asks the backend who this token belongs to, and adopts it only if the backend accepts it. */
   private async adopt(token: string, source: 'sso' | 'paste'): Promise<string | null> {
     if (!token) return 'Paste a token first.';
-    let me: Identity;
+    let me: Me;
     try {
       me = await firstValueFrom(
-        this.http.get<Identity>('/api/auth/me', {
+        this.http.get<Me>('/api/v1/me', {
           headers: { Authorization: `Bearer ${token}` },
           context: new HttpContext().set(EXPLICIT_AUTH, true),
         })
@@ -145,16 +164,12 @@ export class AuthService {
       if (err instanceof HttpErrorResponse && err.status === 401) {
         return source === 'paste'
           ? 'The backend rejected that token (invalid or expired) — mint a new one.'
-          : 'The backend rejected your sign-in token. Check the SSO configuration (issuer, audience, claims).';
+          : 'The backend rejected your sign-in token. Check the SSO configuration (issuer, audience).';
       }
       return 'Cannot reach the backend. Is it running on :3000?';
     }
-    if (!me.roles.includes(GUIDE_ADMIN) && !me.roles.includes(PLATFORM_ADMIN)) {
-      return 'Your account has neither the guide_admin nor the platform_admin role, so it cannot author guides.';
-    }
-
     this.token.set(token);
-    this.info.set(me);
+    this.me.set(me);
     this.usingSso.set(source === 'sso');
     if (source === 'paste') {
       try {
@@ -168,7 +183,7 @@ export class AuthService {
 
   private clearLocal(): void {
     this.token.set(null);
-    this.info.set(null);
+    this.me.set(null);
     this.usingSso.set(false);
     clearStored();
   }

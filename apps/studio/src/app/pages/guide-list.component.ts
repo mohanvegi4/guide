@@ -1,9 +1,10 @@
 import { DatePipe } from '@angular/common';
-import { Component, OnInit, inject, signal } from '@angular/core';
+import { Component, computed, effect, inject, input, signal, untracked } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
-import { ActivatedRoute, Router, RouterLink } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
 import { ApiService, describeError } from '../core/api.service';
-import { GUIDE_TYPES, GuideScope, GuideSummary, GuideType } from '../core/models';
+import { AuthService } from '../core/auth.service';
+import { GUIDE_TYPES, GuideSummary, GuideType, appRoleAtLeast } from '../core/models';
 
 @Component({
   selector: 'app-guide-list',
@@ -11,13 +12,11 @@ import { GUIDE_TYPES, GuideScope, GuideSummary, GuideType } from '../core/models
   template: `
     <div class="page-header">
       <div>
-        <h1>{{ scope === 'global' ? 'Global guides' : 'Guides' }}</h1>
-        @if (scope === 'global') {
-          <p class="notice">Global guides are shown to <strong>every tenant</strong>. Analytics here are aggregated across all tenants.</p>
-        }
+        <h1>Guides</h1>
       </div>
     </div>
 
+    @if (canEdit()) {
     <section class="card">
       <h2>New guide</h2>
       <form class="inline-form" [formGroup]="createForm" (ngSubmit)="create()">
@@ -36,6 +35,7 @@ import { GUIDE_TYPES, GuideScope, GuideSummary, GuideType } from '../core/models
         <button type="submit" class="primary" [disabled]="createForm.invalid || creating()">Create</button>
       </form>
     </section>
+    }
 
     @if (error()) {
       <p class="error" role="alert">{{ error() }}</p>
@@ -52,6 +52,7 @@ import { GUIDE_TYPES, GuideScope, GuideSummary, GuideType } from '../core/models
             <th>Name</th>
             <th>Type</th>
             <th>Status</th>
+            <th>Page</th>
             <th>Live version</th>
             <th>Updated</th>
             <th>Enabled</th>
@@ -60,9 +61,10 @@ import { GUIDE_TYPES, GuideScope, GuideSummary, GuideType } from '../core/models
         <tbody>
           @for (g of guides(); track g.id) {
             <tr>
-              <td><a [routerLink]="[basePath, g.id]">{{ g.name }}</a></td>
+              <td><a [routerLink]="[g.id]">{{ g.name }}</a></td>
               <td>{{ g.type }}</td>
               <td><span class="badge" [class]="'badge ' + g.status">{{ g.status }}</span></td>
+              <td>{{ g.page_name ?? (g.current_version_id ? 'Custom route' : '—') }}</td>
               <td>{{ g.current_version_number ? 'v' + g.current_version_number : '—' }}</td>
               <td>{{ g.updated_at | date: 'short' }}</td>
               <td>
@@ -70,7 +72,7 @@ import { GUIDE_TYPES, GuideScope, GuideSummary, GuideType } from '../core/models
                   <input
                     type="checkbox"
                     [checked]="g.enabled"
-                    [disabled]="pending().has(g.id)"
+                    [disabled]="pending().has(g.id) || !canPublish()"
                     (change)="toggle(g, $any($event.target).checked)"
                     [attr.aria-label]="'Enable ' + g.name"
                   />
@@ -84,12 +86,15 @@ import { GUIDE_TYPES, GuideScope, GuideSummary, GuideType } from '../core/models
     }
   `,
 })
-export class GuideListComponent implements OnInit {
+export class GuideListComponent {
   private readonly api = inject(ApiService);
   private readonly router = inject(Router);
   protected readonly guideTypes = GUIDE_TYPES;
-  protected readonly scope: GuideScope = inject(ActivatedRoute).snapshot.data['scope'] ?? 'tenant';
-  protected readonly basePath = this.scope === 'global' ? '/global' : '/guides';
+  private readonly auth = inject(AuthService);
+  readonly orgId = input.required<string>();
+  readonly appId = input.required<string>();
+  protected readonly canEdit = computed(() => appRoleAtLeast(this.auth.appRole(this.appId()), 'editor'));
+  protected readonly canPublish = computed(() => appRoleAtLeast(this.auth.appRole(this.appId()), 'publisher'));
 
   protected readonly guides = signal<GuideSummary[]>([]);
   protected readonly loading = signal(true);
@@ -102,8 +107,18 @@ export class GuideListComponent implements OnInit {
     type: ['tooltip' as GuideType, Validators.required],
   });
 
-  ngOnInit(): void {
-    this.api.listGuides(this.scope).subscribe({
+  constructor() {
+    // untracked: the HTTP interceptor reads the auth token signal; without it
+    // this effect would re-run (re-fetch) on every token renewal.
+    effect(() => {
+      const appId = this.appId();
+      untracked(() => this.load(appId));
+    });
+  }
+
+  private load(appId: string): void {
+    this.loading.set(true);
+    this.api.listGuides(appId).subscribe({
       next: (guides) => {
         this.guides.set(guides);
         this.loading.set(false);
@@ -118,8 +133,8 @@ export class GuideListComponent implements OnInit {
   create(): void {
     const { name, type } = this.createForm.getRawValue();
     this.creating.set(true);
-    this.api.createGuide(this.scope, name.trim(), type).subscribe({
-      next: (g) => void this.router.navigate([this.basePath, g.id]),
+    this.api.createGuide(this.appId(), name.trim(), type).subscribe({
+      next: (g) => void this.router.navigate(['/o', this.orgId(), 'apps', this.appId(), 'guides', g.id]),
       error: (err) => {
         this.error.set(describeError(err));
         this.creating.set(false);
@@ -131,7 +146,7 @@ export class GuideListComponent implements OnInit {
   toggle(guide: GuideSummary, enabled: boolean): void {
     this.setGuide(guide.id, { enabled });
     this.pending.update((s) => new Set(s).add(guide.id));
-    this.api.setEnabled(this.scope, guide.id, enabled).subscribe({
+    this.api.setEnabled(this.appId(), guide.id, enabled).subscribe({
       next: () => this.clearPending(guide.id),
       error: (err) => {
         this.setGuide(guide.id, { enabled: !enabled });

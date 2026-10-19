@@ -22,8 +22,8 @@ services:
 
   # DEV-ONLY mock OpenID Connect provider for exercising Studio SSO locally
   # (https://github.com/navikt/mock-oauth2-server). Opt-in: `npm run idp:up`.
-  # Its login page lets you type any username plus the claims to put in the
-  # token (tenantId, roles) — see docker/mock-idp.json for the defaults.
+  # Its login page lets you type any username plus optional claims (email,
+  # email_verified, name); docker/mock-idp.json sets the access-token audience.
   mock-idp:
     image: ghcr.io/navikt/mock-oauth2-server:2.1.10
     profiles: ["sso"]

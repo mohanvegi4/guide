@@ -24,8 +24,10 @@ import { GuideDetail, GuideVersion } from '../core/models';
               </div>
               <div class="version-actions">
                 <button type="button" class="link" (click)="load.emit(v)">Load into editor</button>
-                <button type="button" class="link" [disabled]="busy()" (click)="preview.emit(v)">Preview</button>
-                @if (v.published_at && v.id !== guide().current_version_id) {
+                @if (canEdit()) {
+                  <button type="button" class="link" [disabled]="busy()" (click)="preview.emit(v)">Preview</button>
+                }
+                @if (canPublish() && v.published_at && v.id !== guide().current_version_id) {
                   <button type="button" class="link" [disabled]="busy()" (click)="rollback.emit(v.version_number)">
                     Roll back to this
                   </button>
@@ -41,6 +43,8 @@ import { GuideDetail, GuideVersion } from '../core/models';
 export class VersionHistoryComponent {
   readonly guide = input.required<GuideDetail>();
   readonly busy = input(false);
+  readonly canEdit = input(true);
+  readonly canPublish = input(true);
   readonly rollback = output<number>();
   readonly load = output<GuideVersion>();
   readonly preview = output<GuideVersion>();
