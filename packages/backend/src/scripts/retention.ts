@@ -12,7 +12,7 @@ async function main(): Promise<void> {
   const { values } = parseArgs({ options: { days: { type: 'string' } } });
   const days = values.days !== undefined ? Number(values.days) : retentionDaysFromEnv();
   if (!days) throw new Error('No retention period: pass --days or set EVENT_RETENTION_DAYS.');
-  await runRetention(days);
+  await runRetention(days, console.log); // a script talks to the terminal, not the log stream
 }
 
 main()

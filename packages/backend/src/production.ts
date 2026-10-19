@@ -1,3 +1,5 @@
+import { logger } from './logging';
+
 /**
  * Settings a production deployment must get right, checked once at boot so
  * the process refuses to start rather than running weakened (fail closed):
@@ -7,7 +9,10 @@
  *  - PUBLIC_API_URL     https — it's what every customer's snippet loads from
  * Only applies when NODE_ENV=production; development and test are unaffected.
  */
-export function assertProductionConfig(env: NodeJS.ProcessEnv = process.env, warn = console.warn): void {
+export function assertProductionConfig(
+  env: NodeJS.ProcessEnv = process.env,
+  warn: (msg: string) => void = (msg) => logger.warn(msg),
+): void {
   if (env.NODE_ENV !== 'production') return;
   const problems: string[] = [];
   if (!env.SECRETS_KEY) {

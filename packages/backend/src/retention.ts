@@ -1,4 +1,9 @@
 import { withRetentionSession, withoutScope } from './db';
+import { logger } from './logging';
+import { retentionDeletedTotal } from './metrics';
+
+/** Default sink for the job's progress lines: the structured log (scripts pass console.log). */
+const logInfo = (msg: string) => logger.info(msg);
 
 /**
  * Keeps the database from growing forever:
@@ -18,7 +23,7 @@ const BATCH = 10_000;
 
 export async function runRetention(
   days: number,
-  log: (msg: string) => void = console.log,
+  log: (msg: string) => void = logInfo,
 ): Promise<RetentionResult> {
   if (!Number.isInteger(days) || days < 1) throw new Error('retention: days must be a positive integer');
   let events = 0;
@@ -39,6 +44,9 @@ export async function runRetention(
     client.query(`DELETE FROM agent_rate_limit WHERE window_start < now() - interval '1 hour'`),
   );
   const rateLimitRows = swept.rowCount ?? 0;
+  // Counters only ever grow; a scrape that stops seeing them grow is the alert for a stuck job.
+  retentionDeletedTotal.inc({ table: 'guide_event' }, events);
+  retentionDeletedTotal.inc({ table: 'agent_rate_limit' }, rateLimitRows);
   log(
     `retention: deleted ${events} events older than ${days} days, ${rateLimitRows} spent rate-limit windows`,
   );
@@ -60,7 +68,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 /** Starts the daily job (first run a minute after boot). Returns the timer, or null when retention is off. */
 export function scheduleRetention(
   env: NodeJS.ProcessEnv = process.env,
-  log: (msg: string) => void = console.log,
+  log: (msg: string) => void = logInfo,
 ): NodeJS.Timeout | null {
   const days = retentionDaysFromEnv(env);
   if (!days) return null;

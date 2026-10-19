@@ -46,7 +46,9 @@ COPY packages/backend/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 USER node
 EXPOSE 3000
+# /ready checks the database too, so a container that can't reach Postgres
+# is reported unhealthy (and not sent traffic) rather than merely running.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s \
-  CMD wget -qO- http://127.0.0.1:3000/health >/dev/null || exit 1
+  CMD wget -qO- http://127.0.0.1:3000/ready >/dev/null || exit 1
 ENTRYPOINT ["docker-entrypoint.sh"]
 CMD ["node", "packages/backend/dist/index.js"]
