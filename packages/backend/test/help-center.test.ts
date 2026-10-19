@@ -1,6 +1,8 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import request from 'supertest';
 import {
+  addMember,
+  adminPool,
   agent,
   app,
   as,
@@ -153,7 +155,11 @@ describe('help center', () => {
       request(app).patch(`/v1/apps/${appId}`).set('Authorization', as('alice')).send(body);
     expect((await patch({ helpButtonColor: 'red; background:url(x)' })).status).toBe(400);
     expect((await patch({ helpPosition: 'middle' })).status).toBe(400);
-    const ok = await patch({ helpButtonColor: '#0EA5E9', helpButtonLabel: 'Need help?', helpPosition: 'top-left' });
+    const ok = await patch({
+      helpButtonColor: '#0EA5E9',
+      helpButtonLabel: 'Need help?',
+      helpPosition: 'top-left',
+    });
     expect(ok.body).toMatchObject({
       help_button_color: '#0EA5E9',
       help_button_label: 'Need help?',
@@ -201,9 +207,186 @@ describe('help center', () => {
     expect(stats.body.startedFromHelp).toBe(2);
   });
 
+  it('tells the agent how the app routes (path by default, or hash)', async () => {
+    const { key, appId } = await signUp('alice');
+    expect((await agent(key, '/guides', visitor())).body.routeMode).toBe('path');
+    expect((await agent(key, '/help', visitor())).body.routeMode).toBe('path');
+    await request(app)
+      .patch(`/v1/apps/${appId}`)
+      .set('Authorization', as('alice'))
+      .send({ routeMode: 'hash' });
+    expect((await agent(key, '/guides', visitor())).body).toMatchObject({ enabled: true, routeMode: 'hash' });
+    expect((await agent(key, '/help', visitor())).body).toMatchObject({ enabled: true, routeMode: 'hash' });
+  });
+
   it('includes the help methods in the install snippet stub', async () => {
     const { appId } = await signUp('alice');
     const res = await request(app).get(`/v1/apps/${appId}`).set('Authorization', as('alice'));
     expect(res.body.snippet).toContain("'openHelp','closeHelp','toggleHelp'");
+  });
+});
+
+describe('help-center analytics', () => {
+  const at = new Date().toISOString();
+  const opened = (sessionId = 's') => ({ sessionId, eventType: 'help_opened', occurredAt: at });
+  const searched = (query: string, results: number, sessionId = 's') => ({
+    sessionId,
+    eventType: 'help_searched',
+    occurredAt: at,
+    metadata: { query, results },
+  });
+
+  it('accepts help events without a guide, alongside guide events', async () => {
+    const { key, appId } = await signUp('alice');
+    const g = await liveGuide('alice', appId, {
+      ...sampleVersion,
+      routeMatch: { type: 'exact', value: '/t' },
+      help,
+    });
+    const res = await agent(key, '/events', {
+      ...visitor('v-1'),
+      events: [
+        opened(),
+        searched('Invite', 1),
+        {
+          guideId: g.guideId,
+          guideVersionId: g.versionId,
+          sessionId: 's',
+          eventType: 'guide_shown',
+          occurredAt: at,
+          metadata: { source: 'help' },
+        },
+      ],
+    });
+    expect(res.status).toBe(202);
+    expect(res.body.accepted).toBe(3);
+    const rows = await adminPool.query(
+      `SELECT event_type::text, guide_id, guide_version_id, visitor_id, metadata FROM guide_event ORDER BY id`,
+    );
+    expect(rows.rows).toEqual([
+      { event_type: 'help_opened', guide_id: null, guide_version_id: null, visitor_id: 'v-1', metadata: {} },
+      {
+        event_type: 'help_searched',
+        guide_id: null,
+        guide_version_id: null,
+        visitor_id: 'v-1',
+        metadata: { query: 'Invite', results: 1 },
+      },
+      {
+        event_type: 'guide_shown',
+        guide_id: g.guideId,
+        guide_version_id: g.versionId,
+        visitor_id: 'v-1',
+        metadata: { source: 'help' },
+      },
+    ]);
+  });
+
+  it('caps the stored query at 200 characters and keeps only query and results', async () => {
+    const { key } = await signUp('alice');
+    const res = await agent(key, '/events', {
+      ...visitor(),
+      events: [
+        { ...searched('x'.repeat(500), 0), metadata: { query: 'x'.repeat(500), results: 0, extra: 1 } },
+      ],
+    });
+    expect(res.status).toBe(202);
+    const row = (await adminPool.query(`SELECT metadata FROM guide_event`)).rows[0];
+    expect(row.metadata).toEqual({ query: 'x'.repeat(200), results: 0 });
+  });
+
+  it('stores a help event without a guide even if one was named, and rejects a guide event without one', async () => {
+    const { key, appId } = await signUp('alice');
+    const g = await liveGuide('alice', appId);
+    const mixed = await agent(key, '/events', {
+      ...visitor(),
+      events: [{ ...opened(), guideId: g.guideId, guideVersionId: g.versionId }],
+    });
+    // Stray guide ids on a help event are dropped (the event is about the panel, not a guide).
+    expect(mixed.status).toBe(202);
+    expect((await adminPool.query(`SELECT guide_id FROM guide_event`)).rows).toEqual([{ guide_id: null }]);
+    const orphan = await agent(key, '/events', {
+      ...visitor(),
+      events: [{ sessionId: 's', eventType: 'guide_shown', occurredAt: at }],
+    });
+    expect(orphan.status).toBe(400);
+    // The database refuses the combination too, whatever the API does.
+    await expect(
+      adminPool.query(
+        `INSERT INTO guide_event (app_id, guide_id, visitor_id, session_id, event_type)
+         VALUES ($1, $2, 'v', 's', 'help_opened')`,
+        [appId, g.guideId],
+      ),
+    ).rejects.toThrow(/chk_help_event_has_no_guide/);
+    await expect(
+      adminPool.query(
+        `INSERT INTO guide_event (app_id, guide_id, visitor_id, session_id, event_type)
+         VALUES ($1, NULL, 'v', 's', 'guide_shown')`,
+        [appId],
+      ),
+    ).rejects.toThrow(/chk_help_event_has_no_guide/);
+  });
+
+  it('reports opens, searches, top queries and guides started from help for the last 30 days', async () => {
+    const { key, appId, orgId } = await signUp('alice');
+    const g = await liveGuide('alice', appId, {
+      ...sampleVersion,
+      routeMatch: { type: 'exact', value: '/t' },
+      help,
+    });
+    const shown = (metadata?: object) => ({
+      guideId: g.guideId,
+      guideVersionId: g.versionId,
+      sessionId: 's',
+      eventType: 'guide_shown',
+      occurredAt: at,
+      ...(metadata ? { metadata } : {}),
+    });
+    await agent(key, '/events', {
+      ...visitor('v-1'),
+      events: [
+        opened(),
+        opened('s2'),
+        searched('Invite', 2),
+        searched('invite ', 0),
+        searched('export', 1),
+        searched('   ', 0), // blank: counted as a search, never listed
+        shown({ source: 'help' }),
+        shown(),
+      ],
+    });
+    // An old open falls outside the window.
+    await adminPool.query(
+      `INSERT INTO guide_event (app_id, visitor_id, session_id, event_type, occurred_at)
+       VALUES ($1, 'v', 's', 'help_opened', now() - interval '31 days')`,
+      [appId],
+    );
+
+    const res = await request(app).get(`/v1/apps/${appId}/help-analytics`).set('Authorization', as('alice'));
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      days: 30,
+      opens: 2,
+      searches: 4,
+      guidesStarted: 1,
+      topQueries: [
+        { query: 'invite', count: 2, avgResults: 1 },
+        { query: 'export', count: 1, avgResults: 1 },
+      ],
+    });
+
+    // Viewers may read it; another org's app answers 404.
+    await addMember('alice', orgId, 'vic', 'member', { [appId]: 'viewer' });
+    expect(
+      (await request(app).get(`/v1/apps/${appId}/help-analytics`).set('Authorization', as('vic'))).status,
+    ).toBe(200);
+    const other = await signUp('zed');
+    expect(
+      (await request(app).get(`/v1/apps/${appId}/help-analytics`).set('Authorization', as('zed'))).status,
+    ).toBe(404);
+    expect(
+      (await request(app).get(`/v1/apps/${other.appId}/help-analytics`).set('Authorization', as('alice')))
+        .status,
+    ).toBe(404);
   });
 });

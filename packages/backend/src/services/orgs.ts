@@ -43,6 +43,7 @@ export interface AppRow {
   help_button_label: string;
   help_button_color: string;
   help_position: HelpPosition;
+  route_mode: RouteMode;
   suspended_at: string | null;
   created_at: string;
 }
@@ -51,9 +52,17 @@ export interface AppRow {
 export const HELP_POSITIONS = ['bottom-right', 'bottom-left', 'top-right', 'top-left', 'center'] as const;
 export type HelpPosition = (typeof HELP_POSITIONS)[number];
 
+/**
+ * How the app's router addresses pages: 'path' (/settings/team, matched on
+ * location.pathname) or 'hash' (/#/settings/team, matched on the path inside
+ * location.hash). The agent reads it from every /guides and /help response.
+ */
+export const ROUTE_MODES = ['path', 'hash'] as const;
+export type RouteMode = (typeof ROUTE_MODES)[number];
+
 export const APP_COLUMNS = `id, org_id, name, public_key, allowed_origins, identity_mode,
   signing_secret IS NOT NULL AS has_signing_secret, enabled,
-  help_enabled, help_button_label, help_button_color, help_position, suspended_at, created_at`;
+  help_enabled, help_button_label, help_button_color, help_position, route_mode, suspended_at, created_at`;
 
 export async function createApp(
   client: PoolClient,

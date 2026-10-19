@@ -231,6 +231,8 @@ export interface AgentApp {
   identityMode: 'optional' | 'required';
   signingSecret: string | null;
   allowedOrigins: string[];
+  /** 'path' or 'hash': which part of the URL the agent matches routes on. */
+  routeMode: 'path' | 'hash';
 }
 
 /** Resolves a public key (no transaction; used for CORS checks and preflights). */
@@ -243,7 +245,7 @@ export async function findAppByPublicKey(publicKey: string): Promise<AgentApp | 
 
 async function loadAgentApp(client: PoolClient, publicKey: string): Promise<AgentApp | null> {
   const result = await client.query(
-    `SELECT id, org_id, enabled, suspended_at, identity_mode, signing_secret, allowed_origins
+    `SELECT id, org_id, enabled, suspended_at, identity_mode, signing_secret, allowed_origins, route_mode
      FROM application WHERE public_key = $1`,
     [publicKey],
   );
@@ -257,6 +259,7 @@ async function loadAgentApp(client: PoolClient, publicKey: string): Promise<Agen
     identityMode: row.identity_mode,
     signingSecret: row.signing_secret ? readSigningSecret(row.signing_secret, row.id) : null,
     allowedOrigins: row.allowed_origins,
+    routeMode: row.route_mode === 'hash' ? 'hash' : 'path',
   };
 }
 

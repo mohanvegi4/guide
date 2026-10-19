@@ -187,6 +187,7 @@ agentApiRouter.post(
       );
       return {
         enabled: true,
+        routeMode: scoped.routeMode,
         guides: rows.rows.map((r) => ({
           id: r.id,
           versionId: r.version_id,
@@ -237,6 +238,7 @@ agentApiRouter.post(
       );
       return {
         enabled: true,
+        routeMode: scoped.routeMode,
         button: {
           label: s.help_button_label,
           color: s.help_button_color,
@@ -265,13 +267,19 @@ agentApiRouter.post(
 );
 
 // ------------------------------------------------------------
-// POST /v1/agent/:key/events — fire-and-forget analytics batch.
+// POST /v1/agent/:key/events — fire-and-forget analytics batch. Two shapes:
+// guide events (always name a guide and version) and help-center events
+// (never do — they're about the help panel itself).
 // ------------------------------------------------------------
-const eventSchema = z.object({
+const eventBase = {
+  sessionId: z.string().min(1).max(100),
+  occurredAt: z.string().datetime(),
+};
+const guideEventSchema = z.object({
+  ...eventBase,
   guideId: z.string().uuid(),
   guideVersionId: z.string().uuid(),
   stepId: z.string().uuid().optional(),
-  sessionId: z.string().min(1).max(100),
   eventType: z.enum([
     'guide_shown',
     'guide_step_viewed',
@@ -281,13 +289,33 @@ const eventSchema = z.object({
     'guide_error',
     'survey_response',
   ]),
-  occurredAt: z.string().datetime(),
   metadata: z.record(z.unknown()).optional(),
 });
+/** The query is capped (it's stored as typed, never rendered as HTML); other metadata keys are dropped. */
+const HELP_QUERY_MAX = 200;
+const helpEventSchema = z.object({
+  ...eventBase,
+  eventType: z.enum(['help_opened', 'help_searched']),
+  metadata: z
+    .object({
+      query: z
+        .string()
+        .transform((q) => q.slice(0, HELP_QUERY_MAX))
+        .optional(),
+      results: z.number().int().nonnegative().optional(),
+    })
+    .optional(),
+});
+const eventSchema = z.union([guideEventSchema, helpEventSchema]);
 const eventsBodySchema = z.object({ events: z.array(eventSchema).min(1).max(100) });
 type AgentEvent = z.infer<typeof eventSchema>;
+type GuideEvent = z.infer<typeof guideEventSchema>;
 
-const TERMINAL_STATUS: Partial<Record<AgentEvent['eventType'], 'dismissed' | 'completed'>> = {
+function isGuideEvent(e: AgentEvent): e is GuideEvent {
+  return 'guideId' in e;
+}
+
+const TERMINAL_STATUS: Partial<Record<GuideEvent['eventType'], 'dismissed' | 'completed'>> = {
   guide_dismissed: 'dismissed',
   guide_completed: 'completed',
 };
@@ -302,14 +330,15 @@ agentApiRouter.post(
 
     const accepted = await inApp(req, async (client, scoped) => {
       // Only events for this app's guides (RLS also enforces it; the explicit
-      // filter drops unknown ids instead of failing the whole batch).
-      const ids = [...new Set(parsed.data.events.map((e) => e.guideId))];
+      // filter drops unknown ids instead of failing the whole batch). Help
+      // events name no guide, so there's nothing to check for them.
+      const ids = [...new Set(parsed.data.events.filter(isGuideEvent).map((e) => e.guideId))];
       const known = await client.query<{ id: string }>(
         `SELECT id FROM guide WHERE id = ANY($1::uuid[]) AND app_id = $2`,
         [ids, scoped.id],
       );
       const knownIds = new Set(known.rows.map((r) => r.id));
-      const events = parsed.data.events.filter((e) => knownIds.has(e.guideId));
+      const events = parsed.data.events.filter((e) => !isGuideEvent(e) || knownIds.has(e.guideId));
       if (events.length === 0) return 0;
 
       // Batch insert via UNNEST — one round trip regardless of batch size.
@@ -323,16 +352,16 @@ agentApiRouter.post(
           scoped.id,
           visitor.visitorId,
           visitor.accountId,
-          events.map((e) => e.guideId),
-          events.map((e) => e.guideVersionId),
-          events.map((e) => e.stepId ?? null),
+          events.map((e) => (isGuideEvent(e) ? e.guideId : null)),
+          events.map((e) => (isGuideEvent(e) ? e.guideVersionId : null)),
+          events.map((e) => (isGuideEvent(e) ? (e.stepId ?? null) : null)),
           events.map((e) => e.sessionId),
           events.map((e) => e.eventType),
           events.map((e) => e.occurredAt),
           events.map((e) => JSON.stringify(e.metadata ?? {})),
         ],
       );
-      await recordFinishedGuides(client, scoped.id, visitor.visitorId, events);
+      await recordFinishedGuides(client, scoped.id, visitor.visitorId, events.filter(isGuideEvent));
       return events.length;
     });
     res.status(202).json({ accepted });
@@ -348,7 +377,7 @@ async function recordFinishedGuides(
   client: PoolClient,
   appId: string,
   visitorId: string,
-  events: AgentEvent[],
+  events: GuideEvent[],
 ) {
   // Last terminal event per guide wins; ON CONFLICT can't touch a row twice.
   const latest = new Map<string, { versionId: string; status: 'dismissed' | 'completed' }>();
