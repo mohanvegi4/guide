@@ -7,3 +7,6 @@ coverage/
 dist/
 .env.local
 .claude/worktrees/
+# docs site assembly output (scripts/build-docs.mjs)
+site/
+_site/

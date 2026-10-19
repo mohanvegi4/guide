@@ -1,0 +1,62 @@
+# Builds and publishes the docs site (https://mohanvegi4.github.io/guide/) with
+# GitHub Pages. The reference pages are the two READMEs, assembled by
+# scripts/build-docs.mjs so there is one source of truth; see docs/README.md.
+#
+# One-time setup by a repository admin: Settings → Pages → Build and deployment
+# → Source: "GitHub Actions". Without it the deploy job fails with a message
+# about the Pages site not being enabled.
+name: Docs site
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - README.md
+      - apps/studio/README.md
+      - docs/**
+      - scripts/build-docs.mjs
+      - .github/workflows/docs.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deployment at a time; a newer push waits rather than cancelling a deploy
+# that is already half-way through.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Assemble and build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Assemble the site source (docs/ + the READMEs as reference pages)
+        run: node scripts/build-docs.mjs site
+      - uses: actions/configure-pages@v5
+      - name: Build with Jekyll (github-pages gem, just-the-docs via jekyll-remote-theme)
+        uses: actions/jekyll-build-pages@v1
+        with:
+          source: ./site
+          destination: ./_site
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./_site
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

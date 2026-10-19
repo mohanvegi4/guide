@@ -1,0 +1,39 @@
+# Jekyll configuration for the docs site (https://mohanvegi4.github.io/guide/).
+#
+# The site source is assembled by scripts/build-docs.mjs into site/ and built by
+# actions/jekyll-build-pages in .github/workflows/docs.yml, so this file is kept
+# to what GitHub's Pages build supports out of the box: the github-pages gem
+# with the just-the-docs theme pulled in through jekyll-remote-theme.
+
+title: Guide Engine
+description: In-app guides for any web application. Install a snippet, author in the Studio, measure.
+url: https://mohanvegi4.github.io
+baseurl: /guide
+
+remote_theme: just-the-docs/just-the-docs
+plugins:
+  - jekyll-remote-theme
+
+# The github-pages gem turns a directory's README.md into its index page by
+# default. reference/README.md is linked as a page of its own, so keep it one.
+readme_index:
+  enabled: false
+
+# The legal templates carry {{COMPANY}}-style placeholders. build-docs.mjs
+# fences every page body in {% raw %}, so nothing here relies on Liquid.
+markdown: kramdown
+kramdown:
+  input: GFM
+  hard_wrap: false
+
+# just-the-docs
+color_scheme: light
+search_enabled: true
+heading_anchors: true
+aux_links:
+  "Guide Engine on GitHub":
+    - https://github.com/mohanvegi4/guide
+footer_content: 'Guide Engine. The reference pages are built from the repository READMEs; the legal pages are templates, not legal advice.'
+
+exclude:
+  - README.md
