@@ -687,6 +687,7 @@ A `VersionBody` is:
 | `007_app_pages.sql` | Adds saved pages (`app_page`, with RLS), `guide_version.page_id`, and makes `active_guide` resolve routes through pages. |
 | `008_help_position.sql` | Adds `help_position`: where the help list and its confirmation open (a corner or `center`, CHECK-limited). |
 | `009_platform_admin.sql` | Platform admins, organization suspension, support access and its log, the `*_platform_select` policies, and a stricter `guide_version` select policy. |
+| `010_production.sql` | `agent_rate_limit` (the shared agent-API budget), the `app_retention()` function and the retention policies on `guide_event`, an index on `occurred_at`. |
 | `011_agent_delivery.sql` | `agent_error` with its RLS: agent insert/select for its own app (the hourly cap counts in the same session), Studio and platform select, retention select/delete. |
 | `012_engine_gaps.sql` | Adds `application.route_mode` (CHECK-limited to `path` / `hash`), the `help_opened` / `help_searched` event types, and makes `guide_event.guide_id` nullable for those two types only (a CHECK constraint; the foreign keys stay). |
 
@@ -704,10 +705,10 @@ npm test --workspace=apps/studio          # Studio components and services
 
 | Suite | Tests | Covers |
 |---|---|---|
-| **Backend** | 191 | self-serve orgs; apps and settings; the role matrix; invitations; members; saved pages; platform admins and support access (consent, read-only, logging, RLS); secrets at rest, the shared rate limiter, retention (events and agent errors), production boot checks; the agent script's ETag / 304 / cache headers and the version endpoint; agent error reports (validation, the hourly cap, the Studio list, RLS isolation, platform counts); org/app isolation through the API **and directly in RLS** (including replaying the owner bootstrap and forging memberships); the agent API (origins, keys, identity modes, account targeting, kill switches, events and per-visitor state, preview); the guide lifecycle; sanitization; stable step ids; analytics; OIDC (a local JWKS server, algorithm confusion); and migration 005's data conversion |
-| **Core** | 65 | includes the help widget (search, keyboard, safe rendering), help launches (same page, other page, arrival, shared links) and error reporting (sampling, the per-page cap, never throwing) |
-| **Agent** | 6 | includes `openHelp` queued before load and the build-time version |
-| **Studio** | 29 | guide list and editor (saved pages), Pages, app settings (including the agent-error list), the Administration page |
+| **Backend** | 222 | self-serve orgs; apps and settings; the role matrix; invitations; members; saved pages; platform admins and support access (consent, read-only, logging, RLS); secrets at rest, the shared rate limiter, retention (events and agent errors), production boot checks; the agent script's ETag / 304 / cache headers and the version endpoint; agent error reports (validation, the hourly cap, the Studio list, RLS isolation, platform counts); org/app isolation through the API **and directly in RLS** (including replaying the owner bootstrap and forging memberships); the agent API (origins, keys, identity modes, account targeting, kill switches, events and per-visitor state, preview); the guide lifecycle; sanitization; stable step ids; analytics; OIDC (a local JWKS server, algorithm confusion); and migration 005's data conversion |
+| **Core** | 89 | includes the help widget (search, keyboard, safe rendering), help launches (same page, other page, arrival, shared links) and error reporting (sampling, the per-page cap, never throwing) |
+| **Agent** | 8 | includes `openHelp` queued before load and the build-time version |
+| **Studio** | 35 | guide list and editor (saved pages), Pages, app settings (including the agent-error list), the Administration page |
 
 Type-checking is part of every `test` script, with strict TypeScript throughout.
 
