@@ -1,5 +1,6 @@
 import { Pool, PoolClient } from 'pg';
 import { decryptSecret, getSecretsKey } from './secrets';
+import { logger } from './logging';
 
 export const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -304,7 +305,7 @@ function readSigningSecret(stored: string, appId: string): string | null {
   try {
     return decryptSecret(stored, getSecretsKey());
   } catch (err) {
-    console.error(`app ${appId}: signing secret unreadable (${(err as Error).message})`);
+    logger.error({ appId, err }, 'signing secret unreadable: signed identities for this app will not verify');
     return null;
   }
 }

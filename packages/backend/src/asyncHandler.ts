@@ -1,4 +1,5 @@
 import { NextFunction, Request, RequestHandler, Response } from 'express';
+import { rememberRoute } from './routeLabel';
 
 /**
  * Express 4 does not catch rejected promises from async handlers: a thrown
@@ -11,6 +12,11 @@ export function asyncHandler(
   fn: (req: Request, res: Response, next: NextFunction) => Promise<unknown>,
 ): RequestHandler {
   return (req, res, next) => {
-    fn(req, res, next).catch(next);
+    fn(req, res, next).catch((err) => {
+      // The route pattern is only knowable here: by the time the error
+      // reaches the app-level handler, Express has unwound the router state.
+      rememberRoute(req, res);
+      next(err);
+    });
   };
 }
