@@ -4,7 +4,7 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { provideRouter } from '@angular/router';
 import { GuideListComponent } from './guide-list.component';
 import { AuthService } from '../core/auth.service';
-import { AppRole, GuideSummary } from '../core/models';
+import { AppAnalytics, AppRole, GuideSummary } from '../core/models';
 
 const guide: GuideSummary = {
   id: 'g1',
@@ -17,6 +17,13 @@ const guide: GuideSummary = {
   updated_at: '2026-10-07T00:00:00Z',
   page_id: 'p1',
   page_name: 'Team settings',
+};
+
+const noEvents: AppAnalytics = {
+  guides: [{ guideId: 'g1', name: 'Welcome', shown: 0, completed: 0, dismissed: 0, completionRate: 0 }],
+  visitors: 0,
+  accounts: 0,
+  windowDays: 30,
 };
 
 describe('GuideListComponent', () => {
@@ -42,13 +49,14 @@ describe('GuideListComponent', () => {
     });
   }
 
-  async function render() {
+  async function render(analytics: AppAnalytics = noEvents) {
     const fixture = TestBed.createComponent(GuideListComponent);
     fixture.componentRef.setInput('orgId', 'o1');
     fixture.componentRef.setInput('appId', 'a1');
     fixture.detectChanges();
     await fixture.whenStable();
     http.expectOne('/api/v1/apps/a1/guides').flush([guide]);
+    http.expectOne('/api/v1/apps/a1/analytics').flush(analytics);
     await fixture.whenStable();
     return fixture;
   }
@@ -79,6 +87,51 @@ describe('GuideListComponent', () => {
     req.flush({ error: 'not_found' }, { status: 404, statusText: 'Not Found' });
     await fixture.whenStable();
     expect(checkbox.checked).toBe(false);
+  });
+
+  it('shows the analytics overview with completion rates as percentages', async () => {
+    setup('viewer');
+    const fixture = await render({
+      guides: [
+        { guideId: 'g1', name: 'Welcome', shown: 8, completed: 3, dismissed: 2, completionRate: 0.375 },
+        { guideId: 'g2', name: 'Never shown', shown: 0, completed: 0, dismissed: 0, completionRate: 0 },
+      ],
+      visitors: 5,
+      accounts: 2,
+      windowDays: 30,
+    });
+    const el = fixture.nativeElement as HTMLElement;
+    const card = el.querySelector('section.card')!;
+    expect(card.textContent).toContain('Last 30 days: 5 visitors, 2 accounts');
+    const rows = [...card.querySelectorAll('tbody tr')].map((r) =>
+      [...r.querySelectorAll('th, td')]
+        .map((c) => c.textContent?.trim())
+        .join(' ')
+        .trim(),
+    );
+    expect(rows).toEqual(['Welcome 8 3 38%']);
+  });
+
+  it('says so when nothing was recorded, and hides the card if the rollup fails', async () => {
+    setup('viewer');
+    const el = (await render()).nativeElement as HTMLElement;
+    expect(el.querySelector('section.card')!.textContent).toContain('No events recorded yet.');
+
+    TestBed.resetTestingModule();
+    setup('viewer');
+    const fixture = TestBed.createComponent(GuideListComponent);
+    fixture.componentRef.setInput('orgId', 'o1');
+    fixture.componentRef.setInput('appId', 'a1');
+    fixture.detectChanges();
+    await fixture.whenStable();
+    http.expectOne('/api/v1/apps/a1/guides').flush([guide]);
+    http
+      .expectOne('/api/v1/apps/a1/analytics')
+      .flush({ error: 'internal_error' }, { status: 500, statusText: 'Server Error' });
+    await fixture.whenStable();
+    const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
+    expect(text).toContain('Welcome');
+    expect(text).not.toContain('No events recorded yet.');
   });
 
   it('is read-only for viewers: no create form, no enable toggle', async () => {

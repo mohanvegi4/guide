@@ -15,6 +15,7 @@ import {
   sitePathSchema,
   studio,
 } from './context';
+import { guideAnalyticsQuerySchema, rangeSql, toRange } from './analytics';
 import { findPage } from './pages';
 
 /**
@@ -29,6 +30,18 @@ import { findPage } from './pages';
  * app set; every query here also filters by app_id explicitly.
  */
 export const guidesRouter = Router({ mergeParams: true });
+
+/** ?by=account returns at most this many accounts (the ones shown the guide most). */
+const TOP_ACCOUNTS = 50;
+
+interface AccountRow {
+  /** null: events from visitors the host page didn't attach to an account. */
+  accountId: string | null;
+  shown: number;
+  completed: number;
+  dismissed: number;
+  visitors: number;
+}
 
 const guideTypeSchema = z.enum(['tooltip', 'modal', 'banner', 'tour', 'checklist', 'survey', 'beacon']);
 
@@ -478,35 +491,79 @@ function previewUrl(site: string, path: string, token: string): string {
   return url.toString();
 }
 
-// GET /:id/analytics — funnel counts, overall and per step (all accounts)
+// GET /:id/analytics — funnel counts, overall and per step, for everyone;
+// ?from=&to= narrows the window, ?by=account adds the top accounts.
 guidesRouter.get(
   '/:id/analytics',
   asyncHandler(async (req, res) => {
     const appId = idParam(req, 'appId');
     const id = idParam(req, 'id');
+    const query = parseBody(guideAnalyticsQuerySchema, req.query);
+    // Every query below starts with (app_id, guide_id) = ($1, $2).
+    const range = rangeSql(toRange(query), 3);
+    const params = [appId, id, ...range.params];
     const stats = await studio(req, async (client, ctx) => {
       requireAppRole(ctx, appId, 'viewer');
       const exists = await client.query(`SELECT 1 FROM guide WHERE id = $1 AND app_id = $2`, [id, appId]);
       if (exists.rows.length === 0) throw notFound();
       const counts = await client.query(
         `SELECT event_type, COUNT(*)::int AS count FROM guide_event
-         WHERE app_id = $1 AND guide_id = $2 GROUP BY event_type`,
-        [appId, id],
+         WHERE app_id = $1 AND guide_id = $2 ${range.sql} GROUP BY event_type`,
+        params,
       );
       // Step ids are stable across versions, so a step's numbers accumulate
       // through edits instead of resetting on each publish.
       const steps = await client.query(
         `SELECT step_id, event_type, COUNT(*)::int AS count FROM guide_event
-         WHERE app_id = $1 AND guide_id = $2 AND step_id IS NOT NULL GROUP BY step_id, event_type`,
-        [appId, id],
+         WHERE app_id = $1 AND guide_id = $2 AND step_id IS NOT NULL ${range.sql}
+         GROUP BY step_id, event_type`,
+        params,
       );
       // How often the guide was started on demand from the help center.
       const help = await client.query<{ n: number }>(
         `SELECT COUNT(*)::int AS n FROM guide_event
-         WHERE app_id = $1 AND guide_id = $2 AND event_type = 'guide_shown' AND metadata ->> 'source' = 'help'`,
-        [appId, id],
+         WHERE app_id = $1 AND guide_id = $2 AND event_type = 'guide_shown' AND metadata ->> 'source' = 'help'
+           ${range.sql}`,
+        params,
       );
-      return { counts: counts.rows, steps: steps.rows, startedFromHelp: help.rows[0].n };
+      let accounts: AccountRow[] | undefined;
+      if (query.by === 'account') {
+        // The 50 accounts that saw the guide most. NULL account_id (visitors
+        // the host page didn't attach to an account) is its own row, so the
+        // numbers still add up to the totals above.
+        const rows = await client.query<{
+          account_id: string | null;
+          shown: number;
+          completed: number;
+          dismissed: number;
+          visitors: number;
+        }>(
+          `SELECT account_id,
+                  COUNT(*) FILTER (WHERE event_type = 'guide_shown')::int AS shown,
+                  COUNT(*) FILTER (WHERE event_type = 'guide_completed')::int AS completed,
+                  COUNT(*) FILTER (WHERE event_type = 'guide_dismissed')::int AS dismissed,
+                  COUNT(DISTINCT visitor_id)::int AS visitors
+           FROM guide_event
+           WHERE app_id = $1 AND guide_id = $2 ${range.sql}
+           GROUP BY account_id
+           ORDER BY shown DESC, account_id ASC NULLS LAST
+           LIMIT ${TOP_ACCOUNTS}`,
+          params,
+        );
+        accounts = rows.rows.map((r) => ({
+          accountId: r.account_id,
+          shown: r.shown,
+          completed: r.completed,
+          dismissed: r.dismissed,
+          visitors: r.visitors,
+        }));
+      }
+      return {
+        counts: counts.rows,
+        steps: steps.rows,
+        startedFromHelp: help.rows[0].n,
+        ...(accounts ? { accounts } : {}),
+      };
     });
     res.json({ guideId: id, ...stats });
   }),

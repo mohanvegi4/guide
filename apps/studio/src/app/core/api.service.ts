@@ -4,6 +4,7 @@ import { Observable } from 'rxjs';
 import {
   AnalyticsResponse,
   App,
+  AppAnalytics,
   AppPage,
   AppRole,
   GuideDetail,
@@ -250,8 +251,14 @@ export class ApiService {
     return this.http.post(`${this.guides(appId)}/${id}/rollback/${versionNumber}`, {});
   }
 
-  analytics(appId: string, id: string): Observable<AnalyticsResponse> {
-    return this.http.get<AnalyticsResponse>(`${this.guides(appId)}/${id}/analytics`);
+  analytics(appId: string, id: string, options: { byAccount?: boolean } = {}): Observable<AnalyticsResponse> {
+    return this.http.get<AnalyticsResponse>(`${this.guides(appId)}/${id}/analytics`, {
+      params: options.byAccount ? { by: 'account' } : {},
+    });
+  }
+
+  appAnalytics(appId: string): Observable<AppAnalytics> {
+    return this.http.get<AppAnalytics>(`${this.base}/apps/${appId}/analytics`);
   }
 }
 

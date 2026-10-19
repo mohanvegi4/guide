@@ -253,6 +253,35 @@ export interface AnalyticsResponse {
   steps: Array<{ step_id: string; event_type: string; count: number }>;
   /** Times the guide was started on demand from the help center. */
   startedFromHelp: number;
+  /** Only with `?by=account`: the 50 accounts shown the guide most, most first. */
+  accounts?: AccountAnalytics[];
+}
+
+export interface AccountAnalytics {
+  /** null: visitors the host page didn't attach to an account. */
+  accountId: string | null;
+  shown: number;
+  completed: number;
+  dismissed: number;
+  /** Distinct visitors of that account. */
+  visitors: number;
+}
+
+/** GET /v1/apps/:appId/analytics — every guide's lifetime totals, plus recent reach. */
+export interface AppAnalytics {
+  guides: Array<{
+    guideId: string;
+    name: string;
+    shown: number;
+    completed: number;
+    dismissed: number;
+    /** completed / shown as a fraction (0–1); 0 when never shown. */
+    completionRate: number;
+  }>;
+  /** Distinct visitors / accounts across all guides in the last `windowDays`. */
+  visitors: number;
+  accounts: number;
+  windowDays: number;
 }
 
 /** GET /v1/apps/:appId/pages — a saved page: a named, reusable URL rule. */

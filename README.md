@@ -305,7 +305,10 @@ Full guide: [`apps/studio/README.md`](apps/studio/README.md).
   - **Workflow:** save a draft, preview, publish, enable. **Versions** lists the history, with
     rollback.
   - **Analytics:** event totals, plus a per-step funnel that carries across versions (step ids
-    stay stable).
+    stay stable). **By account** adds the 50 accounts shown the guide most (shown, done,
+    dismissed, distinct visitors; "No account" is unidentified visitors). The **Guides** page
+    starts with an overview: shown, completed and completion rate per guide, and distinct
+    visitors and accounts over the last 30 days.
 
 ### Saved pages
 
@@ -579,7 +582,8 @@ Bodies may be `text/plain` or `application/json`. Each one carries an identity:
 | `PATCH /apps/:appId/guides/:id/flag` | publisher | `{ enabled }` |
 | `POST /apps/:appId/guides/:id/rollback/:n` | publisher | Published versions only. |
 | `POST /apps/:appId/guides/:id/preview-token` | editor | `{ versionId }` → `{ token, url, expiresAt }` |
-| `GET /apps/:appId/guides/:id/analytics` | viewer | `{ counts[], steps[], startedFromHelp }` |
+| `GET /apps/:appId/guides/:id/analytics` | viewer | `{ counts[], steps[], startedFromHelp, accounts? }`. `?from=` / `?to=` (ISO date or timestamp; `from` inclusive, a date `to` covers that whole day, a timestamp `to` is exclusive; `400` when `to` isn't after `from`). `?by=account` adds `accounts: [{ accountId \| null, shown, completed, dismissed, visitors }]`: the 50 accounts shown the guide most, most first. |
+| `GET /apps/:appId/analytics` | viewer | `{ guides: [{ guideId, name, shown, completed, dismissed, completionRate }], visitors, accounts, windowDays }`. Lifetime totals per guide (`completionRate` is `completed / shown`, 0–1), ordered by `shown`; `visitors` / `accounts` are distinct over the last `windowDays` (30). |
 | `GET` / `POST /apps/:appId/pages` | viewer / editor | List (by name, with `usage: { guides, live }`) or create `{ name, routeMatch: { type, value }, startPath? }`. A pattern needs `startPath`. Names are unique per app, ignoring case. |
 | `GET /apps/:appId/pages/:pageId` | viewer | The page + `guides: [{ id, name, live, draft }]` (live versions and drafts on it). |
 | `PUT /apps/:appId/pages/:pageId` | editor; publisher if it moves live guides | Same body as `POST`. Guides on the page follow at once. |
@@ -805,7 +809,8 @@ backend, and sign in as `olivia` / `olivia` (see [Studio login details](#studio-
   normal volume; monthly partitions would make it instant at very high volume.
 - **Invitation emails are plain SMTP.** One template, no provider API or bounce handling; set
   `SMTP_URL` or keep copying links.
-- **Analytics have no per-account or per-visitor breakdown** in the Studio yet.
+- **Analytics have no per-visitor breakdown**, and the per-account one is a top-50 list, not
+  a searchable one.
 - **Shared `?guideEngine=` links** work for help-center guides only.
 - **Help-center opens and searches aren't tracked** yet. Only guides started from it are.
 - **Deferred:** metadata segments, surveys, i18n, rollout percentages, cross-app guides, staging

@@ -4,7 +4,18 @@ import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { ApiService, describeError } from '../core/api.service';
 import { AuthService } from '../core/auth.service';
-import { GUIDE_TYPES, GuideSummary, GuideType, appRoleAtLeast } from '../core/models';
+import { AppAnalytics, GUIDE_TYPES, GuideSummary, GuideType, appRoleAtLeast } from '../core/models';
+
+interface OverviewRow {
+  guideId: string;
+  name: string;
+  shown: number;
+  completed: number;
+  /** Completion rate as a whole percentage. */
+  completionPct: number;
+  /** Shown, relative to the most-shown guide (for the bar). */
+  shownPct: number;
+}
 
 @Component({
   selector: 'app-guide-list',
@@ -15,6 +26,46 @@ import { GUIDE_TYPES, GuideSummary, GuideType, appRoleAtLeast } from '../core/mo
         <h1>Guides</h1>
       </div>
     </div>
+
+    @if (overview(); as o) {
+      <section class="card">
+        <div class="section-head">
+          <h2>Analytics</h2>
+          <span class="muted small">
+            Last {{ o.windowDays }} days: {{ o.visitors }} visitor{{ o.visitors === 1 ? '' : 's' }},
+            {{ o.accounts }} account{{ o.accounts === 1 ? '' : 's' }}
+          </span>
+        </div>
+        @if (overviewRows().length === 0) {
+          <p class="muted small">No events recorded yet.</p>
+        } @else {
+          <table class="table compact">
+            <thead>
+              <tr>
+                <th>Guide</th>
+                <th class="num">Shown</th>
+                <th class="num">Completed</th>
+                <th class="num">Rate</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (r of overviewRows(); track r.guideId) {
+                <tr>
+                  <th scope="row" class="step-label" [title]="r.name">
+                    <a [routerLink]="[r.guideId]">{{ r.name }}</a>
+                  </th>
+                  <td class="num">{{ r.shown }}</td>
+                  <td class="num">{{ r.completed }}</td>
+                  <td class="num">{{ r.completionPct }}%</td>
+                  <td class="bar-cell"><div class="bar" [style.width.%]="r.shownPct"></div></td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        }
+      </section>
+    }
 
     @if (canEdit()) {
       <section class="card">
@@ -110,6 +161,21 @@ export class GuideListComponent {
   );
 
   protected readonly guides = signal<GuideSummary[]>([]);
+  /** Null until loaded; the card is hidden (not an error) if the rollup fails. */
+  protected readonly overview = signal<AppAnalytics | null>(null);
+  /** Guides that were shown at least once, most-shown first (the backend's order). */
+  protected readonly overviewRows = computed<OverviewRow[]>(() => {
+    const guides = (this.overview()?.guides ?? []).filter((g) => g.shown > 0);
+    const max = Math.max(1, ...guides.map((g) => g.shown));
+    return guides.map((g) => ({
+      guideId: g.guideId,
+      name: g.name,
+      shown: g.shown,
+      completed: g.completed,
+      completionPct: Math.round(g.completionRate * 100),
+      shownPct: (g.shown / max) * 100,
+    }));
+  });
   protected readonly loading = signal(true);
   protected readonly creating = signal(false);
   protected readonly error = signal<string | null>(null);
@@ -131,6 +197,11 @@ export class GuideListComponent {
 
   private load(appId: string): void {
     this.loading.set(true);
+    // The rollup is a nice-to-have on this page: failures just hide the card.
+    this.api.appAnalytics(appId).subscribe({
+      next: (o) => this.overview.set(o),
+      error: () => this.overview.set(null),
+    });
     this.api.listGuides(appId).subscribe({
       next: (guides) => {
         this.guides.set(guides);
