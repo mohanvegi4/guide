@@ -5,7 +5,7 @@ import { StudioRequest } from '../../auth/studio';
 import { HttpError } from '../../httpError';
 import { generatePublicKey, generateSigningSecret } from '../../keys';
 import { sanitizePlainText } from '../../sanitize';
-import { APP_COLUMNS, AppRow, createApp, createOrgWithApp, installSnippet } from '../../services/orgs';
+import { APP_COLUMNS, AppRow, HELP_POSITIONS, createApp, createOrgWithApp, installSnippet } from '../../services/orgs';
 import { idParam, parseBody, requireAppRole, requireOrgRole, studio, websitesSchema } from './context';
 
 export const orgsRouter = Router();
@@ -150,6 +150,7 @@ const appPatchSchema = z
       .string()
       .regex(/^#[0-9a-fA-F]{6}$/, 'must be a hex color like #4f46e5')
       .optional(),
+    helpPosition: z.enum(HELP_POSITIONS).optional(),
   })
   .refine((v) => Object.keys(v).length > 0, 'nothing to update');
 
@@ -176,7 +177,8 @@ orgsRouter.patch(
            enabled = COALESCE($5, enabled),
            help_enabled = COALESCE($6, help_enabled),
            help_button_label = COALESCE($7, help_button_label),
-           help_button_color = COALESCE($8, help_button_color)
+           help_button_color = COALESCE($8, help_button_color),
+           help_position = COALESCE($9, help_position)
          WHERE id = $1 RETURNING ${APP_COLUMNS}`,
         [
           appId,
@@ -187,6 +189,7 @@ orgsRouter.patch(
           body.helpEnabled ?? null,
           body.helpButtonLabel ? sanitizePlainText(body.helpButtonLabel) || null : null,
           body.helpButtonColor ?? null,
+          body.helpPosition ?? null,
         ],
       );
       return result.rows[0];

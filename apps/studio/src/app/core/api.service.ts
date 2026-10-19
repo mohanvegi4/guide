@@ -9,6 +9,7 @@ import {
   GuideDetail,
   GuideSummary,
   GuideType,
+  HelpPosition,
   Invitation,
   InvitationPreview,
   Member,
@@ -32,7 +33,10 @@ export class ApiService {
 
   // ---- organizations & apps ----
   createOrg(name: string, app: { name: string; websites: string[] }) {
-    return this.http.post<{ org: { id: string; name: string }; app: App }>(`${this.base}/orgs`, { name, app });
+    return this.http.post<{ org: { id: string; name: string }; app: App }>(`${this.base}/orgs`, {
+      name,
+      app,
+    });
   }
 
   listApps(orgId: string): Observable<App[]> {
@@ -57,7 +61,8 @@ export class ApiService {
       helpEnabled?: boolean;
       helpButtonLabel?: string;
       helpButtonColor?: string;
-    }
+      helpPosition?: HelpPosition;
+    },
   ): Observable<App> {
     return this.http.patch<App>(`${this.base}/apps/${appId}`, patch);
   }
@@ -75,7 +80,11 @@ export class ApiService {
     return this.http.get<Member[]>(`${this.base}/orgs/${orgId}/members`);
   }
 
-  updateMember(orgId: string, userId: string, patch: { orgRole?: OrgRole; appRoles?: Record<string, AppRole | null> }) {
+  updateMember(
+    orgId: string,
+    userId: string,
+    patch: { orgRole?: OrgRole; appRoles?: Record<string, AppRole | null> },
+  ) {
     return this.http.patch<void>(`${this.base}/orgs/${orgId}/members/${userId}`, patch);
   }
 
@@ -87,7 +96,10 @@ export class ApiService {
     return this.http.get<Invitation[]>(`${this.base}/orgs/${orgId}/invitations`);
   }
 
-  createInvitation(orgId: string, body: { email?: string; orgRole: 'admin' | 'member'; appRoles: Record<string, AppRole> }) {
+  createInvitation(
+    orgId: string,
+    body: { email?: string; orgRole: 'admin' | 'member'; appRoles: Record<string, AppRole> },
+  ) {
     return this.http.post<Invitation & { token: string }>(`${this.base}/orgs/${orgId}/invitations`, body);
   }
 
@@ -100,7 +112,10 @@ export class ApiService {
   }
 
   acceptInvitation(token: string): Observable<{ orgId: string }> {
-    return this.http.post<{ orgId: string }>(`${this.base}/invitations/${encodeURIComponent(token)}/accept`, {});
+    return this.http.post<{ orgId: string }>(
+      `${this.base}/invitations/${encodeURIComponent(token)}/accept`,
+      {},
+    );
   }
 
   // ---- saved pages (per app) ----
@@ -173,7 +188,8 @@ export class ApiService {
 
 const MESSAGES: Record<string, string> = {
   preview_not_configured: 'Preview is not configured on the backend (PREVIEW_TOKEN_SECRET).',
-  empty_content_after_sanitize: 'A step has no content left after removing unsafe HTML (e.g. scripts). Add some text.',
+  empty_content_after_sanitize:
+    'A step has no content left after removing unsafe HTML (e.g. scripts). Add some text.',
   signing_secret_required: 'Generate a signing secret first, then require signed identity.',
   last_owner: 'An organization needs at least one owner. Make someone else an owner first.',
   invitation_used: 'This invitation has already been used.',
@@ -195,7 +211,9 @@ export function describeError(err: unknown): string {
     } | null;
     if (err.status === 0) return 'Cannot reach the backend. Is it running on :3000?';
     if (body?.error === 'page_in_use') {
-      const names = (body.details as { guides?: Array<{ name: string }> } | undefined)?.guides?.map((g) => g.name);
+      const names = (body.details as { guides?: Array<{ name: string }> } | undefined)?.guides?.map(
+        (g) => g.name,
+      );
       return `This page is used by ${names?.length ? names.join(', ') : 'guides'}. Move them to another page first.`;
     }
     if (body?.error && MESSAGES[body.error]) return MESSAGES[body.error];

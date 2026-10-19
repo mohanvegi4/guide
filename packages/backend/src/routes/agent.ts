@@ -218,9 +218,12 @@ agentApiRouter.post(
         help_enabled: boolean;
         help_button_label: string;
         help_button_color: string;
-      }>(`SELECT help_enabled, help_button_label, help_button_color FROM application WHERE id = $1`, [
-        scoped.id,
-      ]);
+        help_position: string;
+      }>(
+        `SELECT help_enabled, help_button_label, help_button_color, help_position
+         FROM application WHERE id = $1`,
+        [scoped.id],
+      );
       const s = settings.rows[0];
       if (!s?.help_enabled || !(await engineEnabled(client, scoped))) return { enabled: false, guides: [] };
       const rows = await client.query(
@@ -233,7 +236,11 @@ agentApiRouter.post(
       );
       return {
         enabled: true,
-        button: { label: s.help_button_label, color: s.help_button_color },
+        button: {
+          label: s.help_button_label,
+          color: s.help_button_color,
+          position: s.help_position,
+        },
         guides: rows.rows.map((r) => ({
           id: r.id,
           versionId: r.version_id,

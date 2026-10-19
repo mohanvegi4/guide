@@ -5,7 +5,7 @@ import { Observable } from 'rxjs';
 import { ApiService, describeError } from '../core/api.service';
 import { runRequest } from '../core/request';
 import { AuthService } from '../core/auth.service';
-import { App } from '../core/models';
+import { App, HELP_POSITIONS, HelpPosition } from '../core/models';
 import { parseWebsites } from './websites';
 
 /**
@@ -23,10 +23,17 @@ import { parseWebsites } from './websites';
       <div class="page-header">
         <div>
           <h1>{{ a.name }} — settings</h1>
-          <p class="muted small">Public key <code>{{ a.public_key }}</code></p>
+          <p class="muted small">
+            Public key <code>{{ a.public_key }}</code>
+          </p>
         </div>
         <label class="switch big">
-          <input type="checkbox" [checked]="a.enabled" [disabled]="busy()" (change)="save({ enabled: $any($event.target).checked })" />
+          <input
+            type="checkbox"
+            [checked]="a.enabled"
+            [disabled]="busy()"
+            (change)="save({ enabled: $any($event.target).checked })"
+          />
           <span>{{ a.enabled ? 'Guides on' : 'Guides off' }}</span>
         </label>
       </div>
@@ -44,24 +51,30 @@ import { parseWebsites } from './websites';
       <section class="card">
         <div class="section-head">
           <h2>1. Install</h2>
-          <button type="button" (click)="copy(a.snippet ?? '', 'snippet')">{{ copied() === 'snippet' ? 'Copied ✓' : 'Copy snippet' }}</button>
+          <button type="button" (click)="copy(a.snippet ?? '', 'snippet')">
+            {{ copied() === 'snippet' ? 'Copied ✓' : 'Copy snippet' }}
+          </button>
         </div>
         <p class="muted small">
-          Paste this into the <code>&lt;head&gt;</code> of every page of your app, and replace <code>USER_ID</code> /
-          <code>ACCOUNT_ID</code> with your signed-in user's ids (leave the visitor out for anonymous users). Single-page
-          apps need nothing else — route changes are detected automatically. After a user signs in later, call
-          <code>guideEngine.identify(&#123; visitor: &#123; id &#125;, account: &#123; id &#125; &#125;)</code>.
+          Paste this into the <code>&lt;head&gt;</code> of every page of your app, and replace
+          <code>USER_ID</code> / <code>ACCOUNT_ID</code> with your signed-in user's ids (leave the visitor out
+          for anonymous users). Single-page apps need nothing else — route changes are detected automatically.
+          After a user signs in later, call
+          <code>guideEngine.identify(&#123; visitor: &#123; id &#125;, account: &#123; id &#125; &#125;)</code
+          >.
         </p>
         <pre class="snippet code">{{ a.snippet }}</pre>
         <p class="muted small">
-          Then mark elements guides should point at with <code>data-guide-id="…"</code>
-          (e.g. <code>&lt;button data-guide-id="invite-button"&gt;</code>).
+          Then mark elements guides should point at with <code>data-guide-id="…"</code> (e.g.
+          <code>&lt;button data-guide-id="invite-button"&gt;</code>).
         </p>
       </section>
 
       <section class="card">
         <h2>2. Websites</h2>
-        <p class="muted small">Guides only load on these sites. Include your development URL if you test locally.</p>
+        <p class="muted small">
+          Guides only load on these sites. Include your development URL if you test locally.
+        </p>
         <textarea rows="3" [(ngModel)]="websites" aria-label="Websites, one per line"></textarea>
         <div class="toolbar">
           <button type="button" (click)="saveWebsites()" [disabled]="busy()">Save websites</button>
@@ -71,13 +84,17 @@ import { parseWebsites } from './websites';
       <section class="card">
         <h2>3. Signed identity (recommended)</h2>
         <p class="muted small">
-          The snippet's key is public, so anyone could claim to be any visitor. To prevent that, have your server
-          sign each user's identity with this app's secret and pass it as <code>jwt</code>.
+          The snippet's key is public, so anyone could claim to be any visitor. To prevent that, have your
+          server sign each user's identity with this app's secret and pass it as <code>jwt</code>.
         </p>
         @if (secret()) {
-          <p class="notice small">Copy this secret now — it won't be shown again. Store it on your server only.</p>
+          <p class="notice small">
+            Copy this secret now — it won't be shown again. Store it on your server only.
+          </p>
           <pre class="snippet code">{{ secret() }}</pre>
-          <button type="button" (click)="copy(secret()!, 'secret')">{{ copied() === 'secret' ? 'Copied ✓' : 'Copy secret' }}</button>
+          <button type="button" (click)="copy(secret()!, 'secret')">
+            {{ copied() === 'secret' ? 'Copied ✓' : 'Copy secret' }}
+          </button>
           <p class="muted small">Sign on your server (Node example):</p>
           <pre class="snippet code">{{ signingExample }}</pre>
         }
@@ -104,27 +121,54 @@ import { parseWebsites } from './websites';
         <div class="section-head">
           <h2>4. Help center</h2>
           <label class="switch">
-            <input type="checkbox" [checked]="a.help_enabled" [disabled]="busy()" (change)="save({ helpEnabled: $any($event.target).checked })" />
+            <input
+              type="checkbox"
+              [checked]="a.help_enabled"
+              [disabled]="busy()"
+              (change)="save({ helpEnabled: $any($event.target).checked })"
+            />
             <span>{{ a.help_enabled ? 'On' : 'Off' }}</span>
           </label>
         </div>
         <p class="muted small">
-          A floating button (bottom right) opens a searchable list of the guides you've marked
+          A floating button opens a searchable list of the guides you've marked
           <em>List in the help center</em>. It only appears when a visitor has at least one such guide.
         </p>
         <div class="inline-form">
-          <label>Button label <input [(ngModel)]="helpLabel" maxlength="40" aria-label="Help button label" /></label>
-          <label>Button color <input type="color" [(ngModel)]="helpColor" aria-label="Help button color" /></label>
+          <label
+            >Button label <input [(ngModel)]="helpLabel" maxlength="40" aria-label="Help button label"
+          /></label>
+          <label
+            >Button color <input type="color" [(ngModel)]="helpColor" aria-label="Help button color"
+          /></label>
           <span class="help-preview" [style.background]="helpColor">? {{ helpLabel || 'Help' }}</span>
-          <button type="button" (click)="saveHelpButton()" [disabled]="busy()">Save button</button>
         </div>
-        <p class="muted small">Using your own help button instead? Hide ours and open the help center from yours:</p>
+        <div class="inline-form">
+          <label>
+            Position
+            <select [(ngModel)]="helpPosition" aria-label="Help button position">
+              @for (p of positions; track p[0]) {
+                <option [value]="p[0]">{{ p[1] }}</option>
+              }
+            </select>
+          </label>
+          <button type="button" (click)="saveHelpButton()" [disabled]="busy()">Save help button</button>
+        </div>
+        <p class="muted small">
+          Where the topic list opens — and the "Go to another page?" dialog shown when a visitor picks a topic
+          that lives elsewhere. The floating button sits in that corner (bottom right when centered).
+        </p>
+        <p class="muted small">
+          Using your own help button instead? Hide ours and open the help center from yours:
+        </p>
         <pre class="snippet code">{{ customButtonExample }}</pre>
       </section>
 
       <section class="card danger-zone">
         <h2>Public key</h2>
-        <p class="muted small">Rotating stops every installed snippet immediately until you update it with the new key.</p>
+        <p class="muted small">
+          Rotating stops every installed snippet immediately until you update it with the new key.
+        </p>
         <button type="button" class="danger" (click)="rotate()" [disabled]="busy()">Rotate public key</button>
       </section>
     } @else if (!error()) {
@@ -149,6 +193,8 @@ export class AppSettingsComponent {
   protected websites = '';
   protected helpLabel = 'Help';
   protected helpColor = '#4f46e5';
+  protected helpPosition: HelpPosition = 'bottom-right';
+  protected readonly positions = HELP_POSITIONS;
   protected readonly customButtonExample = `guideEngine.initialize({ visitor: { id: 'USER_ID' }, helpButton: false });
 
 // your button:
@@ -181,6 +227,7 @@ const token = jwt.sign(
     this.websites = a.allowed_origins.join('\n');
     this.helpLabel = a.help_button_label;
     this.helpColor = a.help_button_color;
+    this.helpPosition = a.help_position;
   }
 
   save(patch: Parameters<ApiService['updateApp']>[1]): void {
@@ -201,11 +248,19 @@ const token = jwt.sign(
   }
 
   saveHelpButton(): void {
-    this.save({ helpButtonLabel: this.helpLabel.trim() || 'Help', helpButtonColor: this.helpColor });
+    this.save({
+      helpButtonLabel: this.helpLabel.trim() || 'Help',
+      helpButtonColor: this.helpColor,
+      helpPosition: this.helpPosition,
+    });
   }
 
   generateSecret(a: App): void {
-    if (a.has_signing_secret && !confirm('Rotate the secret? Identities signed with the old one stop working.')) return;
+    if (
+      a.has_signing_secret &&
+      !confirm('Rotate the secret? Identities signed with the old one stop working.')
+    )
+      return;
     this.run(this.api.createSigningSecret(this.appId()), ({ secret }) => {
       this.secret.set(secret);
       this.app.update((prev) => (prev ? { ...prev, has_signing_secret: true } : prev));
@@ -213,7 +268,8 @@ const token = jwt.sign(
   }
 
   rotate(): void {
-    if (!confirm('Rotate the public key? Every installed snippet stops loading guides until it is updated.')) return;
+    if (!confirm('Rotate the public key? Every installed snippet stops loading guides until it is updated.'))
+      return;
     this.run(this.api.rotateKey(this.appId()), (a) => {
       this.setApp(a);
       this.message.set('New key issued — update your snippet.');
@@ -223,7 +279,7 @@ const token = jwt.sign(
   copy(text: string, what: string): void {
     void navigator.clipboard?.writeText(text).then(
       () => this.copied.set(what),
-      () => this.error.set('Could not copy — select the text and copy it manually.')
+      () => this.error.set('Could not copy — select the text and copy it manually.'),
     );
   }
 

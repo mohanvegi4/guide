@@ -36,7 +36,7 @@ describe('help center', () => {
     expect(res.status).toBe(200);
     expect(res.body).toMatchObject({
       enabled: true,
-      button: { label: 'Help', color: '#4f46e5' },
+      button: { label: 'Help', color: '#4f46e5', position: 'bottom-right' },
       guides: [
         {
           id: listed.guideId,
@@ -152,11 +152,27 @@ describe('help center', () => {
     const patch = (body: object) =>
       request(app).patch(`/v1/apps/${appId}`).set('Authorization', as('alice')).send(body);
     expect((await patch({ helpButtonColor: 'red; background:url(x)' })).status).toBe(400);
-    const ok = await patch({ helpButtonColor: '#0EA5E9', helpButtonLabel: 'Need help?' });
+    expect((await patch({ helpPosition: 'middle' })).status).toBe(400);
+    const ok = await patch({ helpButtonColor: '#0EA5E9', helpButtonLabel: 'Need help?', helpPosition: 'top-left' });
     expect(ok.body).toMatchObject({
       help_button_color: '#0EA5E9',
       help_button_label: 'Need help?',
       help_enabled: true,
+      help_position: 'top-left',
+    });
+  });
+
+  it('serves the placement to the agent', async () => {
+    const { key, appId } = await signUp('alice');
+    await liveGuide('alice', appId, { ...sampleVersion, routeMatch: { type: 'exact', value: '/t' }, help });
+    await request(app)
+      .patch(`/v1/apps/${appId}`)
+      .set('Authorization', as('alice'))
+      .send({ helpPosition: 'center' });
+    expect((await agent(key, '/help', visitor())).body.button).toEqual({
+      label: 'Help',
+      color: '#4f46e5',
+      position: 'center',
     });
   });
 

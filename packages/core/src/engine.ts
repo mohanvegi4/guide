@@ -23,7 +23,7 @@ export interface Step {
   order: number;
   type: GuideType;
   targetSelector?: string; // e.g. '[data-guide-id="invite-button"]'
-  content: string;         // sanitized HTML
+  content: string; // sanitized HTML
   position?: 'top' | 'bottom' | 'left' | 'right' | 'center';
   actions: StepAction[];
 }
@@ -44,13 +44,7 @@ export interface Guide {
   preview?: boolean;
 }
 
-export type GuideRuntimeStatus =
-  | 'idle'
-  | 'matching'
-  | 'showing'
-  | 'completed'
-  | 'dismissed'
-  | 'error';
+export type GuideRuntimeStatus = 'idle' | 'matching' | 'showing' | 'completed' | 'dismissed' | 'error';
 
 export interface GuideRuntimeState {
   guide: Guide;
@@ -71,9 +65,18 @@ export interface HelpItem extends Guide {
   };
 }
 
+/**
+ * Where the help list and its "Go to another page?" confirmation appear: a
+ * corner, or the center of the screen. The floating button sits in the
+ * chosen corner (bottom right for 'center').
+ */
+export type HelpPosition = 'bottom-right' | 'bottom-left' | 'top-right' | 'top-left' | 'center';
+
 export interface HelpButtonSettings {
   label: string;
   color: string;
+  /** Default bottom-right. */
+  position?: HelpPosition;
 }
 
 /** Help-center UI, injected like the renderer (see help-widget.ts for the default). */
@@ -83,6 +86,12 @@ export interface HelpUi {
   open(): void;
   close(): void;
   isOpen(): boolean;
+  /**
+   * Asks the visitor whether to leave for `item`'s start page (a page load,
+   * which can drop unsaved work). Calls `go` only if they agree. A UI without
+   * this method gets no confirmation: the engine navigates straight away.
+   */
+  confirmNavigation?(item: HelpItem, go: () => void): void;
 }
 
 /** The end user (Pendo calls them visitors). Only `id` is sent to the server. */
@@ -186,7 +195,11 @@ export function anonymousVisitorId(): string {
 function toWireIdentity(options: IdentityOptions): WireIdentity {
   const wire: WireIdentity = {};
   if (options.jwt) wire.jwt = options.jwt;
-  const visitorId = options.visitor?.id ? String(options.visitor.id) : options.jwt ? undefined : anonymousVisitorId();
+  const visitorId = options.visitor?.id
+    ? String(options.visitor.id)
+    : options.jwt
+      ? undefined
+      : anonymousVisitorId();
   if (visitorId) wire.visitor = { id: visitorId };
   if (options.account?.id) wire.account = { id: String(options.account.id) };
   return wire;
@@ -203,7 +216,7 @@ export class AgentClient {
   constructor(
     private apiBaseUrl: string,
     private appKey: string,
-    private identity: () => WireIdentity
+    private identity: () => WireIdentity,
   ) {}
 
   post(path: string, body: Record<string, unknown> = {}, keepalive = false): Promise<Response> {
@@ -278,9 +291,7 @@ export function matchesRoute(routeMatch: RouteMatch, currentPath: string): boole
     return routeMatch.value === currentPath;
   }
   // pattern: turn '/dashboard/*' into a simple prefix/wildcard check
-  const escaped = routeMatch.value
-    .replace(/[.+?^${}()|[\]\\]/g, '\\$&')
-    .replace(/\*/g, '.*');
+  const escaped = routeMatch.value.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*');
   return new RegExp(`^${escaped}$`).test(currentPath);
 }
 
@@ -299,7 +310,9 @@ function readLaunchParam(): { guideId: string; source: 'help' | 'link' } | null 
   try {
     const raw = new URLSearchParams(window.location.search).get(LAUNCH_PARAM);
     if (!raw) return null;
-    return raw.startsWith('help:') ? { guideId: raw.slice(5), source: 'help' } : { guideId: raw, source: 'link' };
+    return raw.startsWith('help:')
+      ? { guideId: raw.slice(5), source: 'help' }
+      : { guideId: raw, source: 'link' };
   } catch {
     return null;
   }
@@ -422,25 +435,34 @@ export class GuideEngine {
   /**
    * Starts a help-center guide for the visitor. On the guide's own page it
    * starts immediately (even if they finished it before: help is on demand).
-   * Elsewhere, the visitor is sent to the guide's start page with a launch
-   * parameter, and the guide starts when that page loads.
+   * Elsewhere, the visitor is asked first (the help UI's confirmation modal),
+   * then sent to the guide's start page with a launch parameter; the guide
+   * starts when that page loads.
    */
   launchHelpGuide(guideId: string): void {
     const item = this.helpItems.find((g) => g.id === guideId);
     if (!item || this.disabled) return;
-    this.helpUi?.close();
     const here = stripQueryAndHash(window.location.pathname);
     if (matchesRoute(item.routeMatch, here)) {
+      this.helpUi?.close();
       this.startOnDemand(item, 'help');
       return;
     }
+    let target: string;
     try {
       const url = new URL(item.help.startPath, window.location.origin);
       if (url.origin !== window.location.origin) return; // help links never leave the site
       url.searchParams.set(LAUNCH_PARAM, `help:${item.id}`);
-      this.navigate(url.pathname + url.search + url.hash);
+      target = url.pathname + url.search + url.hash;
     } catch {
-      // malformed start page: do nothing rather than break the page
+      return; // malformed start page: do nothing rather than break the page
+    }
+    const go = () => this.navigate(target);
+    if (this.helpUi?.confirmNavigation) {
+      this.helpUi.confirmNavigation(item, go);
+    } else {
+      this.helpUi?.close();
+      go();
     }
   }
 
@@ -460,7 +482,11 @@ export class GuideEngine {
     try {
       const res = await this.client.post('/help');
       if (res.ok) {
-        const data = (await res.json()) as { enabled?: unknown; guides?: unknown; button?: HelpButtonSettings } | null;
+        const data = (await res.json()) as {
+          enabled?: unknown;
+          guides?: unknown;
+          button?: HelpButtonSettings;
+        } | null;
         if (data?.enabled === true && Array.isArray(data.guides)) {
           items = (data.guides as HelpItem[]).filter((g) => g?.help && typeof g.help.title === 'string');
           if (data.button) button = data.button;
@@ -470,7 +496,11 @@ export class GuideEngine {
       // fail closed: no help center
     }
     this.helpItems = items;
-    this.helpUi?.update({ items, button, showButton: this.options?.helpButton !== false && items.length > 0 });
+    this.helpUi?.update({
+      items,
+      button,
+      showButton: this.options?.helpButton !== false && items.length > 0,
+    });
   }
 
   /** Call on every SPA route change. The install-snippet agent does this automatically. */
@@ -576,9 +606,7 @@ export class GuideEngine {
       return;
     }
 
-    const targetEl = step.targetSelector
-      ? document.querySelector(step.targetSelector)
-      : null;
+    const targetEl = step.targetSelector ? document.querySelector(step.targetSelector) : null;
 
     if (step.targetSelector && !targetEl) {
       // Target not yet in the DOM (common in SPAs) — watch for it to appear.
@@ -614,14 +642,17 @@ export class GuideEngine {
       this.activeGuides.delete(state.guide.id);
       return;
     }
-    setTimeout(() => {
-      const el = document.querySelector(step.targetSelector!);
-      if (el) {
-        this.showCurrentStep(state);
-      } else {
-        this.watchForTarget(state, step, attempt + 1);
-      }
-    }, 300 * (attempt + 1)); // backoff
+    setTimeout(
+      () => {
+        const el = document.querySelector(step.targetSelector!);
+        if (el) {
+          this.showCurrentStep(state);
+        } else {
+          this.watchForTarget(state, step, attempt + 1);
+        }
+      },
+      300 * (attempt + 1),
+    ); // backoff
   }
 
   private observeTarget(guideId: string, step: Step): void {
@@ -632,7 +663,7 @@ export class GuideEngine {
       // host.style on every render, which is itself an attribute mutation
       // under <body> and would otherwise re-trigger this observer forever.
       const external = mutations.some(
-        (m) => !(m.target instanceof Element && m.target.closest('[data-guide-host]'))
+        (m) => !(m.target instanceof Element && m.target.closest('[data-guide-host]')),
       );
       if (!external || frameScheduled) return;
 
@@ -646,7 +677,8 @@ export class GuideEngine {
         // Only for the step this observer was created for, and against the
         // target as it is NOW — SPAs often re-mount elements, so a captured
         // element reference can go stale. If it's gone, keep the last position.
-        if (!state || state.status !== 'showing' || state.guide.steps[state.currentStepIndex] !== step) return;
+        if (!state || state.status !== 'showing' || state.guide.steps[state.currentStepIndex] !== step)
+          return;
         const target = document.querySelector(step.targetSelector!);
         if (target) this.renderer?.renderStep(state.guide, step, target);
       });
@@ -696,7 +728,7 @@ export class GuideEngine {
     state: GuideRuntimeState,
     stepId: string | undefined,
     eventType: GuideEventPayload['eventType'],
-    metadata?: Record<string, unknown>
+    metadata?: Record<string, unknown>,
   ): void {
     if (!this.options || !this.eventQueue) return;
     // Authors clicking through a preview must not pollute real analytics.

@@ -17,6 +17,7 @@ const app: App = {
   help_enabled: true,
   help_button_label: 'Help',
   help_button_color: '#4f46e5',
+  help_position: 'bottom-right',
   created_at: '2026-10-19T00:00:00Z',
   role: 'app_admin',
   snippet: "<script>…'ge_pk_0123'…</script>",
@@ -51,25 +52,36 @@ describe('AppSettingsComponent', () => {
   it('locks "require signed identity" until a signing secret exists', async () => {
     const toggle = (el: HTMLElement) =>
       [...el.querySelectorAll<HTMLInputElement>('input[type=checkbox]')].find((i) =>
-        i.parentElement?.textContent?.includes('Require signed identity')
+        i.parentElement?.textContent?.includes('Require signed identity'),
       )!;
     expect(toggle(await render()).disabled).toBe(true);
     TestBed.resetTestingModule();
     expect(toggle(await render({ has_signing_secret: true })).disabled).toBe(false);
   });
 
-  it('saves the help button label and color', async () => {
+  it('saves the help button label, color and placement', async () => {
     const el = await render();
-    const card = [...Array.from(el.querySelectorAll('section.card'))].find((c) => c.textContent?.includes('Help center'))!;
+    const card = [...Array.from(el.querySelectorAll('section.card'))].find((c) =>
+      c.textContent?.includes('Help center'),
+    )!;
     const [label, color] = Array.from(card.querySelectorAll<HTMLInputElement>('.inline-form input'));
     label.value = 'Need help?';
     label.dispatchEvent(new Event('input'));
     color.value = '#0ea5e9';
     color.dispatchEvent(new Event('input'));
-    [...Array.from(card.querySelectorAll('button'))].find((b) => b.textContent?.includes('Save button'))!.click();
+    const position = card.querySelector<HTMLSelectElement>('select[aria-label="Help button position"]')!;
+    position.value = 'center';
+    position.dispatchEvent(new Event('change'));
+    [...Array.from(card.querySelectorAll('button'))]
+      .find((b) => b.textContent?.includes('Save help button'))!
+      .click();
     const req = http.expectOne('/api/v1/apps/a1');
     expect(req.request.method).toBe('PATCH');
-    expect(req.request.body).toEqual({ helpButtonLabel: 'Need help?', helpButtonColor: '#0ea5e9' });
+    expect(req.request.body).toEqual({
+      helpButtonLabel: 'Need help?',
+      helpButtonColor: '#0ea5e9',
+      helpPosition: 'center',
+    });
     req.flush({ ...app, help_button_label: 'Need help?', help_button_color: '#0ea5e9' });
   });
 });

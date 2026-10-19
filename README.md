@@ -138,22 +138,40 @@ npm run dev --workspace=apps/demo                       # demo site: http://loca
    card, then tooltips on Projects, Invite teammates, the sign-in box and Help). Finish or skip
    it and it won't show again for that visitor; replay it any time from **? Help**. Use the
    "Sign in as" box to switch visitor and account, which exercises `guideEngine.identify()`.
-2. **Studio:** paste the token `seed` printed. Open **Demo site → Guides → Welcome tour** to see
+2. **Studio:** paste the token `seed` printed (see [Studio login details](#studio-login-details)). Open **Demo site → Guides → Welcome tour** to see
    how it's built: it lives on the saved page **Dashboard** (see **Pages**), each step points
    at a `data-guide-id` anchor in `apps/demo/index.html`, and **Analytics** shows the funnel.
    Create your own guide the same way, then **Publish** and **Enable**.
 
-### Signing in with SSO locally
+### Studio login details
+
+The Studio runs at **http://localhost:4300**. There are no fixed accounts: in development you
+either paste a token, or sign in through the mock SSO provider with any username.
+
+| | Developer sign-in (paste a token) | Sign in with SSO (mock provider) |
+|---|---|---|
+| When | Default; no extra setup | After `npm run idp:up` and `OIDC_ISSUER=http://localhost:8080/default` in `packages/backend/.env` (restart the backend) |
+| User | **Dev Admin** (`dev-admin@example.com`), owner of **Demo Org** / **Demo site** | Any username you type, e.g. `owner-1`; no password |
+| Credentials | The token `npm run seed` prints (valid 8 h) | Username only. Optional claims JSON: `{"email": "owner-1@example.com", "email_verified": true, "name": "Olivia Owner"}` |
+| Where | Login page → **Developer sign-in (paste a token)** → paste → **Sign in** | Login page → **Sign in with SSO** → the mock's form |
+
+Notes:
+- A new token for Dev Admin, or for any other dev user (new users start with no organization):
+  ```bash
+  npm run mint-token --workspace=packages/backend -- --sub dev-admin --email dev-admin@example.com --name "Dev Admin"
+  ```
+- The same SSO username always gives the same user, so `owner-1` keeps their organizations
+  across sign-ins. Different usernames are different people: use `editor-1`, `viewer-1`, … to
+  try the roles, and invite them from **Members**.
+- SSO users are *not* members of the seeded Demo Org (identity comes from the provider,
+  memberships from our database). A new SSO user lands on **Welcome** to create their own
+  organization, or accepts an invitation link from Dev Admin.
+- Production: set `OIDC_ISSUER` to your real provider; the token login is disabled outside
+  development and test.
 
 ```bash
 npm run idp:up      # dev-only mock OIDC provider on http://localhost:8080
 ```
-
-Set `OIDC_ISSUER=http://localhost:8080/default` in `packages/backend/.env` and restart the
-backend. **Sign in with SSO** appears on the login page. On the mock's page, enter any username
-plus, optionally, `{"email": "you@example.com", "email_verified": true, "name": "You"}`.
-
-New users land on **Welcome**, where they create their organization and first app.
 
 ---
 
@@ -304,8 +322,8 @@ Name the parts of your app once and reuse them in every guide, like Pendo's tagg
 
 ### Help center
 
-A floating **Help** button sits at the bottom right and opens **"How can we help?"**, a
-searchable list of guides.
+A floating **Help** button (bottom right by default; the corner is an app setting) opens
+**"How can we help?"**, a searchable list of guides.
 
 **How the list is built**
 - It lists the guides authors marked **List in the help center**, filtered like everything else:
@@ -320,9 +338,12 @@ searchable list of guides.
 
 **Starting a guide**
 - **On the guide's own page:** it starts right away.
-- **Anywhere else:** the visitor gets a normal page load to the guide's **start page** with
-  `?guideEngine=help:<guide id>`. The agent starts the guide on arrival and removes the
-  parameter. This is the same approach as Pendo's guide permalinks.
+- **Anywhere else:** the list says so ("Opens on `/team`"), and choosing the topic first asks
+  **"Go to another page?"** with *Take me there* / *Stay here*, since leaving is a page load that
+  can drop unsaved work. *Stay here* (or Esc) returns to the list. On *Take me there* the visitor
+  gets a normal page load to the guide's **start page** with `?guideEngine=help:<guide id>`; the
+  agent starts the guide on arrival and removes the parameter. This is the same approach as
+  Pendo's guide permalinks, plus the confirmation.
 - A plain `?guideEngine=<guide id>` link (for example from support staff) does the same for any
   help-center guide.
 
@@ -339,8 +360,11 @@ packages they're `GuideService.openHelp()` (Angular), `useGuideEngine().openHelp
 `engine.openHelp()` (core).
 
 **Settings and analytics**
-- **Studio → Install & settings → Help center:** switch it on or off for the app, and set the
-  button label and color.
+- **Studio → Install & settings → Help center:** switch it on or off for the app; set the
+  button label and color; and pick where the topic list opens: a **corner** (bottom right by
+  default, or bottom left, top right, top left) or the **center of the screen**. The
+  **"Go to another page?"** dialog always appears in the same place as the list, and the button
+  sits in the chosen corner (bottom right when the list is centered).
 - Guides started from the help center are tagged `source: help` on their events. The guide's
   Analytics panel shows how often that happened.
 
@@ -366,8 +390,11 @@ packages they're `GuideService.openHelp()` (Angular), `useGuideEngine().openHelp
    `pattern` each `*` matches anything.
 5. **Finding the target.** If the anchor isn't in the DOM yet, the agent retries with backoff (10
    attempts, about 16.5 s), then records `guide_error` with `target_not_found`.
-6. **Rendering** happens in a Shadow DOM card, so your styles don't leak in. It follows the
-   target as the page changes, including when your framework re-creates the element.
+6. **Rendering** happens in a Shadow DOM card, so your styles don't leak in. A targeted step
+   puts the focus on its element: it's scrolled into view if off-screen, and **spotlighted**: a
+   ring around it with the rest of the page dimmed (the element stays clickable). The card and
+   the ring follow the target as the page changes, including when your framework re-creates
+   the element.
 7. **Events** are batched every 5 s or 20 events, sent as `text/plain` JSON (no CORS preflight),
    and flushed on `pagehide`. Dismiss and complete are sent immediately.
 
@@ -475,7 +502,7 @@ Bodies may be `text/plain` or `application/json`. Each one carries an identity:
 | `POST /orgs` | anyone | `{ name, app: { name, websites[] } }` → you become owner. |
 | `GET` / `PATCH /orgs/:orgId` | member / admin | `PATCH` takes `{ name }`. |
 | `GET` / `POST /orgs/:orgId/apps` | member / admin | members see only the apps they can access. |
-| `GET` / `PATCH /apps/:appId` | viewer / app_admin | `GET` includes `snippet`. `PATCH` takes `{ name?, websites?, identityMode?, enabled?, helpEnabled?, helpButtonLabel?, helpButtonColor? }`; the color must be hex. |
+| `GET` / `PATCH /apps/:appId` | viewer / app_admin | `GET` includes `snippet`. `PATCH` takes `{ name?, websites?, identityMode?, enabled?, helpEnabled?, helpButtonLabel?, helpButtonColor?, helpPosition? }`; the color must be hex, the position one of `bottom-right`, `bottom-left`, `top-right`, `top-left`, `center`. |
 | `POST /apps/:appId/rotate-key` | app_admin | New public key; old snippets stop working. |
 | `POST /apps/:appId/signing-secret` | app_admin | `{ secret }`, shown once. |
 | `GET /orgs/:orgId/members` | member | `[{ userId, email, name, orgRole, appRoles }]` |
@@ -535,7 +562,7 @@ A `VersionBody` is:
 | Table | Purpose |
 |---|---|
 | `organization` | A customer workspace (`created_by`). |
-| `application` | `public_key`, `allowed_origins`, `identity_mode`, `signing_secret`, `enabled` (the app switch), and the help center: `help_enabled`, `help_button_label`, `help_button_color`. |
+| `application` | `public_key`, `allowed_origins`, `identity_mode`, `signing_secret`, `enabled` (the app switch), and the help center: `help_enabled`, `help_button_label`, `help_button_color`, `help_position`. |
 | `studio_user` | People who use the Studio, keyed by (`oidc_issuer`, `oidc_sub`); created on first sign-in. |
 | `org_member` / `app_member` | Org role (owner / admin / member) and per-app role (viewer → app_admin). |
 | `invitation` | Invite links: hashed token, org role, app roles, expiry, single use. |
@@ -552,6 +579,7 @@ A `VersionBody` is:
 | `005_organizations_apps.sql` | Converts that schema into orgs and apps. Each former tenant becomes an org with a "Default app"; its events keep the old tenant as their `account_id`. Global guides move to a "Migrated global guides" org. Then every RLS policy is rebuilt on session variables. |
 | `006_help_center.sql` | Adds `guide_version.help` and the per-app help-center settings (the button color is CHECK-limited to a hex value). |
 | `007_app_pages.sql` | Adds saved pages (`app_page`, with RLS), `guide_version.page_id`, and makes `active_guide` resolve routes through pages. |
+| `008_help_position.sql` | Adds `help_position`: where the help list and its confirmation open (a corner or `center`, CHECK-limited). |
 
 ---
 

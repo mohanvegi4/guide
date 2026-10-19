@@ -345,6 +345,42 @@ describe('DOM renderer', () => {
     expect(shadow.querySelector('.actions img')).toBeNull();
   });
 
+  it('spotlights the target and scrolls it into view once per step; untargeted steps get no spotlight', () => {
+    const renderer = createDomRenderer({ advanceStep: vi.fn(), dismissGuide: vi.fn() });
+    const target = document.createElement('button');
+    document.body.appendChild(target);
+    // Off-screen (below the fold), 100x40 at (20, 900).
+    let rect = { top: 900, left: 20, width: 100, height: 40, bottom: 940, right: 120 };
+    target.getBoundingClientRect = () => rect as DOMRect;
+    const scrollIntoView = vi.fn();
+    target.scrollIntoView = scrollIntoView;
+    const step = makeStep({ id: 's1', targetSelector: '[data-guide-id="x"]' });
+
+    renderer.renderStep(makeGuide(), step, target);
+    const spotlight = document.querySelector<HTMLElement>('[data-guide-spotlight]')!;
+    expect(spotlight.style.display).toBe('block');
+    expect([
+      spotlight.style.top,
+      spotlight.style.left,
+      spotlight.style.width,
+      spotlight.style.height,
+    ]).toEqual(['896px', '16px', '108px', '48px']);
+    expect(spotlight.style.pointerEvents).toBe('none'); // the element stays clickable
+    expect(scrollIntoView).toHaveBeenCalledWith({ block: 'center', inline: 'nearest' });
+
+    // The target moved (now on screen): the ring follows, but no second scroll.
+    rect = { ...rect, top: 100, bottom: 140 };
+    renderer.renderStep(makeGuide(), step, target);
+    expect(spotlight.style.top).toBe('96px');
+    expect(scrollIntoView).toHaveBeenCalledTimes(1);
+
+    // The next step is untargeted: ring hidden. Clearing removes it.
+    renderer.renderStep(makeGuide(), makeStep({ id: 's2' }), null);
+    expect(spotlight.style.display).toBe('none');
+    renderer.clear(makeGuide().id);
+    expect(document.querySelector('[data-guide-spotlight]')).toBeNull();
+  });
+
   it('does not re-render in a loop from its own style writes (observer feedback)', async () => {
     window.history.replaceState({}, '', '/dashboard');
     const target = document.createElement('button');

@@ -34,6 +34,16 @@ export interface MyOrg {
   apps: Array<{ id: string; name: string; role: AppRole }>;
 }
 
+/** Where the help list (and its "Go to another page?" dialog) appears. */
+export const HELP_POSITIONS = [
+  ['bottom-right', 'Bottom right'],
+  ['bottom-left', 'Bottom left'],
+  ['top-right', 'Top right'],
+  ['top-left', 'Top left'],
+  ['center', 'Center of the screen'],
+] as const;
+export type HelpPosition = (typeof HELP_POSITIONS)[number][0];
+
 export interface App {
   id: string;
   org_id: string;
@@ -46,6 +56,7 @@ export interface App {
   help_enabled: boolean;
   help_button_label: string;
   help_button_color: string;
+  help_position: HelpPosition;
   created_at: string;
   role: AppRole;
   /** Present on GET /v1/apps/:id — the exact <head> snippet for this app. */

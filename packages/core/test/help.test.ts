@@ -110,7 +110,9 @@ describe('default help widget', () => {
     const search = $<HTMLInputElement>('.search');
     search.value = 'export';
     search.dispatchEvent(new Event('input'));
-    expect(Array.from(root.querySelectorAll('li .title')).map((t) => t.textContent)).toEqual(['Export a report']);
+    expect(Array.from(root.querySelectorAll('li .title')).map((t) => t.textContent)).toEqual([
+      'Export a report',
+    ]);
     search.value = 'zzz';
     search.dispatchEvent(new Event('input'));
     expect($('.empty').textContent).toContain('No topics match');
@@ -123,11 +125,59 @@ describe('default help widget', () => {
       $('.search').dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true }));
     key('ArrowDown');
     key('Enter');
+    // The engine decides what happens next (start here, or ask before leaving), so the list stays.
     expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ id: 'b' }));
-    expect(ui.isOpen()).toBe(false);
-    ui.open();
+    expect(ui.isOpen()).toBe(true);
     key('Escape');
     expect(ui.isOpen()).toBe(false);
+  });
+
+  it('says which topics open on another page', () => {
+    window.history.replaceState({}, '', '/team');
+    const { ui, root } = mount(true, [
+      helpItem('here', 'Invite a teammate'), // lives on /team
+      helpItem('there', 'Export a report', { startPath: '/reports/2026' }, '/reports/*'),
+    ]);
+    ui.open();
+    const where = Array.from(root.querySelectorAll('li')).map(
+      (li) => li.querySelector('.where')?.textContent ?? null,
+    );
+    expect(where).toEqual([null, 'Opens on /reports/2026']);
+  });
+
+  it('asks before leaving the page: Stay here returns to the list, Take me there goes', () => {
+    const { ui, $, root } = mount();
+    const item = helpItem('b', 'Export a report', { startPath: '/reports' }, '/reports');
+    const go = vi.fn();
+    ui.open();
+    ui.confirmNavigation!(item, go);
+
+    const confirm = $<HTMLElement>('.confirm');
+    expect(confirm.hidden).toBe(false);
+    expect(confirm.getAttribute('role')).toBe('alertdialog');
+    expect($<HTMLElement>('.panel:not(.confirm)').hidden).toBe(true);
+    expect(root.activeElement).toBe($('.go'));
+    expect($('#ge-help-confirm-text').textContent).toBe(
+      '“Export a report” starts on /reports. Any unsaved changes on this page may be lost.',
+    );
+    expect(ui.isOpen()).toBe(true);
+
+    $<HTMLButtonElement>('.stay').click();
+    expect(go).not.toHaveBeenCalled();
+    expect(confirm.hidden).toBe(true);
+    expect($<HTMLElement>('.panel:not(.confirm)').hidden).toBe(false); // back to the list
+    expect(root.activeElement).toBe($('.search'));
+
+    ui.confirmNavigation!(item, go);
+    $('.go').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    expect(go).not.toHaveBeenCalled();
+    expect($<HTMLElement>('.panel:not(.confirm)').hidden).toBe(false);
+
+    ui.confirmNavigation!(item, go);
+    $<HTMLButtonElement>('.go').click();
+    expect(go).toHaveBeenCalledTimes(1);
+    expect(ui.isOpen()).toBe(false);
+    expect($<HTMLElement>('.launcher').hidden).toBe(false);
   });
 
   it('renders server text as text, never HTML', () => {
@@ -137,6 +187,25 @@ describe('default help widget', () => {
     ui.open();
     expect(root.querySelector('li img')).toBeNull();
     expect(root.querySelector('li .title')!.textContent).toBe('<img src=x onerror="window.__pwned=1">Evil');
+  });
+
+  it('places the list (and the confirmation with it) in the app’s corner or mid-screen', () => {
+    const { ui } = mount();
+    const host = document.querySelector('[data-guide-help]') as HTMLElement;
+    const place = (position: string) =>
+      ui.update({
+        items: [],
+        button: { label: 'Help', color: '#4f46e5', position: position as never },
+        showButton: true,
+      });
+    expect(host.dataset.gePos).toBe('bottom-right');
+    place('top-left');
+    expect(host.dataset.gePos).toBe('top-left');
+    place('center');
+    expect(host.dataset.gePos).toBe('center');
+    // An unknown value falls back to the default corner.
+    place('middle');
+    expect(host.dataset.gePos).toBe('bottom-right');
   });
 
   it('ignores a non-hex button color', () => {
@@ -207,7 +276,30 @@ describe('engine help center', () => {
     );
   });
 
-  it('sends the visitor to the start page of a guide that lives elsewhere (a page load, like Pendo)', async () => {
+  it('asks the help UI before leaving the page, and navigates only when the visitor agrees', async () => {
+    const item = helpItem('b', 'Export', { startPath: '/reports' }, '/reports');
+    window.history.replaceState({}, '', '/dashboard');
+    mockFetch({ [R.guides]: serving(), [HELP]: helpBody(item, helpItem('a', 'Here', {}, '/dashboard')) });
+    const engine = new GuideEngine();
+    const navigate = vi.fn();
+    engine.navigate = navigate;
+    const asked: Array<{ item: HelpItem; go: () => void }> = [];
+    const help = fakeHelpUi();
+    help.ui.confirmNavigation = (i, go) => void asked.push({ item: i, go });
+    await engine.init(baseOptions, fakeRenderer().renderer, help.ui);
+
+    engine.launchHelpGuide('b');
+    expect(navigate).not.toHaveBeenCalled();
+    expect(asked.map((a) => a.item.id)).toEqual(['b']);
+    asked[0].go();
+    expect(navigate).toHaveBeenCalledWith('/reports?guideEngine=help%3Ab');
+
+    // A guide for the current page never asks.
+    engine.launchHelpGuide('a');
+    expect(asked).toHaveLength(1);
+  });
+
+  it('a help UI without confirmNavigation gets sent straight to the start page (a page load, like Pendo)', async () => {
     const item = helpItem('b', 'Export', { startPath: '/reports/2026?tab=all' }, '/reports/*');
     mockFetch({ [R.guides]: serving(), [HELP]: helpBody(item) });
     const engine = new GuideEngine();

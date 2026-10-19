@@ -42,12 +42,17 @@ export interface AppRow {
   help_enabled: boolean;
   help_button_label: string;
   help_button_color: string;
+  help_position: HelpPosition;
   created_at: string;
 }
 
+/** Where the help list (and its confirmation) appears: a corner, or mid-screen. */
+export const HELP_POSITIONS = ['bottom-right', 'bottom-left', 'top-right', 'top-left', 'center'] as const;
+export type HelpPosition = (typeof HELP_POSITIONS)[number];
+
 export const APP_COLUMNS = `id, org_id, name, public_key, allowed_origins, identity_mode,
   signing_secret IS NOT NULL AS has_signing_secret, enabled,
-  help_enabled, help_button_label, help_button_color, created_at`;
+  help_enabled, help_button_label, help_button_color, help_position, created_at`;
 
 export async function createApp(
   client: PoolClient,
