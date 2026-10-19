@@ -101,6 +101,6 @@ describe('Studio sign-in', () => {
 
   it('GET /auth/config is public and exposes no secrets', async () => {
     const res = await request(app).get('/auth/config');
-    expect(res.body).toEqual({ oidc: null, tokenPaste: true });
+    expect(res.body).toEqual({ oidc: null, tokenPaste: true, mailEnabled: false });
   });
 });

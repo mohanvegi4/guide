@@ -108,8 +108,13 @@ import {
       <section class="card">
         <h2>Invite someone</h2>
         <p class="muted small">
-          You'll get a link to send them (valid 7 days, single use). If you enter an email, only that person
-          can use it.
+          @if (mailEnabled()) {
+            Enter an email and we'll send them the invitation (valid 7 days, single use); only that person can
+            use it. Without an email you'll get a link to send yourself.
+          } @else {
+            You'll get a link to send them (valid 7 days, single use). If you enter an email, only that person
+            can use it.
+          }
         </p>
         <form class="invite-form" (ngSubmit)="invite()">
           <label>Email (optional) <input name="email" type="email" [(ngModel)]="inviteEmail" /></label>
@@ -133,8 +138,16 @@ import {
               </label>
             }
           }
-          <button class="primary" [disabled]="busy()">Create invite link</button>
+          <button class="primary" [disabled]="busy()">
+            {{ mailEnabled() && inviteEmail.trim() ? 'Send invitation' : 'Create invite link' }}
+          </button>
         </form>
+        @if (emailedTo()) {
+          <p class="small" role="status">
+            Invitation emailed to <strong>{{ emailedTo() }}</strong> — if it doesn't arrive, send them this
+            link:
+          </p>
+        }
         @if (inviteLink()) {
           <div class="preview-link">
             <input
@@ -246,7 +259,10 @@ export class MembersComponent {
   protected readonly error = signal<string | null>(null);
   protected readonly busy = signal(false);
   protected readonly inviteLink = signal<string | null>(null);
+  /** Set when the backend emailed the last invitation (the link is still shown as a fallback). */
+  protected readonly emailedTo = signal<string | null>(null);
   protected readonly copied = signal(false);
+  protected readonly mailEnabled = computed(() => this.auth.config().mailEnabled);
   protected inviteEmail = '';
   protected inviteOrgRole: 'admin' | 'member' = 'member';
   protected inviteAppRoles: Record<string, AppRole | undefined> = {};
@@ -345,8 +361,12 @@ export class MembersComponent {
         appRoles: this.inviteOrgRole === 'member' ? appRoles : {},
       }),
       (inv) => {
+        const created = inv as Invitation & { token: string };
         this.copied.set(false);
-        this.inviteLink.set(`${location.origin}/invite/${(inv as { token: string }).token}`);
+        this.inviteLink.set(`${location.origin}/invite/${created.token}`);
+        // The backend only reports emailSent when it actually handed the mail
+        // to the transport; otherwise the inviter has to send the link.
+        this.emailedTo.set(created.emailSent ? created.email : null);
         this.inviteEmail = '';
         this.inviteAppRoles = {};
       },

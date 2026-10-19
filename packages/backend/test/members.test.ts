@@ -1,6 +1,7 @@
-import { afterAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest';
 import request from 'supertest';
 import { addMember, adminPool, app, as, closePools, resetData, signUp, studioToken } from './helpers';
+import { jsonOutbox } from '../src/mail';
 
 afterAll(closePools);
 beforeEach(resetData);
@@ -123,6 +124,79 @@ describe('invitations', () => {
     const res = await invite('alice', a.orgId, { appRoles: { [b.appId]: 'app_admin' } });
     expect(res.status).toBe(400);
     expect(res.body.error).toBe('unknown_app');
+  });
+});
+
+describe('invitation emails', () => {
+  const mailEnv = {
+    SMTP_URL: 'json://',
+    MAIL_FROM: 'Guide Engine <no-reply@example.test>',
+    STUDIO_URL: 'https://studio.example.test/',
+  };
+
+  afterEach(() => {
+    process.env.SMTP_URL = '';
+    process.env.MAIL_FROM = '';
+    process.env.STUDIO_URL = '';
+    jsonOutbox.length = 0;
+  });
+
+  it('are off by default: the link is returned and nothing is sent', async () => {
+    const { orgId } = await signUp('alice');
+    const res = await invite('alice', orgId, { email: 'bob@example.com' });
+    expect(res.status).toBe(201);
+    expect(res.body.emailSent).toBe(false);
+    expect(res.body.token.length).toBeGreaterThan(20);
+    expect(jsonOutbox).toHaveLength(0);
+    expect((await request(app).get('/auth/config')).body.mailEnabled).toBe(false);
+  });
+
+  it('send the invite link when SMTP_URL, MAIL_FROM and STUDIO_URL are set', async () => {
+    Object.assign(process.env, mailEnv);
+    expect((await request(app).get('/auth/config')).body.mailEnabled).toBe(true);
+    const { orgId } = await signUp('alice');
+    const res = await invite('alice', orgId, { email: 'Bob@Example.com' });
+    expect(res.status).toBe(201);
+    expect(res.body.emailSent).toBe(true);
+    expect(jsonOutbox).toHaveLength(1);
+    const mail = jsonOutbox[0];
+    expect(mail.to).toBe('Bob@Example.com');
+    expect(mail.from).toBe(mailEnv.MAIL_FROM);
+    expect(mail.subject).toBe('alice invited you to alice org on Guide Studio');
+    const link = `https://studio.example.test/invite/${res.body.token}`;
+    expect(mail.text).toContain(link);
+    expect(mail.html).toContain(`href="${link}"`);
+    expect(mail.text).toContain('expires in 7 days');
+    // The emailed link is the real one: it opens the invitation.
+    const preview = await request(app)
+      .get(`/v1/invitations/${res.body.token}`)
+      .set('Authorization', as('bob'));
+    expect(preview.status).toBe(200);
+  });
+
+  it('escape names in the HTML body', async () => {
+    Object.assign(process.env, mailEnv);
+    const { orgId } = await signUp('alice', '<b>Acme</b> & co');
+    const res = await request(app)
+      .post(`/v1/orgs/${orgId}/invitations`)
+      .set('Authorization', `Bearer ${studioToken('alice', { name: 'Al <script>' })}`)
+      .send({ email: 'bob@example.com' });
+    expect(res.body.emailSent).toBe(true);
+    expect(jsonOutbox[0].html).toContain('Al &lt;script&gt;');
+    expect(jsonOutbox[0].html).toContain('&lt;b&gt;Acme&lt;/b&gt; &amp; co');
+    expect(jsonOutbox[0].html).not.toContain('<script>');
+  });
+
+  it('skip sending, but still create the invitation, without an email or without STUDIO_URL', async () => {
+    Object.assign(process.env, mailEnv);
+    const { orgId } = await signUp('alice');
+    expect((await invite('alice', orgId, {})).body.emailSent).toBe(false);
+    process.env.STUDIO_URL = '';
+    expect((await request(app).get('/auth/config')).body.mailEnabled).toBe(false);
+    const res = await invite('alice', orgId, { email: 'bob@example.com' });
+    expect(res.status).toBe(201);
+    expect(res.body.emailSent).toBe(false);
+    expect(jsonOutbox).toHaveLength(0);
   });
 });
 

@@ -15,6 +15,8 @@ export const EXPLICIT_AUTH = new HttpContextToken<boolean>(() => false);
 export interface AuthUiConfig {
   oidc: { issuer: string; clientId: string; scope: string } | null;
   tokenPaste: boolean;
+  /** The backend can email invitations (SMTP configured); otherwise Members shows links to copy. */
+  mailEnabled: boolean;
 }
 
 /**
@@ -36,7 +38,7 @@ export class AuthService {
   readonly token = signal<string | null>(null);
   /** The signed-in user and their orgs/apps (with roles). */
   readonly me = signal<Me | null>(null);
-  readonly config = signal<AuthUiConfig>({ oidc: null, tokenPaste: true });
+  readonly config = signal<AuthUiConfig>({ oidc: null, tokenPaste: true, mailEnabled: false });
   readonly usingSso = signal(false);
   /**
    * Support mode (platform admins only): the customer organization being

@@ -4,6 +4,7 @@ import { agentApiRouter, agentScriptRouter } from './routes/agent';
 import { studioRouter } from './routes/studio';
 import { getAuthConfig } from './auth/config';
 import { previewSecret } from './preview';
+import { loadMailConfig } from './mail';
 import { HttpError } from './httpError';
 
 /**
@@ -16,6 +17,7 @@ export function createApp(): express.Express {
   // process at boot, not fail per request.
   getAuthConfig();
   previewSecret(); // throws on a weak or reused preview secret; unset = preview off
+  loadMailConfig(); // throws on a malformed SMTP_URL / STUDIO_URL; unset = mail off
 
   const app = express();
   app.set('trust proxy', process.env.TRUST_PROXY === 'true'); // real client IPs for rate limiting behind a proxy

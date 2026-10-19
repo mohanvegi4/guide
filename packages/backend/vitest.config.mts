@@ -34,6 +34,10 @@ export default defineConfig({
       // a signing secret exercises it.
       SECRETS_KEY: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
       EVENT_RETENTION_DAYS: '',
+      // Mail is off by default; the members tests turn the json:// transport on per case.
+      SMTP_URL: '',
+      MAIL_FROM: '',
+      STUDIO_URL: '',
     },
   },
 });

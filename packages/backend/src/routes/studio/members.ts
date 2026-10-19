@@ -5,6 +5,7 @@ import { StudioRequest } from '../../auth/studio';
 import { resolveStudioContext, presentInvitation } from '../../db';
 import { HttpError, forbidden, notFound } from '../../httpError';
 import { generateInviteToken, hashToken } from '../../keys';
+import { getMailer, invitationMail, loadMailConfig } from '../../mail';
 import { idParam, parseBody, requireOrgRole, studio } from './context';
 
 export const membersRouter = Router();
@@ -164,9 +165,11 @@ async function setAppRoles(
 }
 
 // ------------------------------------------------------------
-// Invitations. There's no email service: the Studio shows the link for the
-// admin to send however they like. Single use, 7 days, revocable. Only a hash
-// of the link token is stored.
+// Invitations. Single use, 7 days, revocable. Only a hash of the link token
+// is stored. The link is always returned to the inviter to send however they
+// like; when the invitation has an email and mail is configured (SMTP_URL,
+// MAIL_FROM, STUDIO_URL), it is also emailed, and `emailSent` says whether
+// that worked.
 // ------------------------------------------------------------
 membersRouter.post(
   '/orgs/:orgId/invitations',
@@ -181,7 +184,7 @@ membersRouter.post(
       req.body,
     );
     const token = generateInviteToken();
-    const invitation = await studio(req, async (client, ctx) => {
+    const { invitation, orgName } = await studio(req, async (client, ctx) => {
       requireOrgRole(ctx, orgId, 'admin');
       const ids = Object.keys(body.appRoles);
       if (ids.length > 0) {
@@ -191,7 +194,10 @@ membersRouter.post(
         );
         if (owned.rows.length !== ids.length) throw new HttpError(400, 'unknown_app');
       }
-      return (
+      const org = await client.query<{ name: string }>(`SELECT name FROM organization WHERE id = $1`, [
+        orgId,
+      ]);
+      const invitation = (
         await client.query(
           `INSERT INTO invitation (org_id, email, org_role, app_roles, token_hash, created_by, expires_at)
            VALUES ($1, $2, $3, $4, $5, $6, now() + make_interval(days => $7))
@@ -207,8 +213,26 @@ membersRouter.post(
           ],
         )
       ).rows[0];
+      return { invitation, orgName: org.rows[0]?.name ?? 'an organization' };
     });
-    res.status(201).json({ ...invitation, token });
+
+    // Email after the transaction committed: a mail failure must neither roll
+    // the invitation back nor fail the request — the inviter still gets the link.
+    let emailSent = false;
+    const mail = loadMailConfig();
+    if (body.email && mail.studioUrl) {
+      const user = (req as StudioRequest).studioUser!;
+      emailSent = await getMailer().send(
+        invitationMail({
+          to: body.email,
+          inviterName: user.name || user.email || 'A teammate',
+          orgName,
+          link: `${mail.studioUrl}/invite/${token}`,
+          expiresInDays: INVITE_TTL_DAYS,
+        }),
+      );
+    }
+    res.status(201).json({ ...invitation, token, emailSent });
   }),
 );
 

@@ -138,6 +138,7 @@ export interface Invitation {
   app_roles: Record<string, AppRole>;
   expires_at: string;
   token?: string; // only right after creation
+  emailSent?: boolean; // only right after creation: the invite was emailed to `email`
 }
 
 export interface InvitationPreview {

@@ -69,7 +69,7 @@ describe('AuthService', () => {
   it('init() restores a stored token only if the backend still accepts it', async () => {
     sessionStorage.setItem('guide-studio-token', 'stale');
     const done = auth.init();
-    http.expectOne('/api/auth/config').flush({ oidc: null, tokenPaste: true });
+    http.expectOne('/api/auth/config').flush({ oidc: null, tokenPaste: true, mailEnabled: false });
     await Promise.resolve();
     await Promise.resolve();
     http.expectOne('/api/v1/me').flush({}, { status: 401, statusText: 'Unauthorized' });

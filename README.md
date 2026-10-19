@@ -279,7 +279,8 @@ Full guide: [`apps/studio/README.md`](apps/studio/README.md).
   admins create apps (name + websites) on **Apps**.
 - **Members.**
   - Invite people with a link (7 days, single use). If you enter an email, only that verified
-    email can accept.
+    email can accept, and when the backend has mail configured (`SMTP_URL`, `MAIL_FROM`,
+    `STUDIO_URL`) the invitation is emailed to them; the link is still shown as a fallback.
   - Owners and admins manage every app. Members get a per-app role:
 
     | App role | Can |
@@ -511,6 +512,9 @@ process at boot.
 | `EVENT_RETENTION_DAYS` | `400` in production, off elsewhere | The daily job deletes `guide_event` rows older than this. `0` turns it off. |
 | `RUN_MIGRATIONS` | `true` | Container only: apply pending migrations before starting. `false` when a release step runs `node packages/backend/dist/migrate.js`. |
 | `AGENT_BUNDLE_PATH` | `packages/agent/dist/guide-engine.js` | Where the backend reads the agent script from. |
+| `SMTP_URL` | — | Invitation emails: `smtp://user:pass@host:587` or `smtps://…`. Unset: invitations are links to copy. `json://` logs messages instead of sending (development/tests). |
+| `MAIL_FROM` | — | Required with `SMTP_URL`: the From header, e.g. `Guide Engine <no-reply@example.com>`. |
+| `STUDIO_URL` | — | The Studio's public origin (`https://studio.example.com`), for links in emails. Invitations are only emailed when it is set. |
 
 The Studio has no runtime config. It calls `/api/*` on its own origin: the dev server proxies
 that to `localhost:3000` (`apps/studio/proxy.conf.json`), and in production a reverse proxy
@@ -527,7 +531,7 @@ JSON throughout. Studio responses that are database rows use snake_case.
 | Method & path | Notes |
 |---|---|
 | `GET /health` | `{ ok: true }` |
-| `GET /auth/config` | `{ oidc: { issuer, clientId, scope } \| null, tokenPaste }`: how the Studio signs in. |
+| `GET /auth/config` | `{ oidc: { issuer, clientId, scope } \| null, tokenPaste, mailEnabled }`: how the Studio signs in, and whether invitations are emailed. |
 | `GET /agent/v1/:key/guides.js` | The agent script. The same static file for every key. |
 
 ### Agent API (public app key; CORS for the app's websites)
@@ -565,7 +569,7 @@ Bodies may be `text/plain` or `application/json`. Each one carries an identity:
 | `POST /apps/:appId/signing-secret` | app_admin | `{ secret }`, shown once. |
 | `GET /orgs/:orgId/members` | member | `[{ userId, email, name, orgRole, appRoles }]` |
 | `PATCH` / `DELETE /orgs/:orgId/members/:userId` | admin (or yourself, to leave) | `PATCH` takes `{ orgRole?, appRoles?: { appId: role \| null } }`. |
-| `GET` / `POST /orgs/:orgId/invitations` | admin | `POST` takes `{ email?, orgRole: admin\|member, appRoles }` → `{ …, token }`. |
+| `GET` / `POST /orgs/:orgId/invitations` | admin | `POST` takes `{ email?, orgRole: admin\|member, appRoles }` → `{ …, token, emailSent }`. With an `email` and mail configured, the link is emailed; `emailSent` is false when it wasn't (no mail set up, or sending failed — the request still succeeds). |
 | `DELETE /orgs/:orgId/invitations/:id` | admin | revoke |
 | `GET /invitations/:token`, `POST /invitations/:token/accept` | the link holder | |
 | `GET` / `POST /apps/:appId/guides` | viewer / editor | |
@@ -799,7 +803,8 @@ backend, and sign in as `olivia` / `olivia` (see [Studio login details](#studio-
   customer JWKS (RS256) so we never hold a verification secret at all, is on the roadmap.
 - **`guide_event` isn't partitioned.** Retention deletes in batches, which is fine for years of
   normal volume; monthly partitions would make it instant at very high volume.
-- **Invites are links you copy.** There's no email sending.
+- **Invitation emails are plain SMTP.** One template, no provider API or bounce handling; set
+  `SMTP_URL` or keep copying links.
 - **Analytics have no per-account or per-visitor breakdown** in the Studio yet.
 - **Shared `?guideEngine=` links** work for help-center guides only.
 - **Help-center opens and searches aren't tracked** yet. Only guides started from it are.
