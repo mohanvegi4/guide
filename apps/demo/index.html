@@ -35,13 +35,13 @@
     <header>
       <strong>Acme Product <span class="muted">(demo host app)</span></strong>
       <nav>
-        <a href="/dashboard" data-link>Dashboard</a>
-        <a href="/projects" data-link>Projects</a>
-        <a href="/team" data-link>Team</a>
+        <a href="/dashboard" data-link data-guide-id="nav-dashboard">Dashboard</a>
+        <a href="/projects" data-link data-guide-id="nav-projects">Projects</a>
+        <a href="/team" data-link data-guide-id="nav-team">Team</a>
         <!-- A product's own help entry point, calling the same action as the floating button. -->
-        <button type="button" class="linkish" onclick="guideEngine.openHelp()">? Help</button>
+        <button type="button" class="linkish" data-guide-id="help-link" onclick="guideEngine.openHelp()">? Help</button>
       </nav>
-      <form id="who">
+      <form id="who" data-guide-id="sign-in">
         <input name="visitor" placeholder="visitor id" aria-label="Visitor id" />
         <input name="account" placeholder="account id" aria-label="Account id" />
         <button>Sign in as</button>

@@ -134,11 +134,14 @@ npm run start --workspace=apps/studio -- --port 4300    # Studio: http://localho
 npm run dev --workspace=apps/demo                       # demo site: http://localhost:5174
 ```
 
-1. **Studio:** paste the token `seed` printed. Open **Demo site → Guides**, create a guide, give
-   step 1 the anchor `invite-button`, set the route to `/dashboard`, then **Publish** and
-   **Enable**.
-2. **Demo site:** reload `/dashboard`, and the guide appears next to "Invite teammates". Use the
+1. **Demo site:** open `/dashboard`. The seeded five-step **Welcome tour** starts (a welcome
+   card, then tooltips on Projects, Invite teammates, the sign-in box and Help). Finish or skip
+   it and it won't show again for that visitor; replay it any time from **? Help**. Use the
    "Sign in as" box to switch visitor and account, which exercises `guideEngine.identify()`.
+2. **Studio:** paste the token `seed` printed. Open **Demo site → Guides → Welcome tour** to see
+   how it's built: it lives on the saved page **Dashboard** (see **Pages**), each step points
+   at a `data-guide-id` anchor in `apps/demo/index.html`, and **Analytics** shows the funnel.
+   Create your own guide the same way, then **Publish** and **Enable**.
 
 ### Signing in with SSO locally
 
