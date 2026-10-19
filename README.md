@@ -18,6 +18,10 @@ In-app guides for any web application: a lightweight alternative to Pendo or Wal
 Guides work in any framework (Angular, React, Vue, server-rendered pages…) with no code changes
 beyond the snippet. Single-page-app navigation is detected automatically.
 
+**Docs site:** https://mohanvegi4.github.io/guide/ is built from this README and
+[`apps/studio/README.md`](apps/studio/README.md). Legal templates for running Guide Engine as a
+hosted service (terms, privacy policy, DPA, subprocessors) are in [`docs/legal/`](docs/legal/).
+
 ---
 
 ## Contents
