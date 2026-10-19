@@ -9,6 +9,7 @@ export const R = {
   guides: `/v1/agent/${KEY}/guides`,
   events: `/v1/agent/${KEY}/events`,
   preview: `/v1/agent/${KEY}/preview`,
+  errors: `/v1/agent/${KEY}/errors`,
 };
 
 export const baseOptions: SdkInitOptions = {
