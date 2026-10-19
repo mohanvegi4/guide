@@ -7,3 +7,5 @@ coverage/
 dist/
 .env.local
 .claude/worktrees/
+# prepack copies the root LICENSE into each public package; the root file is the source
+packages/*/LICENSE

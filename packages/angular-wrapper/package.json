@@ -1,17 +1,53 @@
 {
   "name": "@guide-engine/angular",
-  "version": "0.1.0",
+  "version": "0.2.0",
+  "description": "Angular service, directive and module for Guide Engine in-app guides (wraps @guide-engine/core)",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mohanvegi4/guide.git",
+    "directory": "packages/angular-wrapper"
+  },
+  "homepage": "https://github.com/mohanvegi4/guide#readme",
+  "bugs": {
+    "url": "https://github.com/mohanvegi4/guide/issues"
+  },
+  "keywords": [
+    "guide-engine",
+    "angular",
+    "in-app-guide",
+    "product-tour",
+    "onboarding",
+    "walkthrough",
+    "help-center"
+  ],
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "sideEffects": false,
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
-    "build": "tsc -p tsconfig.json"
+    "build": "tsc -p tsconfig.json",
+    "prepack": "node -e \"require('fs').copyFileSync('../../LICENSE', 'LICENSE')\""
   },
   "peerDependencies": {
-    "@angular/core": ">=14.0.0",
-    "@angular/router": ">=14.0.0"
-  },
-  "dependencies": {
-    "@guide-engine/core": "0.1.0"
+    "@angular/core": "^17.0.0 || ^18.0.0 || ^19.0.0 || ^20.0.0 || ^21.0.0",
+    "@angular/router": "^17.0.0 || ^18.0.0 || ^19.0.0 || ^20.0.0 || ^21.0.0",
+    "@guide-engine/core": "^0.2.0",
+    "rxjs": "^7.4.0"
   },
   "devDependencies": {
     "@angular/core": "^17.0.0",
