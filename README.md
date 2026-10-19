@@ -509,6 +509,9 @@ process at boot.
 | `TRUST_PROXY` | `false` | Set `true` behind a reverse proxy so rate limiting sees real client IPs. |
 | `SECRETS_KEY` | — | 32 bytes (hex or base64) that encrypt apps' signing secrets at rest (AES-256-GCM). **Required in production.** After turning it on, `npm run encrypt-secrets` re-writes secrets stored earlier. |
 | `EVENT_RETENTION_DAYS` | `400` in production, off elsewhere | The daily job deletes `guide_event` rows older than this. `0` turns it off. |
+| `LOG_LEVEL` | `info` (`silent` in test) | Lowest level written to the JSON log on stdout: `trace`, `debug`, `info`, `warn`, `error`, `fatal`. |
+| `METRICS_TOKEN` | — | Bearer token that `GET /metrics` requires. Unset: the endpoint is open in development/test and absent (404) elsewhere. |
+| `SENTRY_DSN` | — | Optional. Set to report 5xx errors to Sentry (tagged with the request id, route and status; `environment` = `NODE_ENV`, `release` = the backend version). |
 | `RUN_MIGRATIONS` | `true` | Container only: apply pending migrations before starting. `false` when a release step runs `node packages/backend/dist/migrate.js`. |
 | `AGENT_BUNDLE_PATH` | `packages/agent/dist/guide-engine.js` | Where the backend reads the agent script from. |
 
@@ -757,6 +760,83 @@ backend, and sign in as `olivia` / `olivia` (see [Studio login details](#studio-
   | `npm run seed` | Dev org + app, `apps/demo/.env.local`, and a Studio token. |
   | `npm run mint-token -- --sub <id> [--email <e>] [--name <n>] [--ttl 8h]` | A dev Studio sign-in token. |
   | `npm run sign-identity -- --secret <ge_sk_…> --visitor <id> [--account <id>]` | Sign a visitor identity, as a customer's server would. |
+
+### Observability
+
+**Logs** are JSON lines on stdout (pino), one object per event, so any log shipper can index
+them without parsing text. In a terminal, `npm run dev:backend | npx pino-pretty` is easier on
+the eyes. Every request produces one line when its response finishes:
+
+```json
+{"level":"info","time":"2026-10-19T09:12:44.120Z","service":"guide-engine-backend","requestId":"5f0c…","method":"POST","route":"/v1/agent/:key/guides","status":200,"durationMs":14,"keyPrefix":"ge_pk_3f9a1c2b","msg":"request completed"}
+```
+
+`route` is the Express route pattern, never the raw URL, and agent requests carry only the first
+characters of the public key. Bodies, headers and tokens are never logged. Errors the handler
+turns into a 4xx are logged at `info` (status and code, no stack); 5xx responses are logged at
+`error` with the stack and reported to Sentry when configured. `/health`, `/ready` and
+`/metrics` are not logged.
+
+Each request gets a **request id**: an incoming `X-Request-Id` header is honoured (up to 128
+characters of `A-Z a-z 0-9 . _ : -`), otherwise a UUID is generated. It is returned in the
+`X-Request-Id` response header and appears on every log line and Sentry event for that request,
+so a user's report ("it failed at 09:12, id 5f0c…") leads straight to the cause.
+
+**Metrics** are served at `GET /metrics` in Prometheus text format, when `METRICS_TOKEN` is set
+and the request carries `Authorization: Bearer <METRICS_TOKEN>` (in development and test the
+endpoint is open when the token is unset; elsewhere it answers 404 until one is configured):
+
+| Metric | Labels | Meaning |
+|---|---|---|
+| `http_requests_total` | `route`, `method`, `status` | Requests served, by route pattern. |
+| `http_request_duration_seconds` | `route`, `method` | Latency histogram (5 ms – 10 s buckets). |
+| `agent_requests_total` | `endpoint`, `status` | Public agent API calls: `guides`, `help`, `events`, `preview`, `script` (the agent bundle), `other`. |
+| `db_pool_total` / `db_pool_idle` / `db_pool_waiting` | — | The Postgres pool: clients open, idle, and callers waiting for one. |
+| `retention_deleted_total` | `table` | Rows the retention job deleted (`guide_event`, `agent_rate_limit`). |
+| `process_*`, `nodejs_*` | — | The default Node.js metrics (CPU, memory, event-loop lag, GC, handles). |
+
+Labels come from bounded sets (route patterns, endpoint names, tables): never an app key, an
+app, an organization or a guide id. A Prometheus job for it:
+
+```yaml
+scrape_configs:
+  - job_name: guide-engine
+    scheme: https
+    authorization:
+      type: Bearer
+      credentials: <METRICS_TOKEN>        # or credentials_file
+    static_configs:
+      - targets: ['api.example.com']
+```
+
+**Error tracking** is optional: set `SENTRY_DSN` and every 5xx the error handler produces is
+sent to Sentry, tagged `request_id`, `route` and `status`, with `environment` from `NODE_ENV`
+and `release` as `guide-engine-backend@<version>`. Nothing is loaded or sent while it is unset.
+
+**Health:** `GET /health` is liveness: `{"ok":true}` as long as the process runs, with no
+database call, so a database outage doesn't make an orchestrator restart backends (which would
+not help). `GET /ready` is readiness: it runs `SELECT 1` through the pool and answers 503
+`{"ok":false}` when Postgres is unreachable or doesn't respond within two seconds, which takes
+the instance out of rotation. The container image's `HEALTHCHECK` (and so `deploy/`'s compose
+stack) uses `/ready`.
+
+**What to alert on:**
+
+- 5xx rate: `sum(rate(http_requests_total{status=~"5.."}[5m])) / sum(rate(http_requests_total[5m]))`
+  above ~1% for 5 minutes.
+- Agent failures by endpoint: `sum by (endpoint) (rate(agent_requests_total{status=~"4..|5.."}[5m]))`
+  rising on `guides` or `events` means customers' pages are silently showing nothing (the agent
+  fails closed). A burst of `404` usually means a stale snippet; `403`, a website missing from an
+  app's list; `429`, a runaway page.
+- p95 latency: `histogram_quantile(0.95, sum by (le, route) (rate(http_request_duration_seconds_bucket[5m])))`
+  above 250 ms on `/v1/agent/:key/guides`.
+- `db_pool_waiting > 0` for more than a minute: the pool is saturated (slow queries or too few
+  connections for the replica count).
+- Retention job not running: `increase(retention_deleted_total{table="guide_event"}[2d]) == 0`
+  on a production instance with traffic, or no `retention:` log line in 25 hours.
+- Backend restarts: `changes(process_start_time_seconds[1h]) > 0`, or the orchestrator's own
+  restart counter. A restart loop at boot means a configuration or database-role check failed:
+  the reason is in the first log line.
 
 ---
 
