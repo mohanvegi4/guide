@@ -100,13 +100,21 @@ describe('event retention', () => {
     await adminPool.query(
       `INSERT INTO agent_rate_limit (bucket, window_start, count) VALUES ('old', now() - interval '2 hours', 1), ('new', now(), 1)`,
     );
+    // Agent errors age out on the same schedule (occurred_at is server-set,
+    // so old rows can only come from the fixture pool).
+    await adminPool.query(
+      `INSERT INTO agent_error (app_id, message, occurred_at)
+       VALUES ($1, 'old', now() - interval '401 days'), ($1, 'older', now() - interval '500 days'), ($1, 'new', now())`,
+      [appId],
+    );
 
     const result = await runRetention(400, () => undefined);
-    expect(result).toEqual({ events: 2, rateLimitRows: 1 });
+    expect(result).toEqual({ events: 2, errors: 2, rateLimitRows: 1 });
     const left = await adminPool.query(`SELECT COUNT(*)::int AS n FROM guide_event WHERE app_id = $1`, [
       appId,
     ]);
     expect(left.rows[0].n).toBe(2);
+    expect((await adminPool.query(`SELECT message FROM agent_error`)).rows).toEqual([{ message: 'new' }]);
     expect((await adminPool.query(`SELECT bucket FROM agent_rate_limit`)).rows).toEqual([{ bucket: 'new' }]);
   });
 

@@ -1,4 +1,5 @@
 import express, { NextFunction, Request, Response, Router } from 'express';
+import { createHash } from 'crypto';
 import { readFile } from 'fs/promises';
 import { join } from 'path';
 import { PoolClient } from 'pg';
@@ -15,8 +16,10 @@ import { RESOLVED_ROUTE_MATCH_SQL } from './studio/context';
  * The public side: what the install snippet on customers' pages talks to.
  *
  *   GET  /agent/v1/:key/guides.js      the agent script (same file for every key)
+ *   GET  /agent/v1/version             which build of the script this backend serves
  *   POST /v1/agent/:key/guides         kill switches + this visitor's active guides
  *   POST /v1/agent/:key/events         analytics batch (+ dismiss/complete state)
+ *   POST /v1/agent/:key/errors         a sampled report of an exception inside the agent
  *   POST /v1/agent/:key/preview        resolve a signed preview link
  *
  * The key is public, so: CORS only for the app's own websites, a per-key and
@@ -33,19 +36,59 @@ const KEY_PATTERN = /^ge_pk_[0-9a-f]{32}$/;
 
 // ------------------------------------------------------------
 // The agent script. One static bundle for every key — the agent reads its
-// key and the API origin from its own <script src>. Cacheable; a CDN can sit
-// in front later without code changes.
+// key and the API origin from its own <script src>.
+//
+// The snippet customers paste loads a STABLE URL, so that URL must keep
+// working forever; what changes between deploys is the content. The content
+// hash identifies it: a strong ETag, so browsers and a CDN revalidate with a
+// cheap 304, and GET /agent/v1/version reports it so a deploy (or a
+// rollback: redeploying an older image changes the hash back) can be
+// confirmed from outside. The hash is recomputed from the file as served,
+// not read from the banner build.mjs wrote — the two agree, but only the
+// served bytes count.
 // ------------------------------------------------------------
-let bundle: Promise<string> | null = null;
-function loadBundle(): Promise<string> {
+interface AgentBundle {
+  js: string;
+  /** package.json version of packages/agent, from the build banner ('unknown' without one). */
+  version: string;
+  /** First 16 hex chars of sha256 over the code after the banner line (the whole file without one). */
+  hash: string;
+}
+
+const BANNER = /^\/\* guide-engine agent (\S+) [0-9a-f]{16} \*\/\n/;
+
+/** @internal exported for unit tests */
+export function describeBundle(js: string): AgentBundle {
+  const banner = js.match(BANNER);
+  const code = banner ? js.slice(banner[0].length) : js;
+  return {
+    js,
+    version: banner?.[1] ?? 'unknown',
+    hash: createHash('sha256').update(code).digest('hex').slice(0, 16),
+  };
+}
+
+let bundle: Promise<AgentBundle> | null = null;
+function loadBundle(): Promise<AgentBundle> {
   const path =
     process.env.AGENT_BUNDLE_PATH ?? join(__dirname, '..', '..', '..', 'agent', 'dist', 'guide-engine.js');
-  bundle ??= readFile(path, 'utf-8').catch((err) => {
-    bundle = null; // retry on the next request (e.g. after `npm run build`)
-    throw err;
-  });
+  bundle ??= readFile(path, 'utf-8')
+    .then(describeBundle)
+    .catch((err) => {
+      bundle = null; // retry on the next request (e.g. after `npm run build`)
+      throw err;
+    });
   return bundle;
 }
+
+/**
+ * Browsers revalidate after 5 minutes; a CDN keeps it for an hour and may
+ * serve the stale copy for a day while it refetches in the background
+ * (stale-while-revalidate), so an origin blip never takes the script down.
+ * Either way a new build (or a rollback) is picked up within minutes: the
+ * ETag differs, so the revalidation returns the new file.
+ */
+const SCRIPT_CACHE_CONTROL = 'public, max-age=300, s-maxage=3600, stale-while-revalidate=86400';
 
 agentScriptRouter.get('/:key/guides.js', (req, res) => {
   if (!KEY_PATTERN.test(req.params.key)) {
@@ -53,14 +96,28 @@ agentScriptRouter.get('/:key/guides.js', (req, res) => {
     return;
   }
   loadBundle()
-    .then((js) => {
+    .then((b) => {
       res
         .type('application/javascript')
-        .set('Cache-Control', 'public, max-age=300')
+        .set('Cache-Control', SCRIPT_CACHE_CONTROL)
         .set('Cross-Origin-Resource-Policy', 'cross-origin')
-        .send(js);
+        .set('ETag', `"${b.hash}"`);
+      // req.fresh compares If-None-Match against the ETag set above.
+      if (req.fresh) {
+        res.status(304).end();
+        return;
+      }
+      res.send(b.js);
     })
     .catch(() => res.status(503).type('application/javascript').send('/* agent bundle not built */'));
+});
+
+// GET /agent/v1/version — no key needed: a cheap uptime / deploy check.
+// Never cached, so it always says what this origin serves right now.
+agentScriptRouter.get('/version', (_req, res) => {
+  loadBundle()
+    .then((b) => res.set('Cache-Control', 'no-store').json({ version: b.version, hash: b.hash }))
+    .catch(() => res.status(503).set('Cache-Control', 'no-store').json({ error: 'agent_bundle_not_built' }));
 });
 
 // ------------------------------------------------------------
@@ -377,6 +434,47 @@ async function recordFinishedGuides(
     ],
   );
 }
+
+// ------------------------------------------------------------
+// POST /v1/agent/:key/errors — an exception the agent swallowed (sampled
+// client-side, at most a few per page load). Free text from a public
+// endpoint: length-capped here, stored as is, and only ever rendered as
+// text. Per app, at most ERROR_CAP_PER_HOUR rows an hour are kept, so one
+// broken page on a busy site can't fill the table; beyond that the report
+// is acknowledged and dropped.
+// ------------------------------------------------------------
+const ERROR_CAP_PER_HOUR = 1000;
+
+const errorReportSchema = z.object({
+  message: z.string().min(1).max(500),
+  stack: z.string().max(4000).optional(),
+  url: z.string().max(2000).optional(),
+  agentVersion: z.string().max(50).optional(),
+});
+
+agentApiRouter.post(
+  '/errors',
+  asyncHandler(async (req, res) => {
+    const parsed = errorReportSchema.safeParse(req.body);
+    if (!parsed.success) throw new HttpError(400, 'invalid_body');
+    const report = parsed.data;
+
+    const accepted = await inApp(req, async (client, scoped) => {
+      const recent = await client.query<{ n: number }>(
+        `SELECT COUNT(*)::int AS n FROM agent_error
+         WHERE app_id = $1 AND occurred_at > now() - interval '1 hour'`,
+        [scoped.id],
+      );
+      if (recent.rows[0].n >= ERROR_CAP_PER_HOUR) return false;
+      await client.query(
+        `INSERT INTO agent_error (app_id, message, stack, agent_version, url) VALUES ($1, $2, $3, $4, $5)`,
+        [scoped.id, report.message, report.stack ?? null, report.agentVersion ?? null, report.url ?? null],
+      );
+      return true;
+    });
+    res.status(202).json({ accepted });
+  }),
+);
 
 // ------------------------------------------------------------
 // POST /v1/agent/:key/preview — resolve a signed preview link to the exact

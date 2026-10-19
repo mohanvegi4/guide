@@ -28,7 +28,10 @@ describe('the install script', () => {
     const res = await request(app).get(`/agent/v1/${key}/guides.js`);
     expect(res.status).toBe(200);
     expect(res.headers['content-type']).toMatch(/javascript/);
-    expect(res.headers['cache-control']).toBe('public, max-age=300');
+    expect(res.headers['cache-control']).toBe(
+      'public, max-age=300, s-maxage=3600, stale-while-revalidate=86400',
+    );
+    expect(res.headers['cross-origin-resource-policy']).toBe('cross-origin');
     expect(res.text).toContain('__guideEngineTestBundle');
   });
 

@@ -4,6 +4,7 @@ import { orgsRouter } from './orgs';
 import { membersRouter } from './members';
 import { guidesRouter } from './guides';
 import { pagesRouter } from './pages';
+import { errorsRouter } from './errors';
 import { platformRouter } from './platform';
 
 /**
@@ -16,4 +17,5 @@ studioRouter.use(orgsRouter);
 studioRouter.use(membersRouter);
 studioRouter.use('/apps/:appId/guides', guidesRouter);
 studioRouter.use('/apps/:appId/pages', pagesRouter);
+studioRouter.use('/apps/:appId/errors', errorsRouter);
 studioRouter.use('/platform', platformRouter);
