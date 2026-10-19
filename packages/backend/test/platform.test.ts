@@ -18,9 +18,9 @@ async function makePlatformAdmin(sub: string): Promise<string> {
 
 const platform = (sub: string) => ({
   get: (path: string) => request(app).get(`/v1/platform${path}`).set('Authorization', as(sub)),
-  put: (path: string, body: unknown) =>
+  put: (path: string, body: object) =>
     request(app).put(`/v1/platform${path}`).set('Authorization', as(sub)).send(body),
-  patch: (path: string, body: unknown) =>
+  patch: (path: string, body: object) =>
     request(app).patch(`/v1/platform${path}`).set('Authorization', as(sub)).send(body),
 });
 

@@ -8,7 +8,7 @@ export type RateLimiter = (key: string) => boolean | Promise<boolean>;
  * in web pages), so each key+client gets a request budget per minute. This is
  * per process: right for development and tests, and for a single instance.
  */
-export function createRateLimiter(limit: number, windowMs = 60_000): RateLimiter {
+export function createRateLimiter(limit: number, windowMs = 60_000): (key: string, now?: number) => boolean {
   const windows = new Map<string, { count: number; resetAt: number }>();
   let lastSweep = Date.now();
 
