@@ -380,7 +380,10 @@ packages they're `GuideService.openHelp()` (Angular), `useGuideEngine().openHelp
 ## How a guide is chosen and shown
 
 1. **Startup.** The agent finds its key and API host from its own `<script src>`, then replays
-   any queued `initialize` / `identify` calls.
+   any queued `initialize` / `identify` calls. The script is the same file for every key, served
+   with a content-hash `ETag` so browsers and a CDN revalidate cheaply (see
+   [Deploying](#the-agent-script-caching-and-rollbacks)); `guideEngine.version` says which build
+   is on the page.
 2. **Preview links.** If the URL has `?guidePreview=<token>`, the agent asks the backend to
    verify it. If valid, it renders **only** that version, with a "Preview" badge and no
    analytics. If invalid, it carries on normally.
@@ -404,6 +407,13 @@ packages they're `GuideService.openHelp()` (Angular), `useGuideEngine().openHelp
    the element.
 7. **Events** are batched every 5 s or 20 events, sent as `text/plain` JSON (no CORS preflight),
    and flushed on `pagehide`. Dismiss and complete are sent immediately.
+8. **Errors.** Fail silent also means the agent reports what it swallowed: an exception in
+   startup, route evaluation, rendering or a click handler goes to
+   `POST /v1/agent/<key>/errors` with its message, stack, the page URL and the agent version.
+   Sampled client-side (10 %, at most 5 per page load, `keepalive`) and capped server-side
+   (1000 per app per hour, beyond which reports are acknowledged and dropped), so a page that
+   throws in a loop can't flood anything. The newest show up under **Recent agent errors** in the
+   app's settings; the visitor never sees any of it.
 
 ---
 
@@ -528,7 +538,8 @@ JSON throughout. Studio responses that are database rows use snake_case.
 |---|---|
 | `GET /health` | `{ ok: true }` |
 | `GET /auth/config` | `{ oidc: { issuer, clientId, scope } \| null, tokenPaste }`: how the Studio signs in. |
-| `GET /agent/v1/:key/guides.js` | The agent script. The same static file for every key. |
+| `GET /agent/v1/:key/guides.js` | The agent script. The same static file for every key, with a strong `ETag` (its content hash), `Cache-Control: public, max-age=300, s-maxage=3600, stale-while-revalidate=86400` and `Cross-Origin-Resource-Policy: cross-origin`; `If-None-Match` is answered with `304`. |
+| `GET /agent/v1/version` | `{ version, hash }` of the script this backend serves (no key): a cheap uptime and deploy check. `Cache-Control: no-store`. |
 
 ### Agent API (public app key; CORS for the app's websites)
 
@@ -540,6 +551,7 @@ Bodies may be `text/plain` or `application/json`. Each one carries an identity:
 | `POST /v1/agent/:key/guides` | identity → `{ enabled, guides: [{ id, versionId, name, type, steps, routeMatch }] }` |
 | `POST /v1/agent/:key/events` | identity + `{ events: [{ guideId, guideVersionId, stepId?, sessionId, eventType, occurredAt, metadata? }] }` (1–100) → `202 { accepted }` |
 | `POST /v1/agent/:key/preview` | `{ token }` → the previewed guide with `preview: true` |
+| `POST /v1/agent/:key/errors` | `{ message (1–500 chars), stack? (≤ 4000), url? (≤ 2000), agentVersion? }` → `202 { accepted }`. `accepted: false` once the app already has 1000 reports in the last hour. |
 | `POST /v1/agent/:key/help` | identity → `{ enabled, button: { label, color }, guides: [{ …guide, help: { title, description, keywords, startPath } }] }`. The help-center list; not route-filtered, and includes guides the visitor already finished. |
 
 `eventType` is one of `guide_shown`, `guide_step_viewed`, `guide_step_completed`,
@@ -552,7 +564,7 @@ Bodies may be `text/plain` or `application/json`. Each one carries an identity:
 | `GET /me` | anyone signed in | `{ user: { id, email, name, platformAdmin }, orgs: [{ id, name, role, suspendedAt, apps: [{ id, name, role }] }] }`. Creates the user on first sign-in. |
 | `GET` / `PUT` / `DELETE /orgs/:orgId/support-access` | admin / owner / owner | `PUT` takes `{ days }` (1–90) → `{ active, until, grantedBy, maxDays, log[] }`. |
 | `GET /support-context` | platform admin, with `X-Support-Org: <orgId>` | The organization as a viewer sees it, if support access is open; otherwise 404. Any `/v1` org/app read works the same way under that header (read-only, logged). |
-| `GET /platform/orgs`, `GET /platform/orgs/:orgId` | platform admin | Organizations with owners and usage; one with its apps. 403 for everyone else. |
+| `GET /platform/orgs`, `GET /platform/orgs/:orgId` | platform admin | Organizations with owners and usage; one with its apps (each with `usage: { guides, events30d, errors24h }`). 403 for everyone else. |
 | `PUT /platform/orgs/:orgId/suspension` | platform admin | `{ suspended }` |
 | `PATCH /platform/apps/:appId` | platform admin | `{ enabled }` |
 | `GET` / `PUT /platform/kill-switch` | platform admin | `{ enabled }` |
@@ -563,6 +575,7 @@ Bodies may be `text/plain` or `application/json`. Each one carries an identity:
 | `GET` / `PATCH /apps/:appId` | viewer / app_admin | `GET` includes `snippet`. `PATCH` takes `{ name?, websites?, identityMode?, enabled?, helpEnabled?, helpButtonLabel?, helpButtonColor?, helpPosition? }`; the color must be hex, the position one of `bottom-right`, `bottom-left`, `top-right`, `top-left`, `center`. |
 | `POST /apps/:appId/rotate-key` | app_admin | New public key; old snippets stop working. |
 | `POST /apps/:appId/signing-secret` | app_admin | `{ secret }`, shown once. |
+| `GET /apps/:appId/errors?limit=50` | viewer | The newest agent errors (1–200): `[{ id, message, stack, agentVersion, url, occurredAt }]`. |
 | `GET /orgs/:orgId/members` | member | `[{ userId, email, name, orgRole, appRoles }]` |
 | `PATCH` / `DELETE /orgs/:orgId/members/:userId` | admin (or yourself, to leave) | `PATCH` takes `{ orgRole?, appRoles?: { appId: role \| null } }`. |
 | `GET` / `POST /orgs/:orgId/invitations` | admin | `POST` takes `{ email?, orgRole: admin\|member, appRoles }` → `{ …, token }`. |
@@ -628,6 +641,7 @@ A `VersionBody` is:
 | `app_page` | Saved pages per app: `name`, `match_type`, `match_value`, `start_path`. |
 | `guide` / `guide_version` | Guides per app. Numbered versions hold steps (JSONB), `page_id` (a saved page) and/or `route_match` (a custom route, or the page's route snapshot), dates, `account_ids` and `help` (the help-center listing). `published_at IS NULL` means the draft, at most one per guide. Published rows are immutable. |
 | `guide_event` | Analytics: app, guide, version, step, `visitor_id`, `account_id`. |
+| `agent_error` | Exceptions the agent reported from an app's pages: `message`, `stack`, `agent_version`, `url`, `occurred_at`. Written by the agent, read by the app's members and platform admins, deleted by retention. Free text: only ever rendered as text. |
 | `user_guide_state` | Per (app, visitor, guide): dismissed or completed, plus `last_seen_version`. |
 | `system_config` | The global kill switch (`guide_engine_enabled`). |
 | `active_guide` (view) | Published, enabled guides inside their date window, with `route_match` resolved through the saved page when there is one (`security_invoker`). |
@@ -640,6 +654,7 @@ A `VersionBody` is:
 | `007_app_pages.sql` | Adds saved pages (`app_page`, with RLS), `guide_version.page_id`, and makes `active_guide` resolve routes through pages. |
 | `008_help_position.sql` | Adds `help_position`: where the help list and its confirmation open (a corner or `center`, CHECK-limited). |
 | `009_platform_admin.sql` | Platform admins, organization suspension, support access and its log, the `*_platform_select` policies, and a stricter `guide_version` select policy. |
+| `011_agent_delivery.sql` | `agent_error` with its RLS: agent insert/select for its own app (the hourly cap counts in the same session), Studio and platform select, retention select/delete. |
 
 ---
 
@@ -655,10 +670,10 @@ npm test --workspace=apps/studio          # Studio components and services
 
 | Suite | Tests | Covers |
 |---|---|---|
-| **Backend** | 177 | self-serve orgs; apps and settings; the role matrix; invitations; members; saved pages; platform admins and support access (consent, read-only, logging, RLS); secrets at rest, the shared rate limiter, retention, production boot checks; org/app isolation through the API **and directly in RLS** (including replaying the owner bootstrap and forging memberships); the agent API (origins, keys, identity modes, account targeting, kill switches, events and per-visitor state, preview); the guide lifecycle; sanitization; stable step ids; analytics; OIDC (a local JWKS server, algorithm confusion); and migration 005's data conversion |
-| **Core** | 58 | includes the help widget (search, keyboard, safe rendering) and help launches (same page, other page, arrival, shared links) |
-| **Agent** | 6 | includes `openHelp` queued before load |
-| **Studio** | 28 | guide list and editor (saved pages), Pages, app settings, the Administration page |
+| **Backend** | 191 | self-serve orgs; apps and settings; the role matrix; invitations; members; saved pages; platform admins and support access (consent, read-only, logging, RLS); secrets at rest, the shared rate limiter, retention (events and agent errors), production boot checks; the agent script's ETag / 304 / cache headers and the version endpoint; agent error reports (validation, the hourly cap, the Studio list, RLS isolation, platform counts); org/app isolation through the API **and directly in RLS** (including replaying the owner bootstrap and forging memberships); the agent API (origins, keys, identity modes, account targeting, kill switches, events and per-visitor state, preview); the guide lifecycle; sanitization; stable step ids; analytics; OIDC (a local JWKS server, algorithm confusion); and migration 005's data conversion |
+| **Core** | 65 | includes the help widget (search, keyboard, safe rendering), help launches (same page, other page, arrival, shared links) and error reporting (sampling, the per-page cap, never throwing) |
+| **Agent** | 6 | includes `openHelp` queued before load and the build-time version |
+| **Studio** | 29 | guide list and editor (saved pages), Pages, app settings (including the agent-error list), the Administration page |
 
 Type-checking is part of every `test` script, with strict TypeScript throughout.
 
@@ -713,7 +728,31 @@ Use the two images with these guarantees in place:
   (an audience mapper on a client scope).
 - Serve the Studio statically with an SPA fallback and proxy `/api/*` to the backend with the
   prefix removed (`apps/studio/nginx.conf.template` does both).
-- A CDN in front of `/agent/v1/*/guides.js` is a drop-in: it's a static, cacheable file.
+- A CDN in front of `/agent/v1/*` is a drop-in (next section).
+
+### The agent script: caching and rollbacks
+
+The snippet customers paste loads `https://<api>/agent/v1/<key>/guides.js`. That URL is a
+**permanent contract**: it must keep working for every snippet ever pasted, so versioning lives
+in the response, not the URL.
+
+- `packages/agent/build.mjs` writes the bundle with a first-line banner,
+  `/* guide-engine agent <version> <hash> */` (`<version>` from `packages/agent/package.json`,
+  `<hash>` the first 16 hex chars of the sha256 of the code that follows). The backend reads the
+  version from the banner and recomputes the hash from the file it serves.
+- The script is served with a **strong `ETag`** (`"<hash>"`), `If-None-Match` → `304`, and
+  `Cache-Control: public, max-age=300, s-maxage=3600, stale-while-revalidate=86400`: browsers
+  revalidate after 5 minutes, a CDN keeps it for an hour and may serve the stale copy for a day
+  while it refetches in the background, so an origin blip never takes the script off customers'
+  pages. Put a CDN in front of `/agent/v1/*` as is; nothing else in the API is cacheable.
+- **Deploys and rollbacks** are the same mechanism: a new image serves a file with a different
+  hash, revalidations return it, and every visitor has it within about 5 minutes (a CDN's
+  cached copy at most an hour later — purge `/agent/v1/*` to make it immediate). Rolling back
+  means redeploying the previous image; nothing in the database changes.
+- `GET /agent/v1/version` → `{ version, hash }` (no key, never cached) is the deploy check: it
+  must match the banner of the image you shipped (`head -1 packages/agent/dist/guide-engine.js`
+  in the container), and it makes a fine uptime probe. On the page, `guideEngine.version` says
+  which build a customer is running.
 
 ### Keycloak in development
 
@@ -738,8 +777,17 @@ backend, and sign in as `olivia` / `olivia` (see [Studio login details](#studio-
   serve nothing until lifted.
 - **A key leaked somewhere unexpected:** **Rotate public key** in the app's settings, then
   update the snippet.
-- **Event retention:** the backend deletes events older than `EVENT_RETENTION_DAYS` once a day
-  (and sweeps spent rate-limit windows). To run it now: `npm run retention --workspace=packages/backend -- --days 400`.
+- **Is the right build live?** `curl https://<api>/agent/v1/version` gives `{ version, hash }`;
+  compare with the banner of the image's `packages/agent/dist/guide-engine.js`. It answers
+  `503` when the bundle is missing, so it doubles as an uptime check. To roll back, redeploy the
+  previous image (see [caching and rollbacks](#the-agent-script-caching-and-rollbacks)).
+- **The agent misbehaves on a customer's site:** open the app's settings, **Recent agent
+  errors**: message, page URL, agent version and time of the exceptions the script caught
+  (a 10 % sample, at most 5 per page load, at most 1000 per app per hour). Platform admins see
+  the 24-hour count per app in `GET /v1/platform/orgs/:orgId`.
+- **Event retention:** the backend deletes events and agent errors older than
+  `EVENT_RETENTION_DAYS` once a day (and sweeps spent rate-limit windows). To run it now:
+  `npm run retention --workspace=packages/backend -- --days 400`.
 - **Turning on `SECRETS_KEY` on an existing database:** set it, restart, then run
   `npm run encrypt-secrets --workspace=packages/backend` once. Losing the key means every app
   must generate a new signing secret (visitor identities signed with the old one stop verifying).

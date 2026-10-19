@@ -1,3 +1,4 @@
+import { DatePipe } from '@angular/common';
 import { Component, effect, inject, input, signal, untracked } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute } from '@angular/router';
@@ -5,7 +6,7 @@ import { Observable } from 'rxjs';
 import { ApiService, describeError } from '../core/api.service';
 import { runRequest } from '../core/request';
 import { AuthService } from '../core/auth.service';
-import { App, HELP_POSITIONS, HelpPosition } from '../core/models';
+import { AgentError, App, HELP_POSITIONS, HelpPosition } from '../core/models';
 import { parseWebsites } from './websites';
 
 /**
@@ -14,10 +15,11 @@ import { parseWebsites } from './websites';
  *  - websites allowed to load guides
  *  - optional signed visitor identity (secret shown once)
  *  - app on/off, key rotation
+ *  - the newest errors the agent reported from the app's pages
  */
 @Component({
   selector: 'app-app-settings',
-  imports: [FormsModule],
+  imports: [DatePipe, FormsModule],
   template: `
     @if (app(); as a) {
       <div class="page-header">
@@ -164,6 +166,41 @@ import { parseWebsites } from './websites';
         <pre class="snippet code">{{ customButtonExample }}</pre>
       </section>
 
+      <section class="card" data-testid="agent-errors">
+        <h2>Recent agent errors</h2>
+        <p class="muted small">
+          Exceptions the Guide Engine script caught on your pages (a sample, newest first). Your visitors
+          never see them; they are here so a broken page or a bad deploy doesn't stay silent.
+        </p>
+        @if (errors().length === 0) {
+          <p class="muted">None reported.</p>
+        } @else {
+          <table class="agent-errors">
+            <thead>
+              <tr>
+                <th>When</th>
+                <th>Message</th>
+                <th>Page</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (e of errors(); track e.id) {
+                <tr>
+                  <td class="muted small nowrap">{{ e.occurredAt | date: 'medium' }}</td>
+                  <td>
+                    <code>{{ e.message }}</code>
+                    @if (e.agentVersion) {
+                      <span class="muted small"> · agent {{ e.agentVersion }}</span>
+                    }
+                  </td>
+                  <td class="muted small">{{ e.url || '—' }}</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        }
+      </section>
+
       <section class="card danger-zone">
         <h2>Public key</h2>
         <p class="muted small">
@@ -184,6 +221,7 @@ export class AppSettingsComponent {
   readonly appId = input.required<string>();
 
   protected readonly app = signal<App | null>(null);
+  protected readonly errors = signal<AgentError[]>([]);
   protected readonly secret = signal<string | null>(null);
   protected readonly busy = signal(false);
   protected readonly error = signal<string | null>(null);
@@ -218,6 +256,11 @@ const token = jwt.sign(
           next: (a) => this.setApp(a),
           error: (err) => this.error.set(describeError(err)),
         });
+        // Diagnostic only: a failure here must not hide the settings page.
+        this.errors.set([]);
+        this.api
+          .listErrors(appId)
+          .subscribe({ next: (list) => this.errors.set(list), error: () => undefined });
       });
     });
   }
