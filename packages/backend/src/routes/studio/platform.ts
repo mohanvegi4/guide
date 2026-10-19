@@ -3,6 +3,8 @@ import { z } from 'zod';
 import { asyncHandler } from '../../asyncHandler';
 import { withoutScope } from '../../db';
 import { HttpError, notFound } from '../../httpError';
+import { requestLogger } from '../../logging';
+import { assertConfirmName, deleteOrganization } from '../../services/lifecycle';
 import { idParam, parseBody, platform } from './context';
 
 /**
@@ -126,6 +128,30 @@ platformRouter.put(
       return updated.rows[0];
     });
     res.json({ id: org.id, suspendedAt: org.suspended_at });
+  }),
+);
+
+// DELETE /platform/orgs/:orgId — { confirmName } : an operator handling a
+// customer's deletion request (GDPR, contract end) when no owner is left to
+// do it from the Studio. Same deletion as the owner's; logged at warn with
+// who did it, since it is irreversible and happens outside the customer's
+// own Studio.
+platformRouter.delete(
+  '/orgs/:orgId',
+  asyncHandler(async (req, res) => {
+    const orgId = idParam(req, 'orgId');
+    const body = parseBody(z.object({ confirmName: z.string().max(200) }), req.body);
+    const { name, adminUserId } = await platform(req, async (client, userId) => {
+      const org = await client.query<{ name: string }>(`SELECT name FROM organization WHERE id = $1`, [
+        orgId,
+      ]);
+      if (org.rows.length === 0) throw notFound();
+      assertConfirmName(org.rows[0].name, body.confirmName);
+      const deleted = await deleteOrganization(client, orgId);
+      return { name: deleted.name, adminUserId: userId };
+    });
+    requestLogger(req).warn({ orgId, orgName: name, adminUserId }, 'organization deleted by platform admin');
+    res.status(204).end();
   }),
 );
 
