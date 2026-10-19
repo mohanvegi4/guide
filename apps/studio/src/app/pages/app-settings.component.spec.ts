@@ -211,6 +211,6 @@ describe('AppSettingsComponent', () => {
 
   it('says so when the help center has not been used', async () => {
     const el = await render({}, [], { days: 30, opens: 0, searches: 0, guidesStarted: 0, topQueries: [] });
-    expect(el.querySelector('.help-analytics')!.textContent).toContain('No help-center activity yet.');
+    expect(el.querySelector('.help-analytics')!.textContent).toContain('No help-center opens or searches recorded yet.');
   });
 });

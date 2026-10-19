@@ -1,6 +1,6 @@
 body { margin: 0; font: 14px/1.5 system-ui, sans-serif; background: #fafafa; color: #16181d; }
 header { display: flex; gap: 24px; align-items: center; padding: 12px 24px; background: #fff; border-bottom: 1px solid #ddd; }
-nav { display: flex; gap: 12px; }
+nav { display: flex; gap: 12px; white-space: nowrap; }
 main, #login { padding: 24px; max-width: 800px; }
 textarea { width: 100%; font-family: monospace; }
 button { padding: 8px 14px; border-radius: 6px; border: 1px solid #ccc; background: #fff; cursor: pointer; }

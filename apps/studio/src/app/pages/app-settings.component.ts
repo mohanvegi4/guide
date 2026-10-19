@@ -236,8 +236,8 @@ import { parseWebsites } from './websites';
                   }
                 </tbody>
               </table>
-            } @else if (s.opens === 0) {
-              <p class="muted small">No help-center activity yet.</p>
+            } @else if (s.opens === 0 && s.searches === 0) {
+              <p class="muted small">No help-center opens or searches recorded yet.</p>
             }
           } @else {
             <p class="muted small">Loading…</p>

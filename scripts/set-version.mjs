@@ -11,7 +11,9 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const CORE = '@guide-engine/core';
-const PACKAGES = ['packages/core', 'packages/angular-wrapper', 'packages/vue-wrapper'];
+// The agent bundle is private but reports its version (banner, guideEngine.version, error
+// reports), so it follows the same number as the packages it is built from.
+const PACKAGES = ['packages/core', 'packages/angular-wrapper', 'packages/vue-wrapper', 'packages/agent'];
 const DEPENDENCY_FIELDS = ['dependencies', 'peerDependencies', 'devDependencies', 'optionalDependencies'];
 
 const [version, ...rest] = process.argv.slice(2);
