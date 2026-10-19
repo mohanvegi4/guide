@@ -43,6 +43,7 @@ export interface AppRow {
   help_button_label: string;
   help_button_color: string;
   help_position: HelpPosition;
+  suspended_at: string | null;
   created_at: string;
 }
 
@@ -52,7 +53,7 @@ export type HelpPosition = (typeof HELP_POSITIONS)[number];
 
 export const APP_COLUMNS = `id, org_id, name, public_key, allowed_origins, identity_mode,
   signing_secret IS NOT NULL AS has_signing_secret, enabled,
-  help_enabled, help_button_label, help_button_color, help_position, created_at`;
+  help_enabled, help_button_label, help_button_color, help_position, suspended_at, created_at`;
 
 export async function createApp(
   client: PoolClient,
@@ -60,8 +61,9 @@ export async function createApp(
   input: { name: string; websites: string[] },
 ): Promise<AppRow> {
   const result = await client.query<AppRow>(
-    `INSERT INTO application (org_id, name, public_key, allowed_origins)
-     VALUES ($1, $2, $3, $4) RETURNING ${APP_COLUMNS}`,
+    `INSERT INTO application (org_id, name, public_key, allowed_origins, suspended_at)
+     VALUES ($1, $2, $3, $4, (SELECT suspended_at FROM organization WHERE id = $1))
+     RETURNING ${APP_COLUMNS}`,
     [orgId, input.name, generatePublicKey(), input.websites],
   );
   return result.rows[0];

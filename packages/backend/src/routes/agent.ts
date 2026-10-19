@@ -141,9 +141,9 @@ async function inApp<T>(req: Request, fn: (client: PoolClient, app: AgentApp) =>
   return result;
 }
 
-/** Global kill switch (system_config, unscoped) AND the app's own switch. */
+/** Global kill switch (system_config, unscoped) AND the app's own switch AND the org not suspended. */
 async function engineEnabled(client: PoolClient, app: AgentApp): Promise<boolean> {
-  if (!app.enabled) return false;
+  if (!app.enabled || app.suspendedAt) return false;
   const row = await client.query<{ value: string }>(
     `SELECT value FROM system_config WHERE key = 'guide_engine_enabled'`,
   );

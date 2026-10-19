@@ -3,16 +3,32 @@
   @if (auth.me(); as me) {
     @if (me.orgs.length) {
       <nav class="switchers">
-        <select [value]="orgId() ?? ''" (change)="switchOrg($any($event.target).value)" aria-label="Organization">
-          @if (!orgId()) { <option value="" disabled>Choose organization</option> }
-          @for (o of me.orgs; track o.id) { <option [value]="o.id" [selected]="o.id === orgId()">{{ o.name }}</option> }
+        <select
+          [value]="orgId() ?? ''"
+          (change)="switchOrg($any($event.target).value)"
+          aria-label="Organization"
+        >
+          @if (!orgId()) {
+            <option value="" disabled>Choose organization</option>
+          }
+          @for (o of me.orgs; track o.id) {
+            <option [value]="o.id" [selected]="o.id === orgId()">{{ o.name }}</option>
+          }
         </select>
         @if (org(); as o) {
           @if (o.apps.length) {
             <span class="sep">/</span>
-            <select [value]="appId() ?? ''" (change)="switchApp($any($event.target).value)" aria-label="Application">
-              @if (!appId()) { <option value="" disabled>Choose app</option> }
-              @for (a of o.apps; track a.id) { <option [value]="a.id" [selected]="a.id === appId()">{{ a.name }}</option> }
+            <select
+              [value]="appId() ?? ''"
+              (change)="switchApp($any($event.target).value)"
+              aria-label="Application"
+            >
+              @if (!appId()) {
+                <option value="" disabled>Choose app</option>
+              }
+              @for (a of o.apps; track a.id) {
+                <option [value]="a.id" [selected]="a.id === appId()">{{ a.name }}</option>
+              }
             </select>
           }
         }
@@ -23,13 +39,25 @@
             <a [routerLink]="['/o', orgId(), 'apps', appId(), 'guides']" routerLinkActive="active">Guides</a>
             <a [routerLink]="['/o', orgId(), 'apps', appId(), 'pages']" routerLinkActive="active">Pages</a>
             @if (appRole() === 'app_admin') {
-              <a [routerLink]="['/o', orgId(), 'apps', appId(), 'settings']" routerLinkActive="active">Install &amp; settings</a>
+              <a [routerLink]="['/o', orgId(), 'apps', appId(), 'settings']" routerLinkActive="active"
+                >Install &amp; settings</a
+              >
             }
           }
-          <a [routerLink]="['/o', orgId(), 'apps']" routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }">Apps</a>
+          <a
+            [routerLink]="['/o', orgId(), 'apps']"
+            routerLinkActive="active"
+            [routerLinkActiveOptions]="{ exact: true }"
+            >Apps</a
+          >
           <a [routerLink]="['/o', orgId(), 'members']" routerLinkActive="active">Members</a>
         </nav>
       }
+    }
+    @if (me.user.platformAdmin) {
+      <nav class="tabs">
+        <a routerLink="/operator" routerLinkActive="active">Administration</a>
+      </nav>
     }
     <div class="who">
       <span class="muted small">{{ me.user.name ?? me.user.email }}</span>
@@ -38,6 +66,19 @@
     </div>
   }
 </header>
+@if (auth.supportOrg(); as support) {
+  <div class="banner support" role="status">
+    <strong>Support access:</strong> viewing <strong>{{ support.name }}</strong> read-only. Every page you
+    open is logged for their admins. Granted until {{ support.until | date: 'short' }}.
+    <button type="button" class="link" (click)="exitSupport()">Exit</button>
+  </div>
+}
+@if (org()?.suspendedAt && !auth.supportOrg()) {
+  <div class="banner suspended" role="alert">
+    This organization is <strong>suspended</strong>: its apps show no guides to visitors. Contact Guide Engine
+    support.
+  </div>
+}
 <main class="container">
   <router-outlet />
 </main>

@@ -15,6 +15,11 @@ import {
   Member,
   OrgRole,
   PagePayload,
+  PlatformAdmin,
+  PlatformOrg,
+  PlatformOrgDetail,
+  SupportAccess,
+  SupportContext,
   PreviewLink,
   PublishPayload,
   PublishedVersion,
@@ -118,6 +123,70 @@ export class ApiService {
     );
   }
 
+  // ---- support access (org owners/admins) ----
+  getSupportAccess(orgId: string): Observable<SupportAccess> {
+    return this.http.get<SupportAccess>(`${this.base}/orgs/${orgId}/support-access`);
+  }
+
+  grantSupportAccess(orgId: string, days: number): Observable<SupportAccess> {
+    return this.http.put<SupportAccess>(`${this.base}/orgs/${orgId}/support-access`, { days });
+  }
+
+  revokeSupportAccess(orgId: string): Observable<SupportAccess> {
+    return this.http.delete<SupportAccess>(`${this.base}/orgs/${orgId}/support-access`);
+  }
+
+  /** Entering support mode: the interceptor adds X-Support-Org from the auth service. */
+  supportContext(): Observable<SupportContext> {
+    return this.http.get<SupportContext>(`${this.base}/support-context`);
+  }
+
+  // ---- Guide Engine administration (platform admins) ----
+  platformOrgs(): Observable<PlatformOrg[]> {
+    return this.http.get<PlatformOrg[]>(`${this.base}/platform/orgs`);
+  }
+
+  platformOrg(orgId: string): Observable<PlatformOrgDetail> {
+    return this.http.get<PlatformOrgDetail>(`${this.base}/platform/orgs/${orgId}`);
+  }
+
+  setOrgSuspended(orgId: string, suspended: boolean): Observable<{ id: string; suspendedAt: string | null }> {
+    return this.http.put<{ id: string; suspendedAt: string | null }>(
+      `${this.base}/platform/orgs/${orgId}/suspension`,
+      {
+        suspended,
+      },
+    );
+  }
+
+  setAppEnabledByPlatform(appId: string, enabled: boolean): Observable<{ id: string; enabled: boolean }> {
+    return this.http.patch<{ id: string; enabled: boolean }>(`${this.base}/platform/apps/${appId}`, {
+      enabled,
+    });
+  }
+
+  killSwitch(): Observable<{ enabled: boolean }> {
+    return this.http.get<{ enabled: boolean }>(`${this.base}/platform/kill-switch`);
+  }
+
+  setKillSwitch(enabled: boolean): Observable<{ enabled: boolean }> {
+    return this.http.put<{ enabled: boolean }>(`${this.base}/platform/kill-switch`, { enabled });
+  }
+
+  platformAdmins(): Observable<PlatformAdmin[]> {
+    return this.http.get<PlatformAdmin[]>(`${this.base}/platform/admins`);
+  }
+
+  setPlatformAdmin(
+    email: string,
+    platformAdmin: boolean,
+  ): Observable<PlatformAdmin & { platformAdmin: boolean }> {
+    return this.http.put<PlatformAdmin & { platformAdmin: boolean }>(`${this.base}/platform/admins`, {
+      email,
+      platformAdmin,
+    });
+  }
+
   // ---- saved pages (per app) ----
   private pages(appId: string): string {
     return `${this.base}/apps/${appId}/pages`;
@@ -200,6 +269,8 @@ const MESSAGES: Record<string, string> = {
   no_draft_to_publish: 'There is no saved draft to publish.',
   page_name_taken: 'This app already has a page with that name.',
   unknown_page: 'That saved page no longer exists. Pick another page or use a custom route.',
+  unknown_user: 'No one with that email has signed in to the Studio yet. Ask them to sign in first.',
+  cannot_revoke_self: "You can't remove your own admin access — ask another platform admin.",
 };
 
 /** Human-readable message from a backend error response. */

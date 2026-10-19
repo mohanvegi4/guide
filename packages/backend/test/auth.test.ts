@@ -88,7 +88,7 @@ describe('Studio sign-in', () => {
       .set('Authorization', `Bearer ${studioToken('carol')}`);
     expect(first.status).toBe(200);
     expect(first.body).toEqual({
-      user: { id: expect.any(String), email: 'carol@example.com', name: 'carol' },
+      user: { id: expect.any(String), email: 'carol@example.com', name: 'carol', platformAdmin: false },
       orgs: [],
     });
     const second = await request(app)

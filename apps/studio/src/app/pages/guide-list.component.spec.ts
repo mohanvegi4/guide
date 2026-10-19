@@ -29,8 +29,16 @@ describe('GuideListComponent', () => {
     });
     http = TestBed.inject(HttpTestingController);
     TestBed.inject(AuthService).me.set({
-      user: { id: 'u', email: null, name: null },
-      orgs: [{ id: 'o1', name: 'Acme', role: 'member', apps: [{ id: 'a1', name: 'Web', role }] }],
+      user: { id: 'u', email: null, name: null, platformAdmin: false },
+      orgs: [
+        {
+          id: 'o1',
+          name: 'Acme',
+          role: 'member',
+          suspendedAt: null,
+          apps: [{ id: 'a1', name: 'Web', role }],
+        },
+      ],
     });
   }
 
@@ -58,7 +66,9 @@ describe('GuideListComponent', () => {
   it('toggles enabled optimistically and reverts when the backend rejects it', async () => {
     setup('publisher');
     const fixture = await render();
-    const checkbox = (fixture.nativeElement as HTMLElement).querySelector<HTMLInputElement>('input[type=checkbox]')!;
+    const checkbox = (fixture.nativeElement as HTMLElement).querySelector<HTMLInputElement>(
+      'input[type=checkbox]',
+    )!;
     checkbox.checked = true;
     checkbox.dispatchEvent(new Event('change'));
     await fixture.whenStable();

@@ -2,13 +2,14 @@ import { HttpClient, HttpContext, HttpContextToken, HttpErrorResponse } from '@a
 import { Injectable, inject, signal } from '@angular/core';
 import { User, UserManager, WebStorageStateStore } from 'oidc-client-ts';
 import { firstValueFrom } from 'rxjs';
-import { AppRole, Me, MyOrg, OrgRole } from './models';
+import { AppRole, Me, MyOrg, OrgRole, SupportContext } from './models';
 
 const STORAGE_KEY = 'guide-studio-token';
+/** Support mode survives a reload within the tab (sessionStorage), never across tabs. */
+const SUPPORT_KEY = 'guide-studio-support-org';
 
 /** Marks a request whose Authorization header is set explicitly (see auth.interceptor). */
 export const EXPLICIT_AUTH = new HttpContextToken<boolean>(() => false);
-
 
 /** What the backend says about how to sign in (GET /auth/config). */
 export interface AuthUiConfig {
@@ -37,6 +38,13 @@ export class AuthService {
   readonly me = signal<Me | null>(null);
   readonly config = signal<AuthUiConfig>({ oidc: null, tokenPaste: true });
   readonly usingSso = signal(false);
+  /**
+   * Support mode (platform admins only): the customer organization being
+   * viewed read-only under its support-access window. While set, the
+   * interceptor sends X-Support-Org and the org appears in me().orgs as a
+   * member/viewer so the ordinary pages and guards work unchanged.
+   */
+  readonly supportOrg = signal<{ id: string; name: string; until: string } | null>(null);
 
   /** Runs before routing (provideAppInitializer): restores an existing session. */
   async init(): Promise<void> {
@@ -102,10 +110,61 @@ export class AuthService {
     const token = this.token();
     if (!token) return;
     try {
-      this.me.set(await firstValueFrom(this.http.get<Me>('/api/v1/me')));
+      const me = await firstValueFrom(this.http.get<Me>('/api/v1/me'));
+      this.me.set(me);
+      // Re-enter support mode after a reload, if the window is still open.
+      const remembered = this.supportOrg()?.id ?? readSupport();
+      if (remembered && me.user.platformAdmin) await this.enterSupport(remembered);
+      else this.exitSupport();
     } catch {
       // the interceptor handles 401s
     }
+  }
+
+  /**
+   * Enters support mode for `orgId`: asks the backend what may be seen (404
+   * unless the organization has granted access) and adds the org to me().
+   * Resolves to an error message, or null on success.
+   */
+  async enterSupport(orgId: string): Promise<string | null> {
+    this.supportOrg.set({ id: orgId, name: '', until: '' });
+    let context: SupportContext;
+    try {
+      context = await firstValueFrom(this.http.get<SupportContext>('/api/v1/support-context'));
+    } catch {
+      this.exitSupport();
+      return 'This organization has not granted support access, or the window has closed.';
+    }
+    this.supportOrg.set({ id: context.id, name: context.name, until: context.supportAccessUntil });
+    writeSupport(context.id);
+    this.me.update((me) =>
+      me
+        ? {
+            ...me,
+            orgs: [
+              ...me.orgs.filter((o) => o.id !== context.id),
+              {
+                id: context.id,
+                name: context.name,
+                role: context.role,
+                suspendedAt: null,
+                apps: context.apps,
+                supportAccessUntil: context.supportAccessUntil,
+              },
+            ],
+          }
+        : me,
+    );
+    return null;
+  }
+
+  /** Leaves support mode: the organization disappears from me() again. */
+  exitSupport(): void {
+    const current = this.supportOrg();
+    this.supportOrg.set(null);
+    writeSupport(null);
+    if (current)
+      this.me.update((me) => (me ? { ...me, orgs: me.orgs.filter((o) => o.id !== current.id) } : me));
   }
 
   /** Paste-a-token sign-in. Resolves to an error message, or null on success. */
@@ -130,12 +189,16 @@ export class AuthService {
     }
     const error = await this.adopt(user.access_token, 'sso');
     if (error) await this.userManager.removeUser();
-    const target = user.url_state && user.url_state.startsWith('/') && !user.url_state.startsWith('//') ? user.url_state : '';
+    const target =
+      user.url_state && user.url_state.startsWith('/') && !user.url_state.startsWith('//')
+        ? user.url_state
+        : '';
     return { error, returnUrl: target && target !== '/' ? target : this.homePath() };
   }
 
   /** Local sign-out (e.g. after a 401). Doesn't end the provider session. */
   logout(): void {
+    this.exitSupport();
     this.clearLocal();
     void this.userManager?.removeUser();
   }
@@ -158,7 +221,7 @@ export class AuthService {
         this.http.get<Me>('/api/v1/me', {
           headers: { Authorization: `Bearer ${token}` },
           context: new HttpContext().set(EXPLICIT_AUTH, true),
-        })
+        }),
       );
     } catch (err) {
       if (err instanceof HttpErrorResponse && err.status === 401) {
@@ -171,6 +234,10 @@ export class AuthService {
     this.token.set(token);
     this.me.set(me);
     this.usingSso.set(source === 'sso');
+    // A platform admin reloading the tab mid-support: pick the organization up again.
+    const remembered = readSupport();
+    if (remembered && me.user.platformAdmin) await this.enterSupport(remembered);
+    else writeSupport(null);
     if (source === 'paste') {
       try {
         sessionStorage.setItem(STORAGE_KEY, token);
@@ -202,5 +269,22 @@ function clearStored(): void {
     sessionStorage.removeItem(STORAGE_KEY);
   } catch {
     // ignore
+  }
+}
+
+function readSupport(): string | null {
+  try {
+    return sessionStorage.getItem(SUPPORT_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function writeSupport(orgId: string | null): void {
+  try {
+    if (orgId) sessionStorage.setItem(SUPPORT_KEY, orgId);
+    else sessionStorage.removeItem(SUPPORT_KEY);
+  } catch {
+    // storage unavailable: support mode just won't survive a reload
   }
 }

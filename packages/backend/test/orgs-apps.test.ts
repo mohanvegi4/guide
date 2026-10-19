@@ -32,6 +32,7 @@ describe('self-serve organizations', () => {
         id: res.body.org.id,
         name: 'Acme',
         role: 'owner',
+        suspendedAt: null,
         apps: [{ id: res.body.app.id, name: 'Web app', role: 'app_admin' }],
       },
     ]);

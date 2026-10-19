@@ -1,18 +1,57 @@
 import { Request } from 'express';
 import { PoolClient } from 'pg';
 import { z } from 'zod';
-import { AppRole, OrgRole, StudioContext, appRoleAtLeast, withStudioSession } from '../../db';
+import {
+  AppRole,
+  OrgRole,
+  StudioContext,
+  appRoleAtLeast,
+  withPlatformSession,
+  withStudioSession,
+  withSupportSession,
+} from '../../db';
 import { HttpError, forbidden, notFound } from '../../httpError';
 import { StudioRequest } from '../../auth/studio';
 
-/** Runs `fn` in a database session scoped to the signed-in Studio user's memberships. */
-export function studio<T>(
+/** A platform admin reading a customer's organization under support access names it here. */
+export const SUPPORT_ORG_HEADER = 'x-support-org';
+
+/**
+ * Runs `fn` in a database session scoped to the signed-in Studio user's
+ * memberships — or, with the X-Support-Org header, as a platform admin under
+ * that organization's support access (read-only, logged; see db.ts).
+ */
+export async function studio<T>(
   req: Request,
   fn: (client: PoolClient, ctx: StudioContext) => Promise<T>,
 ): Promise<T> {
   const user = (req as StudioRequest).studioUser;
   if (!user) throw new HttpError(401, 'missing_auth');
-  return withStudioSession(user.id, fn);
+  const supportOrg = req.header(SUPPORT_ORG_HEADER);
+  if (supportOrg === undefined) return withStudioSession(user.id, fn);
+  const orgId = uuid.safeParse(supportOrg);
+  if (!orgId.success) throw notFound();
+  const result = await withSupportSession(
+    user.id,
+    orgId.data,
+    { method: req.method, path: req.originalUrl },
+    fn,
+  );
+  // Not an admin, no such org, or access not open: identical 404s.
+  if (result === null) throw notFound();
+  return result;
+}
+
+/** Runs `fn` as a platform admin (service administration); 403 for anyone else. */
+export async function platform<T>(
+  req: Request,
+  fn: (client: PoolClient, userId: string) => Promise<T>,
+): Promise<T> {
+  const user = (req as StudioRequest).studioUser;
+  if (!user) throw new HttpError(401, 'missing_auth');
+  const result = await withPlatformSession(user.id, fn);
+  if (result === null) throw forbidden();
+  return result;
 }
 
 const ORG_RANK: Record<OrgRole, number> = { member: 0, admin: 1, owner: 2 };

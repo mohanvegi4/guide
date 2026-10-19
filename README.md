@@ -31,6 +31,7 @@ beyond the snippet. Single-page-app navigation is detected automatically.
    - [Help center](#help-center)
 6. [How a guide is chosen and shown](#how-a-guide-is-chosen-and-shown)
 7. [Identity, roles and security](#identity-roles-and-security)
+   - [Guide Engine administration](#guide-engine-administration)
 8. [Configuration reference](#configuration-reference)
 9. [API reference](#api-reference)
 10. [Data model and migrations](#data-model-and-migrations)
@@ -168,6 +169,8 @@ Notes:
   organization, or accepts an invitation link from Dev Admin.
 - Production: set `OIDC_ISSUER` to your real provider; the token login is disabled outside
   development and test.
+- To administer Guide Engine itself, give your own user the platform-admin flag: see
+  [Guide Engine administration](#guide-engine-administration).
 
 ```bash
 npm run idp:up      # dev-only mock OIDC provider on http://localhost:8080
@@ -285,6 +288,8 @@ Full guide: [`apps/studio/README.md`](apps/studio/README.md).
     | app admin | + app settings: snippet, websites, signed identity, key rotation, app on / off |
 
   - Only owners can grant or remove ownership, and every org keeps at least one owner.
+  - Owners can open time-boxed, read-only **support access** for Guide Engine staff; see
+    [Guide Engine administration](#guide-engine-administration).
 - **Guides.**
   - **Help center:** optionally list the guide, with a title, description, search keywords and a
     start page (required for pattern routes).
@@ -406,6 +411,7 @@ packages they're `GuideService.openHelp()` (Angular), `useGuideEngine().openHelp
 |---|---|---|
 | **Studio users** | an OIDC access token from your identity provider (identity only: `sub`, `email`, `name`), verified against its JWKS. Dev/test only: HS256 tokens from `mint-token`. | what their **memberships in our DB** allow: org role + per-app roles |
 | **End users (visitors)** | the app's **public key** + the visitor/account ids the page passes in; optionally a **JWT signed with the app's secret** (required when the app enables it) | that app's active guides; writing their own events |
+| **Platform admins** (you, running Guide Engine) | a Studio sign-in whose `studio_user` row carries `platform_admin` | service administration across all customers, never their guide content; a customer's organization read-only, only while that customer has granted **support access** |
 
 - **Isolation, enforced twice.**
   - Every query filters by app or org in the application.
@@ -434,8 +440,47 @@ packages they're `GuideService.openHelp()` (Angular), `useGuideEngine().openHelp
 
   Button labels are rendered as text.
 - **Published versions are immutable**, enforced by RLS.
+- **Customers' content stays closed to Guide Engine staff** unless the customer opens it: see
+  [Guide Engine administration](#guide-engine-administration).
 - **Secrets at rest.** Invitation tokens are stored hashed. App signing secrets are shown once
   and stored for verification; encrypting them at rest with a KMS is a roadmap item.
+
+### Guide Engine administration
+
+Modelled on how Pendo separates its own staff from its customers' admins.
+
+**Platform admins** are the people who run this Guide Engine. The flag lives on `studio_user`
+and is never self-granted. The first one is set by the database owner:
+
+```sql
+UPDATE studio_user SET platform_admin = TRUE WHERE email = 'you@your-company.com';
+```
+
+(The person must have signed in once.) From then on, admins grant and revoke each other on the
+Studio's **Administration** page; nobody can remove themselves.
+
+**What a platform admin can do without any customer's consent** (service administration):
+list every organization with its owners, member/app/guide counts and events in the last 30
+days; **suspend** an organization (its apps serve no guides; members see a banner) and lift it;
+disable one app; flip the **global kill switch**; manage platform admins. The database policies
+behind this (`*_platform_select`) expose organizations, apps, members, guide names and event rows
+for counting. They do **not** expose `guide_version`, `app_page` or `user_guide_state`: an admin
+can see *that* a customer has 12 guides, not what they say.
+
+**Support access** is how a customer lets support look inside, like Pendo's *Pendo Support
+Access* setting:
+- An organization **owner** opens it from **Members → Guide Engine support access**, for 1, 7,
+  30 or at most 90 days. It's off by default and closes by itself on the date chosen, or
+  earlier with **Close now**.
+- While it's open, a platform admin can **Open (read-only)** the organization from the
+  Administration page. The Studio enters *support mode*: the ordinary pages work as a viewer,
+  with a banner naming the organization and the expiry.
+- Enforcement is in the backend and the database, not the UI. The `X-Support-Org` header
+  selects a support session (`withSupportSession`), which is shaped like a viewer of that
+  organization, runs in a **READ ONLY** transaction (Postgres refuses any write), and answers
+  404 when the window isn't open or the organization is suspended.
+- **Every request** under support access is written to `support_access_log` with who, when and
+  what, before the read happens. The organization's admins see the log in the same card.
 
 ---
 
@@ -498,7 +543,14 @@ Bodies may be `text/plain` or `application/json`. Each one carries an identity:
 
 | Method & path | Who | Notes |
 |---|---|---|
-| `GET /me` | anyone signed in | `{ user, orgs: [{ id, name, role, apps: [{ id, name, role }] }] }`. Creates the user on first sign-in. |
+| `GET /me` | anyone signed in | `{ user: { id, email, name, platformAdmin }, orgs: [{ id, name, role, suspendedAt, apps: [{ id, name, role }] }] }`. Creates the user on first sign-in. |
+| `GET` / `PUT` / `DELETE /orgs/:orgId/support-access` | admin / owner / owner | `PUT` takes `{ days }` (1–90) → `{ active, until, grantedBy, maxDays, log[] }`. |
+| `GET /support-context` | platform admin, with `X-Support-Org: <orgId>` | The organization as a viewer sees it, if support access is open; otherwise 404. Any `/v1` org/app read works the same way under that header (read-only, logged). |
+| `GET /platform/orgs`, `GET /platform/orgs/:orgId` | platform admin | Organizations with owners and usage; one with its apps. 403 for everyone else. |
+| `PUT /platform/orgs/:orgId/suspension` | platform admin | `{ suspended }` |
+| `PATCH /platform/apps/:appId` | platform admin | `{ enabled }` |
+| `GET` / `PUT /platform/kill-switch` | platform admin | `{ enabled }` |
+| `GET` / `PUT /platform/admins` | platform admin | `PUT` takes `{ email, platformAdmin }`; `400 unknown_user` / `cannot_revoke_self`. |
 | `POST /orgs` | anyone | `{ name, app: { name, websites[] } }` → you become owner. |
 | `GET` / `PATCH /orgs/:orgId` | member / admin | `PATCH` takes `{ name }`. |
 | `GET` / `POST /orgs/:orgId/apps` | member / admin | members see only the apps they can access. |
@@ -545,7 +597,7 @@ A `VersionBody` is:
 
 | Status | Codes |
 |---|---|
-| 400 | `invalid_body`, `empty_content_after_sanitize`, `no_draft_to_publish`, `signing_secret_required`, `unknown_app`, `unknown_page` |
+| 400 | `invalid_body`, `empty_content_after_sanitize`, `no_draft_to_publish`, `signing_secret_required`, `unknown_app`, `unknown_page`, `unknown_user`, `cannot_revoke_self` |
 | 401 | `missing_auth`, `invalid_token`, `visitor_required`, `signed_identity_required`, `identity_invalid` |
 | 403 | `forbidden`, `origin_not_allowed`, `invalid_preview_token`, `invitation_email_mismatch` |
 | 404 | `not_found`, including other organizations' resources and unknown keys |
@@ -561,9 +613,10 @@ A `VersionBody` is:
 
 | Table | Purpose |
 |---|---|
-| `organization` | A customer workspace (`created_by`). |
+| `organization` | A customer workspace (`created_by`), plus `suspended_at` and the support window (`support_access_until`, `support_access_granted_by`). |
 | `application` | `public_key`, `allowed_origins`, `identity_mode`, `signing_secret`, `enabled` (the app switch), and the help center: `help_enabled`, `help_button_label`, `help_button_color`, `help_position`. |
-| `studio_user` | People who use the Studio, keyed by (`oidc_issuer`, `oidc_sub`); created on first sign-in. |
+| `studio_user` | People who use the Studio, keyed by (`oidc_issuer`, `oidc_sub`); created on first sign-in. `platform_admin` marks Guide Engine staff. |
+| `support_access_log` | Every request a platform admin made under an organization's support access (who, when, method, path). |
 | `org_member` / `app_member` | Org role (owner / admin / member) and per-app role (viewer → app_admin). |
 | `invitation` | Invite links: hashed token, org role, app roles, expiry, single use. |
 | `app_page` | Saved pages per app: `name`, `match_type`, `match_value`, `start_path`. |
@@ -580,6 +633,7 @@ A `VersionBody` is:
 | `006_help_center.sql` | Adds `guide_version.help` and the per-app help-center settings (the button color is CHECK-limited to a hex value). |
 | `007_app_pages.sql` | Adds saved pages (`app_page`, with RLS), `guide_version.page_id`, and makes `active_guide` resolve routes through pages. |
 | `008_help_position.sql` | Adds `help_position`: where the help list and its confirmation open (a corner or `center`, CHECK-limited). |
+| `009_platform_admin.sql` | Platform admins, organization suspension, support access and its log, the `*_platform_select` policies, and a stricter `guide_version` select policy. |
 
 ---
 
@@ -595,10 +649,10 @@ npm test --workspace=apps/studio          # Studio components and services
 
 | Suite | Tests | Covers |
 |---|---|---|
-| **Backend** | 143 | self-serve orgs; apps and settings; the role matrix; invitations; members; org/app isolation through the API **and directly in RLS** (including replaying the owner bootstrap and forging memberships); the agent API (origins, keys, identity modes, account targeting, kill switches, events and per-visitor state, preview); the guide lifecycle; sanitization; stable step ids; analytics; OIDC (a local JWKS server, algorithm confusion); and migration 005's data conversion |
-| **Core** | 53 | includes the help widget (search, keyboard, safe rendering) and help launches (same page, other page, arrival, shared links) |
+| **Backend** | 166 | self-serve orgs; apps and settings; the role matrix; invitations; members; saved pages; platform admins and support access (consent, read-only, logging, RLS); org/app isolation through the API **and directly in RLS** (including replaying the owner bootstrap and forging memberships); the agent API (origins, keys, identity modes, account targeting, kill switches, events and per-visitor state, preview); the guide lifecycle; sanitization; stable step ids; analytics; OIDC (a local JWKS server, algorithm confusion); and migration 005's data conversion |
+| **Core** | 58 | includes the help widget (search, keyboard, safe rendering) and help launches (same page, other page, arrival, shared links) |
 | **Agent** | 6 | includes `openHelp` queued before load |
-| **Studio** | 12 | |
+| **Studio** | 28 | guide list and editor (saved pages), Pages, app settings, the Administration page |
 
 Type-checking is part of every `test` script, with strict TypeScript throughout.
 
@@ -649,10 +703,15 @@ Never run the mock OIDC provider (`docker compose --profile sso`) in a real envi
 ## Operations
 
 - **Turn an app off:** use the **Guides on/off** switch in that app's settings.
-- **Turn guides off everywhere** (global kill switch, as a database operator):
+- **Turn guides off everywhere** (global kill switch): the switch at the top of the Studio's
+  **Administration** page (platform admins), or as a database operator:
   ```sql
   UPDATE system_config SET value = 'false', updated_at = now() WHERE key = 'guide_engine_enabled';
   ```
+- **A customer needs help:** ask an owner to open **Members → Guide Engine support access**, then
+  use **Open (read-only)** on the Administration page. They see every page you open.
+- **Abuse or non-payment:** **Suspend** the organization on the Administration page; its apps
+  serve nothing until lifted.
 - **A key leaked somewhere unexpected:** **Rotate public key** in the app's settings, then
   update the snippet.
 - **Reset a visitor's dismissal**, as a database operator:
@@ -709,7 +768,6 @@ Never run the mock OIDC provider (`docker compose --profile sso`) in a real envi
   with a KMS, or supporting customer JWKS (RS256), is on the roadmap.
 - **Invites are links you copy.** There's no email sending.
 - **Analytics have no per-account or per-visitor breakdown** in the Studio yet.
-- **The global kill switch has no UI.** It's changed with SQL.
 - **Shared `?guideEngine=` links** work for help-center guides only.
 - **Help-center opens and searches aren't tracked** yet. Only guides started from it are.
 - **Deferred:** metadata segments, surveys, i18n, rollout percentages, cross-app guides, staging

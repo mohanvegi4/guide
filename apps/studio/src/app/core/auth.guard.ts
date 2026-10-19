@@ -9,21 +9,33 @@ import { AppRole, appRoleAtLeast } from './models';
  */
 export const signedIn: CanActivateFn = (_route, state) => {
   const auth = inject(AuthService);
-  return auth.token() ? true : inject(Router).createUrlTree(['/login'], { queryParams: { returnUrl: state.url } });
+  return auth.token()
+    ? true
+    : inject(Router).createUrlTree(['/login'], { queryParams: { returnUrl: state.url } });
 };
 
 /** Requires membership of the :orgId in the URL. */
 export const orgMember: CanActivateFn = (route: ActivatedRouteSnapshot, state) => {
   const auth = inject(AuthService);
-  if (!auth.token()) return inject(Router).createUrlTree(['/login'], { queryParams: { returnUrl: state.url } });
+  if (!auth.token())
+    return inject(Router).createUrlTree(['/login'], { queryParams: { returnUrl: state.url } });
   return auth.org(route.paramMap.get('orgId')) ? true : inject(Router).createUrlTree([auth.homePath()]);
+};
+
+/** Guide Engine administration: platform admins only (the backend answers 403 regardless). */
+export const platformAdmin: CanActivateFn = (_route, state) => {
+  const auth = inject(AuthService);
+  if (!auth.token())
+    return inject(Router).createUrlTree(['/login'], { queryParams: { returnUrl: state.url } });
+  return auth.me()?.user.platformAdmin ? true : inject(Router).createUrlTree([auth.homePath()]);
 };
 
 /** Requires at least `min` on the :appId in the URL. */
 export function appRole(min: AppRole): CanActivateFn {
   return (route, state) => {
     const auth = inject(AuthService);
-    if (!auth.token()) return inject(Router).createUrlTree(['/login'], { queryParams: { returnUrl: state.url } });
+    if (!auth.token())
+      return inject(Router).createUrlTree(['/login'], { queryParams: { returnUrl: state.url } });
     return appRoleAtLeast(auth.appRole(route.paramMap.get('appId')), min)
       ? true
       : inject(Router).createUrlTree([auth.homePath()]);

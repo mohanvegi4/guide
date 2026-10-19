@@ -4,7 +4,10 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { AuthService } from './auth.service';
 import { Me } from './models';
 
-const me = (orgs: Me['orgs'] = []): Me => ({ user: { id: 'u1', email: 'a@example.com', name: 'Alice' }, orgs });
+const me = (orgs: Me['orgs'] = []): Me => ({
+  user: { id: 'u1', email: 'a@example.com', name: 'Alice', platformAdmin: false },
+  orgs,
+});
 
 describe('AuthService', () => {
   let auth: AuthService;
@@ -48,9 +51,15 @@ describe('AuthService', () => {
     await pasteLogin(
       't2',
       me([
-        { id: 'o-empty', name: 'Empty', role: 'member', apps: [] },
-        { id: 'o1', name: 'Acme', role: 'owner', apps: [{ id: 'a1', name: 'Web', role: 'app_admin' }] },
-      ])
+        { id: 'o-empty', name: 'Empty', role: 'member', suspendedAt: null, apps: [] },
+        {
+          id: 'o1',
+          name: 'Acme',
+          role: 'owner',
+          suspendedAt: null,
+          apps: [{ id: 'a1', name: 'Web', role: 'app_admin' }],
+        },
+      ]),
     );
     expect(auth.homePath()).toBe('/o/o1/apps/a1/guides');
     expect(auth.appRole('a1')).toBe('app_admin');

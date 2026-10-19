@@ -37,6 +37,7 @@ describe('invitations', () => {
         id: orgId,
         name: 'alice org',
         role: 'member',
+        suspendedAt: null,
         apps: [{ id: appId, name: 'alice org app', role: 'editor' }],
       },
     ]);

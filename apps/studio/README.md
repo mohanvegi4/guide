@@ -53,7 +53,8 @@ snippet.
 ## Organizations, apps and roles
 
 The top bar has the **organization switcher**, the **app switcher**, and links for the current
-app: Guides, Install & settings, Apps and Members.
+app: Guides, Pages, Install & settings, Apps and Members. Platform admins (Guide Engine's own
+staff) also see **Administration**; see below.
 
 | Role | What you can do |
 |---|---|
@@ -61,7 +62,8 @@ app: Guides, Install & settings, Apps and Members.
 | app **viewer** | read guides, versions and analytics |
 | app **editor** | + create guides, save drafts, make preview links |
 | app **publisher** | + publish, enable / disable, roll back |
-| app **app_admin** | + Install & settings: snippet, websites, signed identity, key rotation, app on / off |
+| app **app_admin** | + Install & settings: snippet, websites, signed identity, key rotation, app on / off, help center |
+| **platform admin** (Guide Engine staff, not a customer role) | the Administration page: every organization's usage, suspension, the kill switch, other admins; a customer's content only under support access, read-only |
 
 The UI adapts to your role: viewers get read-only screens, editors see no Publish button, and so
 on. The backend enforces the same rules regardless.
@@ -70,6 +72,32 @@ on. The backend enforces the same rules regardless.
 an email, only that verified email can accept it. Choose the org role, plus a role per app for
 members. Send the link however you like; Guide Engine doesn't send email. Pending invitations can
 be revoked.
+
+## Guide Engine support access (org owners)
+
+**Members** ends with a **Guide Engine support access** card. Guide Engine's own staff can't see
+an organization unless an **owner** opens a window here (1, 7, 30 or 90 days). While it's open,
+platform admins can view the organization's guides, pages, analytics and members **read-only**,
+and every page they open is listed in the card's access log, which admins can also see. **Close
+now** ends it early; otherwise it closes by itself.
+
+## Administration (platform admins)
+
+People with the platform-admin flag get an **Administration** link in the top bar (`/operator`):
+
+- every organization with its owners, member/app/guide counts, events in the last 30 days,
+  status, and whether support access is granted;
+- **Suspend** / **Lift suspension** (a suspended organization's apps serve no guides, and its
+  members see a banner);
+- **Open (read-only)**, enabled only while the organization has granted support access: the
+  Studio enters *support mode*, shows a banner naming the organization and the expiry, and the
+  ordinary Guides / Pages / Analytics / Members pages work as a viewer. **Exit** in the banner
+  leaves it. Support mode survives a reload in the same tab (sessionStorage).
+- the global kill switch (every guide for every customer);
+- the list of platform admins, with grant-by-email and remove (never yourself).
+
+The first platform admin is created with SQL by the database owner (see the root README);
+after that, grants happen here.
 
 ## Install & settings (app admins)
 
@@ -151,7 +179,7 @@ means the anchor element wasn't on the page.
 ```
 src/app/
   core/
-    auth.service.ts        sign-in (SSO + paste), session restore, /v1/me (orgs, apps, roles)
+    auth.service.ts        sign-in (SSO + paste), session restore, /v1/me (orgs, apps, roles), support mode
     auth.interceptor.ts    adds the bearer token; 401 -> login
     auth.guard.ts          signedIn / orgMember / appRole(min) guards (UX only; the backend enforces)
     api.service.ts         typed client for /api/v1 (orgs, apps, members, invitations, pages, guides)
@@ -161,7 +189,8 @@ src/app/
     onboarding             first org + first app
     apps                   an org's applications; create app
     app-settings           install snippet, websites, signed identity, key rotation, app switch
-    members                members, org and app roles, invite links
+    members                members, org and app roles, invite links, support access (owners)
+    operator               Guide Engine administration: organizations, suspension, kill switch, admins
     invite                 accept an invitation
     guide-list             an app's guides, create, enable toggle (optimistic)
     guide-editor           form editor: saved page or custom route, audience, help, draft / preview / publish

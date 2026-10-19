@@ -86,3 +86,6 @@ fieldset.where legend { font-weight: 500; padding: 0; margin-bottom: 4px; }
 .table td .row-actions { display: flex; gap: 4px; justify-content: flex-end; }
 .table tr.editing td { background: #f8f9ff; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.banner { padding: 10px 16px; font-size: 14px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.banner.support { background: #fef0c7; color: #7a2e0e; }
+.banner.suspended { background: #fee4e2; color: #b42318; }

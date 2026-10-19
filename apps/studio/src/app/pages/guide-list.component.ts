@@ -17,24 +17,24 @@ import { GUIDE_TYPES, GuideSummary, GuideType, appRoleAtLeast } from '../core/mo
     </div>
 
     @if (canEdit()) {
-    <section class="card">
-      <h2>New guide</h2>
-      <form class="inline-form" [formGroup]="createForm" (ngSubmit)="create()">
-        <label>
-          Name
-          <input formControlName="name" placeholder="e.g. Welcome tour" />
-        </label>
-        <label>
-          Type
-          <select formControlName="type">
-            @for (t of guideTypes; track t) {
-              <option [value]="t">{{ t }}</option>
-            }
-          </select>
-        </label>
-        <button type="submit" class="primary" [disabled]="createForm.invalid || creating()">Create</button>
-      </form>
-    </section>
+      <section class="card">
+        <h2>New guide</h2>
+        <form class="inline-form" [formGroup]="createForm" (ngSubmit)="create()">
+          <label>
+            Name
+            <input formControlName="name" placeholder="e.g. Welcome tour" />
+          </label>
+          <label>
+            Type
+            <select formControlName="type">
+              @for (t of guideTypes; track t) {
+                <option [value]="t">{{ t }}</option>
+              }
+            </select>
+          </label>
+          <button type="submit" class="primary" [disabled]="createForm.invalid || creating()">Create</button>
+        </form>
+      </section>
     }
 
     @if (error()) {
@@ -44,7 +44,7 @@ import { GUIDE_TYPES, GuideSummary, GuideType, appRoleAtLeast } from '../core/mo
     @if (loading()) {
       <p class="muted">Loading…</p>
     } @else if (guides().length === 0) {
-      <p class="muted">No guides yet — create one above.</p>
+      <p class="muted">{{ canEdit() ? 'No guides yet — create one above.' : 'No guides yet.' }}</p>
     } @else {
       <table class="table">
         <thead>
@@ -61,14 +61,25 @@ import { GUIDE_TYPES, GuideSummary, GuideType, appRoleAtLeast } from '../core/mo
         <tbody>
           @for (g of guides(); track g.id) {
             <tr>
-              <td><a [routerLink]="[g.id]">{{ g.name }}</a></td>
+              <td>
+                <a [routerLink]="[g.id]">{{ g.name }}</a>
+              </td>
               <td>{{ g.type }}</td>
-              <td><span class="badge" [class]="'badge ' + g.status">{{ g.status }}</span></td>
+              <td>
+                <span class="badge" [class]="'badge ' + g.status">{{ g.status }}</span>
+              </td>
               <td>{{ g.page_name ?? (g.current_version_id ? 'Custom route' : '—') }}</td>
               <td>{{ g.current_version_number ? 'v' + g.current_version_number : '—' }}</td>
               <td>{{ g.updated_at | date: 'short' }}</td>
               <td>
-                <label class="switch" [title]="g.current_version_id ? '' : 'Publish a version first — an enabled guide with nothing published shows nothing'">
+                <label
+                  class="switch"
+                  [title]="
+                    g.current_version_id
+                      ? ''
+                      : 'Publish a version first — an enabled guide with nothing published shows nothing'
+                  "
+                >
                   <input
                     type="checkbox"
                     [checked]="g.enabled"
@@ -94,7 +105,9 @@ export class GuideListComponent {
   readonly orgId = input.required<string>();
   readonly appId = input.required<string>();
   protected readonly canEdit = computed(() => appRoleAtLeast(this.auth.appRole(this.appId()), 'editor'));
-  protected readonly canPublish = computed(() => appRoleAtLeast(this.auth.appRole(this.appId()), 'publisher'));
+  protected readonly canPublish = computed(() =>
+    appRoleAtLeast(this.auth.appRole(this.appId()), 'publisher'),
+  );
 
   protected readonly guides = signal<GuideSummary[]>([]);
   protected readonly loading = signal(true);

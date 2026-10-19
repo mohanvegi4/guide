@@ -14,9 +14,16 @@ export const pool = new Pool({
 // from a verified token, or an app resolved from its public key — never from
 // request input. Unscoped sessions match no rows (fail closed).
 //
+// Above the organization level (migration 009):
+//   withPlatformSession  a platform admin running the service: organizations,
+//                        apps, members, counts — never guide content
+//   withSupportSession   a platform admin reading ONE organization that has
+//                        granted time-boxed support access: viewer-shaped
+//                        context, READ ONLY transaction, every call logged
+//
 // NEVER query guide / guide_version / guide_event / user_guide_state /
-// organization / application / *_member / invitation / studio_user through
-// pool.query() directly.
+// organization / application / *_member / invitation / studio_user /
+// support_access_log through pool.query() directly.
 // ------------------------------------------------------------
 
 export type OrgRole = 'owner' | 'admin' | 'member';
@@ -29,6 +36,8 @@ export interface StudioContext {
   orgs: Map<string, OrgRole>;
   /** app id -> owning org and the user's effective role (org owners/admins act as app_admin) */
   apps: Map<string, { orgId: string; role: AppRole }>;
+  /** Set when this is a platform admin reading an organization under support access. */
+  support?: { orgId: string; until: Date };
 }
 
 async function setVar(client: PoolClient, name: string, value: string): Promise<void> {
@@ -129,11 +138,95 @@ export function withStudioSession<T>(
   return inTransaction(async (client) => fn(client, await resolveStudioContext(client, userId)));
 }
 
+/** True if the user carries the platform_admin flag (readable: it's their own row). */
+async function isPlatformAdmin(client: PoolClient, userId: string): Promise<boolean> {
+  await setVar(client, 'app.current_user_id', userId);
+  const row = await client.query<{ platform_admin: boolean }>(
+    `SELECT platform_admin FROM studio_user WHERE id = $1`,
+    [userId],
+  );
+  return row.rows[0]?.platform_admin === true;
+}
+
+/**
+ * A platform admin's request: organizations, apps, members and counts across
+ * every customer (the *_platform policies), never guide content. Resolves to
+ * null when the user isn't a platform admin, so callers can answer 403.
+ */
+export function withPlatformSession<T>(
+  userId: string,
+  fn: (client: PoolClient, userId: string) => Promise<T>,
+): Promise<T | null> {
+  return inTransaction(async (client) => {
+    if (!(await isPlatformAdmin(client, userId))) return null;
+    await setVar(client, 'app.platform_admin', 'true');
+    return fn(client, userId);
+  });
+}
+
+/**
+ * A platform admin reading one organization that has granted support access
+ * (organization.support_access_until in the future, not suspended):
+ *  - the request is written to support_access_log first (its own transaction,
+ *    so the log survives whatever the read does);
+ *  - the session is shaped like an org member who is a viewer on every app,
+ *    so the ordinary Studio handlers and policies apply unchanged;
+ *  - the transaction is READ ONLY: Postgres refuses any write, whatever a
+ *    handler tries.
+ * Resolves to null when the user isn't a platform admin, the organization
+ * doesn't exist, or access isn't open: all of them answer 404.
+ */
+export async function withSupportSession<T>(
+  userId: string,
+  orgId: string,
+  request: { method: string; path: string },
+  fn: (client: PoolClient, ctx: StudioContext) => Promise<T>,
+): Promise<T | null> {
+  const access = await withPlatformSession(userId, async (client) => {
+    const org = await client.query<{ until: Date | null; suspended: boolean }>(
+      `SELECT support_access_until AS until, suspended_at IS NOT NULL AS suspended
+       FROM organization WHERE id = $1`,
+      [orgId],
+    );
+    const row = org.rows[0];
+    if (!row?.until || row.until <= new Date() || row.suspended) return null;
+    await client.query(
+      `INSERT INTO support_access_log (org_id, admin_user_id, admin_name, admin_email, method, path)
+       SELECT $1, u.id, u.name, u.email, $3, $4 FROM studio_user u WHERE u.id = $2`,
+      [orgId, userId, request.method, request.path.slice(0, 500)],
+    );
+    return { until: row.until };
+  });
+  if (!access) return null;
+
+  return inTransaction(async (client) => {
+    if (!(await isPlatformAdmin(client, userId))) return null;
+    await setVar(client, 'app.platform_admin', 'true');
+    const apps = await client.query<{ id: string }>(`SELECT id FROM application WHERE org_id = $1`, [orgId]);
+    // From here on, the shape of an org member who may only look.
+    await setVar(client, 'app.platform_admin', 'false');
+    await setVar(client, 'app.org_ids', uuidArray([orgId]));
+    await setVar(client, 'app.admin_org_ids', uuidArray([]));
+    await setVar(client, 'app.app_ids', uuidArray(apps.rows.map((a) => a.id)));
+    await setVar(client, 'app.admin_app_ids', uuidArray([]));
+    await client.query(`SET LOCAL transaction_read_only = on`);
+    const ctx: StudioContext = {
+      userId,
+      orgs: new Map([[orgId, 'member']]),
+      apps: new Map(apps.rows.map((a) => [a.id, { orgId, role: 'viewer' as AppRole }])),
+      support: { orgId, until: access.until },
+    };
+    return fn(client, ctx);
+  });
+}
+
 /** The app as the agent sees it after resolving a public key. */
 export interface AgentApp {
   id: string;
   orgId: string;
   enabled: boolean;
+  /** Set when the owning organization is suspended (denormalized by the suspend endpoint). */
+  suspendedAt: Date | null;
   identityMode: 'optional' | 'required';
   signingSecret: string | null;
   allowedOrigins: string[];
@@ -149,7 +242,7 @@ export async function findAppByPublicKey(publicKey: string): Promise<AgentApp | 
 
 async function loadAgentApp(client: PoolClient, publicKey: string): Promise<AgentApp | null> {
   const result = await client.query(
-    `SELECT id, org_id, enabled, identity_mode, signing_secret, allowed_origins
+    `SELECT id, org_id, enabled, suspended_at, identity_mode, signing_secret, allowed_origins
      FROM application WHERE public_key = $1`,
     [publicKey],
   );
@@ -159,6 +252,7 @@ async function loadAgentApp(client: PoolClient, publicKey: string): Promise<Agen
     id: row.id,
     orgId: row.org_id,
     enabled: row.enabled,
+    suspendedAt: row.suspended_at,
     identityMode: row.identity_mode,
     signingSecret: row.signing_secret,
     allowedOrigins: row.allowed_origins,

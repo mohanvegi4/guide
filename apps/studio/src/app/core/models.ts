@@ -24,14 +24,74 @@ export const isOrgAdmin = (role: OrgRole | undefined) => role === 'owner' || rol
 
 /** GET /v1/me */
 export interface Me {
-  user: { id: string; email: string | null; name: string | null };
+  user: { id: string; email: string | null; name: string | null; platformAdmin: boolean };
   orgs: MyOrg[];
 }
 export interface MyOrg {
   id: string;
   name: string;
   role: OrgRole;
+  /** Set by a platform admin: the org's apps serve no guides until lifted. */
+  suspendedAt: string | null;
   apps: Array<{ id: string; name: string; role: AppRole }>;
+  /** Present only in support mode: a platform admin viewing this org read-only until then. */
+  supportAccessUntil?: string;
+}
+
+// ---- Guide Engine administration (platform admins) ----
+
+/** GET /v1/platform/orgs */
+export interface PlatformOrg {
+  id: string;
+  name: string;
+  createdAt: string;
+  suspendedAt: string | null;
+  /** The open support window, or null when not granted / expired. */
+  supportAccessUntil: string | null;
+  owners: Array<{ name: string | null; email: string | null }>;
+  usage: { members: number; apps: number; guides: number; events30d: number };
+}
+
+export interface PlatformOrgDetail extends PlatformOrg {
+  apps: Array<{
+    id: string;
+    name: string;
+    publicKey: string;
+    enabled: boolean;
+    websites: string[];
+    createdAt: string;
+    usage: { guides: number; events30d: number };
+  }>;
+}
+
+export interface PlatformAdmin {
+  id: string;
+  email: string | null;
+  name: string | null;
+  lastSeenAt: string;
+}
+
+/** GET /v1/orgs/:orgId/support-access — what the organization granted, and who used it. */
+export interface SupportAccess {
+  active: boolean;
+  until: string | null;
+  grantedBy: { name: string | null; email: string | null } | null;
+  maxDays: number;
+  log: Array<{
+    method: string;
+    path: string;
+    occurredAt: string;
+    admin: { name: string | null; email: string | null };
+  }>;
+}
+
+/** GET /v1/support-context (with X-Support-Org): the org as a platform admin may see it. */
+export interface SupportContext {
+  id: string;
+  name: string;
+  role: 'member';
+  apps: Array<{ id: string; name: string; role: 'viewer' }>;
+  supportAccessUntil: string;
 }
 
 /** Where the help list (and its "Go to another page?" dialog) appears. */

@@ -1,3 +1,4 @@
+import { DatePipe } from '@angular/common';
 import { Component, computed, inject } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { NavigationEnd, Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
@@ -7,7 +8,7 @@ import { isOrgAdmin } from './core/models';
 
 @Component({
   selector: 'app-root',
-  imports: [RouterOutlet, RouterLink, RouterLinkActive],
+  imports: [RouterOutlet, RouterLink, RouterLinkActive, DatePipe],
   templateUrl: './app.html',
   styleUrl: './app.css',
 })
@@ -19,9 +20,9 @@ export class App {
   private readonly url = toSignal(
     this.router.events.pipe(
       filter((e): e is NavigationEnd => e instanceof NavigationEnd),
-      map((e) => e.urlAfterRedirects)
+      map((e) => e.urlAfterRedirects),
     ),
-    { initialValue: this.router.url }
+    { initialValue: this.router.url },
   );
   protected readonly orgId = computed(() => this.url().match(/^\/o\/([^/?#]+)/)?.[1] ?? null);
   protected readonly appId = computed(() => this.url().match(/^\/o\/[^/]+\/apps\/([^/?#]+)/)?.[1] ?? null);
@@ -39,6 +40,12 @@ export class App {
     // Stay on the same kind of screen (guide editors and settings fall back to the list).
     const section = /^\/o\/[^/]+\/apps\/[^/]+\/pages/.test(this.url()) ? 'pages' : 'guides';
     void this.router.navigate(['/o', this.orgId(), 'apps', appId, section]);
+  }
+
+  /** Leaves support mode and returns to the administration page. */
+  exitSupport(): void {
+    this.auth.exitSupport();
+    void this.router.navigate(['/operator']);
   }
 
   async logout(): Promise<void> {

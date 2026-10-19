@@ -51,8 +51,16 @@ describe('GuideEditorComponent', () => {
     });
     http = TestBed.inject(HttpTestingController);
     TestBed.inject(AuthService).me.set({
-      user: { id: 'u', email: null, name: null },
-      orgs: [{ id: 'o1', name: 'Acme', role: 'owner', apps: [{ id: 'a1', name: 'Web', role: 'app_admin' }] }],
+      user: { id: 'u', email: null, name: null, platformAdmin: false },
+      orgs: [
+        {
+          id: 'o1',
+          name: 'Acme',
+          role: 'owner',
+          suspendedAt: null,
+          apps: [{ id: 'a1', name: 'Web', role: 'app_admin' }],
+        },
+      ],
     });
   });
 

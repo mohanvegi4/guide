@@ -26,8 +26,16 @@ describe('PagesComponent', () => {
     });
     http = TestBed.inject(HttpTestingController);
     TestBed.inject(AuthService).me.set({
-      user: { id: 'u', email: null, name: null },
-      orgs: [{ id: 'o1', name: 'Acme', role: 'member', apps: [{ id: 'a1', name: 'Web', role }] }],
+      user: { id: 'u', email: null, name: null, platformAdmin: false },
+      orgs: [
+        {
+          id: 'o1',
+          name: 'Acme',
+          role: 'member',
+          suspendedAt: null,
+          apps: [{ id: 'a1', name: 'Web', role }],
+        },
+      ],
     });
   }
 

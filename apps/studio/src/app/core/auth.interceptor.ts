@@ -13,7 +13,14 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
   const auth = inject(AuthService);
   const router = inject(Router);
   const token = auth.token();
-  const authed = token ? req.clone({ setHeaders: { Authorization: `Bearer ${token}` } }) : req;
+  const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+  // Support mode: a platform admin reading one customer's organization. The
+  // header turns the ordinary org/app routes into read-only, logged reads of
+  // that organization (backend: context.ts). /me and /platform stay as the
+  // admin themselves.
+  const support = auth.supportOrg();
+  if (support && !/^\/api\/v1\/(me$|platform\/)/.test(req.url)) headers['X-Support-Org'] = support.id;
+  const authed = Object.keys(headers).length ? req.clone({ setHeaders: headers }) : req;
 
   return next(authed).pipe(
     catchError((err: unknown) => {
@@ -22,6 +29,6 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
         void router.navigate(['/login'], { queryParams: { expired: 1 } });
       }
       return throwError(() => err);
-    })
+    }),
   );
 };

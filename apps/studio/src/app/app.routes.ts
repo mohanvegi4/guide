@@ -1,6 +1,6 @@
 import { Routes } from '@angular/router';
 import { inject } from '@angular/core';
-import { appRole, orgMember, signedIn } from './core/auth.guard';
+import { appRole, orgMember, platformAdmin, signedIn } from './core/auth.guard';
 import { AuthService } from './core/auth.service';
 import { LoginComponent } from './pages/login.component';
 import { AuthCallbackComponent } from './pages/auth-callback.component';
@@ -12,14 +12,31 @@ import { MembersComponent } from './pages/members.component';
 import { GuideListComponent } from './pages/guide-list.component';
 import { GuideEditorComponent } from './pages/guide-editor.component';
 import { PagesComponent } from './pages/pages.component';
+import { OperatorComponent } from './pages/operator.component';
 
 // Route params (:orgId, :appId, :id, :token) are bound to component inputs
 // (withComponentInputBinding in app.config.ts).
 export const routes: Routes = [
   { path: 'login', component: LoginComponent, title: 'Sign in · Guide Studio' },
   { path: 'auth/callback', component: AuthCallbackComponent, title: 'Signing in · Guide Studio' },
-  { path: 'welcome', component: OnboardingComponent, canActivate: [signedIn], title: 'Welcome · Guide Studio' },
-  { path: 'invite/:token', component: InviteComponent, canActivate: [signedIn], title: 'Invitation · Guide Studio' },
+  {
+    path: 'welcome',
+    component: OnboardingComponent,
+    canActivate: [signedIn],
+    title: 'Welcome · Guide Studio',
+  },
+  {
+    path: 'invite/:token',
+    component: InviteComponent,
+    canActivate: [signedIn],
+    title: 'Invitation · Guide Studio',
+  },
+  {
+    path: 'operator',
+    component: OperatorComponent,
+    canActivate: [platformAdmin],
+    title: 'Administration · Guide Studio',
+  },
   {
     path: 'o/:orgId',
     canActivate: [orgMember],

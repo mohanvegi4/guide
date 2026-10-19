@@ -41,6 +41,16 @@ deliberately for this project's scale and constraints:
   - Org roles: owner / admin / member.
   - Per-app roles: viewer < editor < publisher < app_admin.
   - HS256 dev tokens exist only in development/test.
+- **Above organizations, Pendo-style (migration 009).**
+  - `studio_user.platform_admin` (granted by SQL, then from the Administration page) runs the
+    service through `withPlatformSession`: organizations, apps, members, counts — the
+    `*_platform_select` policies never include guide_version / app_page / user_guide_state.
+  - A customer's content is readable only under **support access**: the org OWNER sets
+    `organization.support_access_until` (≤ 90 days). `withSupportSession` then shapes the
+    session as a viewer of that org, in a READ ONLY transaction, and logs every request to
+    `support_access_log`. The `X-Support-Org` header selects it (routes/studio/context.ts).
+  - Never add a write path for platform admins into customer data, and never let the flag
+    be self-granted.
 - **The app key is public.** End users are identified by the visitor/account ids the host
   page passes in. Each app can require a server-signed identity JWT (per-app secret). Each
   app's websites list is enforced via CORS.
