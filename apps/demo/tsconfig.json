@@ -3,10 +3,14 @@
   "compilerOptions": {
     "module": "ESNext",
     "moduleResolution": "bundler",
-    "lib": ["ES2020", "DOM"],
+    "lib": [
+      "ES2020",
+      "DOM"
+    ],
     "noEmit": true,
-    "declaration": false,
-    "paths": { "@guide-engine/core": ["../../packages/core/src/index.ts"] }
+    "declaration": false
   },
-  "include": ["src"]
+  "include": [
+    "src"
+  ]
 }

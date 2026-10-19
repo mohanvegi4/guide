@@ -5,3 +5,7 @@ main, #login { padding: 24px; max-width: 800px; }
 textarea { width: 100%; font-family: monospace; }
 button { padding: 8px 14px; border-radius: 6px; border: 1px solid #ccc; background: #fff; cursor: pointer; }
 .muted { color: #666; font-size: 12px; margin-left: auto; }
+#who { display: flex; gap: 6px; align-items: center; margin-left: auto; }
+#who input { width: 110px; padding: 4px 6px; }
+.notice { background: #fef0c7; padding: 8px 24px; margin: 0; }
+.linkish { border: none; background: none; color: #4f46e5; cursor: pointer; font: inherit; padding: 0; text-decoration: underline; }

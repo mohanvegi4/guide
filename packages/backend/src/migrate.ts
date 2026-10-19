@@ -13,7 +13,13 @@ import { pool } from './db';
  * Exported (rather than only run as a script) so the integration tests can
  * migrate their own test database with exactly the same code path.
  */
-export async function runMigrations(targetPool: Pool, log: (msg: string) => void = console.log): Promise<void> {
+export async function runMigrations(
+  targetPool: Pool,
+  log: (msg: string) => void = console.log,
+  // Tests only: stop after this file, to build a database "as of" an older
+  // schema and exercise a later migration's data conversion.
+  options: { through?: string } = {},
+): Promise<void> {
   const client = await targetPool.connect();
   try {
     await client.query(`
@@ -24,7 +30,10 @@ export async function runMigrations(targetPool: Pool, log: (msg: string) => void
     `);
 
     const dir = join(__dirname, '..', 'migrations');
-    const files = readdirSync(dir).filter((f) => f.endsWith('.sql')).sort();
+    const files = readdirSync(dir)
+      .filter((f) => f.endsWith('.sql'))
+      .sort()
+      .filter((f) => !options.through || f <= options.through);
 
     for (const file of files) {
       const already = await client.query(`SELECT 1 FROM schema_migrations WHERE filename = $1`, [file]);

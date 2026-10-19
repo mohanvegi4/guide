@@ -17,15 +17,16 @@ describe('AnalyticsComponent', () => {
     auth.token.set('t1');
 
     const fixture = TestBed.createComponent(AnalyticsComponent);
+    fixture.componentRef.setInput('appId', 'a1');
     fixture.componentRef.setInput('guideId', 'g1');
     fixture.detectChanges();
     await fixture.whenStable();
-    http.expectOne('/api/guides/g1/analytics').flush({ guideId: 'g1', counts: [], steps: [] });
+    http.expectOne('/api/v1/apps/a1/guides/g1/analytics').flush({ guideId: 'g1', counts: [], steps: [] });
 
     auth.token.set('t2'); // e.g. silent token renewal
     fixture.detectChanges();
     await fixture.whenStable();
-    http.expectNone('/api/guides/g1/analytics');
+    http.expectNone('/api/v1/apps/a1/guides/g1/analytics');
     http.verify();
   });
 });

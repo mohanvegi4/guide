@@ -6,3 +6,6 @@
 .tabs { display: flex; gap: 4px; margin-right: auto; margin-left: 24px; }
 .tabs a { padding: 6px 10px; border-radius: 6px; color: var(--muted); text-decoration: none; }
 .tabs a.active { background: var(--bg); color: var(--text); font-weight: 600; }
+.switchers { display: flex; align-items: center; gap: 6px; margin-left: 16px; }
+.switchers select { font-weight: 600; border-color: transparent; background: var(--bg); }
+.switchers .sep { color: var(--muted); }

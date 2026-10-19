@@ -1,14 +1,17 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { EventQueue, GuideEngine } from '../src';
+import { AgentClient, EventQueue, GuideEngine } from '../src';
 import {
   API,
+  KEY,
+  R,
   baseOptions,
+  bodyOf,
   callsTo,
   fakeRenderer,
-  flagsOn,
   flushPromises,
   makeGuide,
   mockFetch,
+  serving,
 } from './helpers';
 
 afterEach(() => {
@@ -21,11 +24,7 @@ describe('finished guides', () => {
   it('does not re-show a dismissed guide on the next navigation, even before the backend knows', async () => {
     window.history.replaceState({}, '', '/dashboard');
     // The backend keeps returning the guide (its user_guide_state write hasn't landed yet).
-    mockFetch({
-      '/system/flag': flagsOn,
-      '/guides/active': () => ({ body: [makeGuide()] }),
-      '/events': () => ({ status: 202 }),
-    });
+    mockFetch({ [R.guides]: serving(makeGuide()), [R.events]: () => ({ status: 202 }) });
     const { renderer, rendered } = fakeRenderer();
     const engine = new GuideEngine();
     await engine.init(baseOptions, renderer);
@@ -40,9 +39,8 @@ describe('finished guides', () => {
     window.history.replaceState({}, '', '/dashboard');
     let version = 'version-1';
     mockFetch({
-      '/system/flag': flagsOn,
-      '/guides/active': () => ({ body: [makeGuide({ versionId: version })] }),
-      '/events': () => ({ status: 202 }),
+      [R.guides]: () => serving(makeGuide({ versionId: version }))(),
+      [R.events]: () => ({ status: 202 }),
     });
     const { renderer, rendered } = fakeRenderer();
     const engine = new GuideEngine();
@@ -60,13 +58,11 @@ describe('EventQueue urgent flush', () => {
     '%s is sent immediately, not after the 5s batch',
     async (eventType) => {
       vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
-      const fetchMock = mockFetch({ '/events': () => ({ status: 202 }) });
-      const q = new EventQueue(API, () => 'tok');
+      const fetchMock = mockFetch({ [R.events]: () => ({ status: 202 }) });
+      const q = new EventQueue(new AgentClient(API, KEY, () => ({ visitor: { id: 'u' } })));
       const base = {
-        tenantId: 't',
         guideId: 'g',
         guideVersionId: 'v',
-        userId: 'u',
         sessionId: 's',
         occurredAt: '',
       };
@@ -74,22 +70,22 @@ describe('EventQueue urgent flush', () => {
       q.push({ ...base, eventType });
       await flushPromises();
 
-      const calls = callsTo(fetchMock, '/events');
+      const calls = callsTo(fetchMock, R.events);
       expect(calls).toHaveLength(1);
       expect(
-        JSON.parse(String(calls[0][1]!.body)).events.map((e: { eventType: string }) => e.eventType),
+        (bodyOf(calls[0]).events as Array<{ eventType: string }>).map(
+          (e: { eventType: string }) => e.eventType,
+        ),
       ).toEqual(['guide_shown', eventType]);
     },
   );
 
   it('flushes queued events on pagehide', async () => {
-    const fetchMock = mockFetch({ '/events': () => ({ status: 202 }) });
-    const q = new EventQueue(API, () => 'tok');
+    const fetchMock = mockFetch({ [R.events]: () => ({ status: 202 }) });
+    const q = new EventQueue(new AgentClient(API, KEY, () => ({ visitor: { id: 'u' } })));
     q.push({
-      tenantId: 't',
       guideId: 'g',
       guideVersionId: 'v',
-      userId: 'u',
       sessionId: 'pagehide-test',
       occurredAt: '',
       eventType: 'guide_shown',
@@ -97,7 +93,9 @@ describe('EventQueue urgent flush', () => {
     window.dispatchEvent(new Event('pagehide'));
     await flushPromises();
     // Other suites' engines may flush their own leftovers too; look for ours.
-    const ours = callsTo(fetchMock, '/events').filter(([, init]) => String(init!.body).includes('pagehide-test'));
+    const ours = callsTo(fetchMock, R.events).filter(([, init]) =>
+      String(init!.body).includes('pagehide-test'),
+    );
     expect(ours).toHaveLength(1);
   });
 });

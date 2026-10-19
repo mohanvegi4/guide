@@ -3,80 +3,103 @@
 This file gives Claude Code project-level context. Read this before making any changes.
 
 ## What this repo is
-A multi-tenant in-app guide/tour engine (in-house Pendo/WalkMe alternative). See
-`README.md` for setup and `GUIDE_ENGINE_IMPLEMENTATION_PROMPT.md` for the full
-task list and design rationale — read both before starting work.
+A public, multi-tenant in-app guide product, a lightweight alternative to Pendo or WalkMe.
+- **Organizations** (customers of Guide Engine) own **applications**.
+- Each application gets an **install snippet** with a **public app key**, which goes in the
+  `<head>` of its website.
+- Authors manage guides in the **Studio**.
+
+See `README.md` for setup and the full reference. `GUIDE_ENGINE_IMPLEMENTATION_PROMPT.md` is
+the original (OCLC-era) task list and rationale.
 
 ## Repo layout
 ```
 packages/
-  core/              framework-agnostic engine (state machine + DOM renderer)
-  backend/           Express + Postgres API
-  angular-wrapper/   @guide-engine/angular
-  vue-wrapper/       @guide-engine/vue
+  core/              framework-agnostic engine (state machine, transport, DOM renderer)
+  agent/             the install-snippet agent: IIFE bundle served at /agent/v1/<key>/guides.js
+  backend/           Express + Postgres API (Studio API + public agent API)
+  angular-wrapper/   @guide-engine/angular (optional npm alternative to the snippet)
+  vue-wrapper/       @guide-engine/vue (optional npm alternative to the snippet)
 apps/
   studio/            Authoring Studio (Angular 21)
-  demo/              minimal SDK host app for end-to-end checks
+  demo/              a plain host page that installs Guide Engine via the snippet
 ```
 This is an npm workspaces monorepo. Run commands from the repo root unless a
 task is scoped to one package (`npm run build --workspace=packages/backend`).
 
 ## Non-negotiable design decisions
-Do not relitigate or "improve" these without being asked — they were chosen
+Do not relitigate or "improve" these without being asked. They were chosen
 deliberately for this project's scale and constraints:
-- **Multi-tenant**, enforced twice: app-level (`WHERE tenant_id = ...`) and
-  DB-level (Postgres RLS via `current_setting('app.current_tenant_id')`).
-  Never trust a tenant id from client input — only from the authenticated session.
-- **Flag-driven enablement**, not segment/audience targeting. A boolean
-  `enabled` per guide + global/per-tenant kill switches are the whole v1
-  targeting story. Don't build segment rules unless explicitly asked.
-- **No external analytics integration.** Events live in this repo's own
-  Postgres tables. No webhook/export requirement.
+- **Organizations → applications, isolated twice.**
+  - App level: every query filters by `app_id` / org.
+  - Database level: Postgres RLS, with policies that read only **session variables**.
+    `withStudioSession` sets them from the verified user's memberships; `withAgentSession`
+    sets them from a public key.
+  - Never trust an org, app or user id from request input.
+- **Studio identity comes from OIDC (identity only).**
+  - Organizations, memberships and roles live in our database.
+  - Org roles: owner / admin / member.
+  - Per-app roles: viewer < editor < publisher < app_admin.
+  - HS256 dev tokens exist only in development/test.
+- **The app key is public.** End users are identified by the visitor/account ids the host
+  page passes in. Each app can require a server-signed identity JWT (per-app secret). Each
+  app's websites list is enforced via CORS.
+- **Flag-driven enablement + an account allowlist.** That means a guide `enabled` flag, an app
+  switch, a global kill switch, and an optional per-version `account_ids` list. Don't build
+  metadata segments unless explicitly asked.
+- **No external analytics integration.** Events live in this repo's own Postgres tables.
 - **`data-guide-id` selector convention**, not raw CSS classes/selectors.
-- **Fail closed, fail silent**: SDK disables itself on any backend/kill-switch
-  check failure rather than risk showing something unverified; never throws
-  into or blocks the host app.
-- **No new infrastructure** (queues, caches, search, analytics warehouses)
-  unless a task explicitly calls for it. Single Postgres instance is the v1 target.
+- **Fail closed, fail silent.** The agent shows nothing when anything can't be verified, and
+  never throws into or blocks the host page.
+- **No new infrastructure** (queues, caches, search, analytics warehouses) unless a task
+  explicitly calls for it. A single Postgres instance is the v1 target. The agent rate
+  limiter is in-process on purpose.
 
 ## Conventions to follow
 - TypeScript strict mode everywhere (extend `tsconfig.base.json`, don't loosen it)
-- Every new backend route touching a tenant-scoped table uses the existing
-  `withTenant()` helper in `packages/backend/src/db.ts` — never a raw `pool.query()`
-  against `guide`, `guide_event`, or `user_guide_state`
-- New migrations are new numbered files in `packages/backend/migrations/` —
-  never edit `001_init.sql` after the fact
-- Comments explain *why*, not just *what*; prefer explicit error handling and
-  fail-closed defaults over optimistic assumptions
-- Match existing code style rather than introducing a new pattern for the same problem
+- **Database access:** every query on a scoped table goes through `withStudioSession()` /
+  `withAgentSession()` / `withIdentity()` in `packages/backend/src/db.ts`. Never use a raw
+  `pool.query()` against guide / guide_version / guide_event / user_guide_state /
+  organization / application / app_page / *_member / invitation / studio_user.
+- **Saved pages** (`app_page`): guide versions reference them by `page_id`, and whatever
+  serves a guide's route (the `active_guide` view, preview) must resolve it through the page.
+  `route_match` on such a version is only a fallback snapshot.
+- **Studio routes** resolve access with `requireOrgRole` / `requireAppRole`
+  (`src/routes/studio/context.ts`). Unknown or other people's ids answer 404; insufficient
+  role answers 403.
+- **Migrations** are new numbered files in `packages/backend/migrations/`. Never edit one
+  that has been applied anywhere.
+- Comments explain *why*, not just *what*. Prefer explicit error handling (`HttpError`) and
+  fail-closed defaults over optimistic assumptions.
+- **Studio `effect()`s that load data** must call the API inside `untracked()`. The HTTP
+  interceptor reads the auth token signal, which would otherwise re-run the effect on every
+  token change.
+- Match existing code style rather than introducing a new pattern for the same problem.
 
 ## Required workflow for every task
 1. Read the relevant existing files fully before editing
 2. Make the change
-3. Run the build/typecheck for every package you touched:
-   - `npm run build --workspace=packages/<name>`
-   - or `npx tsc --noEmit -p packages/<name>/tsconfig.json`
-4. Run/add tests where the task calls for them (see implementation prompt for
-   which tasks require tests)
+3. Run the build/typecheck for every package you touched (`npm run build --workspace=<name>`)
+4. Run/add tests (`npm test --workspace=<name>`; backend needs `npm run db:up`)
 5. Report: what changed, why, the build/test output, and anything left TODO
    or any assumption made that should be confirmed with the user
-6. Do not proceed to the next task in the implementation prompt if the
-   current one has unresolved build errors
+6. Don't move on while a task has unresolved build errors
 
 ## Things to stop and ask about, rather than guess
 - Any architectural choice not already covered by an existing pattern in this repo
-- Which frontend stack to use for the Authoring Studio (see implementation prompt, Task 3)
-- Whether to integrate with an existing auth/user system vs. a standalone JWT scheme
 - Anything that would require adding new infrastructure
+- Changes to the security model (RLS policies, identity verification, roles)
 
 ## Common commands
 ```bash
 npm install                                    # from repo root, installs all workspaces
 npm run db:up                                  # Postgres 16 in docker on :5433 (non-superuser app role)
 npm run idp:up                                 # optional: mock OIDC provider on :8080 for Studio SSO
-npm run build                                  # builds all packages (core first)
+npm run build                                  # builds all packages (core first; agent bundle via esbuild)
 npm run migrate                                # builds backend + applies pending migrations
 npm test                                       # all workspace tests (backend needs db:up)
-cd packages/backend && npm run dev             # starts backend on :3000 with hot reload
-cd packages/backend && npm run mint-token -- --tenant <uuid> --user <id> [--role guide_admin[,platform_admin]]
+npm run dev:backend                            # backend on :3000 with hot reload
+npm run seed --workspace=packages/backend      # dev org + app + demo .env.local + a Studio dev token
+npm run mint-token --workspace=packages/backend -- --sub <id> [--email <e>]   # dev Studio token
+npm run sign-identity --workspace=packages/backend -- --secret <ge_sk_…> --visitor <id> [--account <id>]
 ```

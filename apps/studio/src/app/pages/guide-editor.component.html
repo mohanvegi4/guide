@@ -1,4 +1,4 @@
-<p class="crumbs"><a [routerLink]="basePath">← All {{ scope === 'global' ? 'global ' : '' }}guides</a></p>
+<p class="crumbs"><a [routerLink]="['/o', orgId(), 'apps', appId(), 'guides']">← All guides</a></p>
 
 @if (loading()) {
   <p class="muted">Loading…</p>
@@ -7,14 +7,13 @@
     <div>
       <h1>{{ g.name }}</h1>
       <p class="muted">
-        @if (scope === 'global') { <span class="badge archived">global · every tenant</span> · }
         {{ g.type }} ·
         <span class="badge" [class]="'badge ' + g.status">{{ g.status }}</span>
         @if (loadedFrom(); as from) { · editing from v{{ from.number }}{{ from.draft ? ' (draft)' : '' }} }
       </p>
     </div>
     <label class="switch big">
-      <input type="checkbox" [checked]="g.enabled" [disabled]="busy()" (change)="toggleEnabled($any($event.target).checked)" />
+      <input type="checkbox" [checked]="g.enabled" [disabled]="busy() || !canPublish()" (change)="toggleEnabled($any($event.target).checked)" />
       <span>{{ g.enabled ? 'Enabled' : 'Disabled' }}</span>
     </label>
   </div>
@@ -33,7 +32,7 @@
       </div>
       <p class="muted small">
         Opens the product with this version force-rendered for you, even while it's disabled or unpublished.
-        Requires being signed in to the product as a user of this tenant. Expires {{ link.expiresAt | date: 'shortTime' }}.
+        Opens on this app's first website; it also works on the app's other websites. Expires {{ link.expiresAt | date: 'shortTime' }}.
       </p>
       @if (link.url) {
         <input class="mono" [value]="link.url" readonly aria-label="Preview link" (focus)="$any($event.target).select()" />
@@ -42,7 +41,7 @@
           <button type="button" (click)="copyPreview()">{{ copied() ? 'Copied ✓' : 'Copy link' }}</button>
         </div>
       } @else {
-        <p class="muted small">PREVIEW_APP_BASE_URL isn't set on the backend — append this to any product URL as <code>?guidePreview=…</code>:</p>
+        <p class="muted small">This app has no websites yet (Install &amp; settings). Append this to a page URL of your site as <code>?guidePreview=…</code>:</p>
         <input class="mono" [value]="link.token" readonly aria-label="Preview token" />
       }
     </section>
@@ -52,7 +51,36 @@
     <form class="editor" [formGroup]="form" (ngSubmit)="publish()">
       <section class="card">
         <h2>Where &amp; when</h2>
+        <fieldset class="where">
+          <legend>Show on</legend>
+          <label class="switch"><input type="radio" formControlName="where" value="page" /> A saved page</label>
+          <label class="switch"><input type="radio" formControlName="where" value="custom" /> A custom route</label>
+        </fieldset>
+        @if (form.controls.where.value === 'page') {
+          <label>
+            Page
+            <select formControlName="pageId" aria-label="Saved page">
+              <option value="" disabled>{{ pages().length ? 'Choose a page…' : 'No saved pages yet' }}</option>
+              @for (p of pages(); track p.id) {
+                <option [value]="p.id">{{ pageLabel(p) }}</option>
+              }
+            </select>
+          </label>
+          @if (selectedPage(); as p) {
+            <p class="muted small">
+              Shows on <code>{{ p.routeMatch.value }}</code>@if (p.routeMatch.type === 'pattern') { (pattern) }. If
+              someone changes this page's URL, the guide follows it — no republish needed.
+            </p>
+          }
+          <p class="small">
+            <a [routerLink]="['/o', orgId(), 'apps', appId(), 'pages']">Manage pages</a>
+            @if (!pages().length) {
+              — or switch to <em>A custom route</em> and save it as a page from there.
+            }
+          </p>
+        }
         <div class="grid-2">
+          @if (form.controls.where.value === 'custom') {
           <label>
             Route match
             <select formControlName="routeType">
@@ -67,6 +95,24 @@
               <small class="error">Must start with /</small>
             }
           </label>
+          @if (canEdit()) {
+            <div class="save-page">
+              <label>
+                Reuse this route? Save it as a page
+                <input
+                  [value]="newPageName()"
+                  (input)="newPageName.set($any($event.target).value)"
+                  placeholder="Page name, e.g. Team settings"
+                  aria-label="New page name"
+                  maxlength="120"
+                />
+              </label>
+              <button type="button" (click)="saveRouteAsPage()" [disabled]="busy() || form.controls.routeValue.invalid">
+                Save as page
+              </button>
+            </div>
+          }
+          }
           <label>
             Start (optional)
             <input type="datetime-local" formControlName="startAt" />
@@ -76,6 +122,57 @@
             <input type="datetime-local" formControlName="endAt" />
           </label>
         </div>
+        <fieldset class="audience">
+          <legend>Audience</legend>
+          <label class="switch"><input type="radio" formControlName="audience" value="all" /> All accounts</label>
+          <label class="switch"><input type="radio" formControlName="audience" value="accounts" /> Only these accounts</label>
+          @if (form.controls.audience.value === 'accounts') {
+            <textarea
+              formControlName="accountIds"
+              rows="3"
+              placeholder="acme&#10;globex"
+              aria-label="Account ids, one per line"
+            ></textarea>
+            <small class="muted">The account ids your app passes to <code>guideEngine.initialize(&#123; account: &#123; id &#125; &#125;)</code>.</small>
+          }
+        </fieldset>
+      </section>
+
+      <section class="card">
+        <div class="section-head">
+          <h2>Help center</h2>
+          <label class="switch"><input type="checkbox" formControlName="helpListed" /> List in the help center</label>
+        </div>
+        @if (form.controls.helpListed.value) {
+          <p class="muted small">
+            Visitors can search for this guide in the help button's list and start it on demand — even if they've done it
+            before. If they're on another page, they're taken to the start page first.
+          </p>
+          <div class="grid-2">
+            <label>
+              Title in the help list
+              <input formControlName="helpTitle" [placeholder]="g.name" />
+            </label>
+            <label>
+              Start page {{ helpNeedsStartPage() || (form.controls.where.value === 'custom' && form.controls.routeType.value === 'pattern') ? '(required for a pattern route)' : '(optional)' }}
+              <input formControlName="helpStartPath" [placeholder]="defaultStartPage()" />
+              @if (form.controls.helpStartPath.invalid) {
+                <small class="error">A path on your site, starting with /</small>
+              }
+              @if (helpNeedsStartPage()) {
+                <small class="error">Required: the route is a pattern.</small>
+              }
+            </label>
+          </div>
+          <label>
+            Short description
+            <input formControlName="helpDescription" placeholder="e.g. Add people to your workspace in a few clicks" />
+          </label>
+          <label>
+            Search keywords (comma separated)
+            <input formControlName="helpKeywords" placeholder="e.g. team, members, invite, colleagues" />
+          </label>
+        }
       </section>
 
       <section class="card">
@@ -141,9 +238,17 @@
       </section>
 
       <div class="toolbar">
-        <button type="submit" class="primary" [disabled]="busy()">Publish new version</button>
-        <button type="button" (click)="saveDraft()" [disabled]="busy()">Save draft</button>
-        <button type="button" (click)="previewDraft()" [disabled]="busy()">Preview</button>
+        @if (canPublish()) {
+          <button type="submit" class="primary" [disabled]="busy()">Publish new version</button>
+        }
+        @if (canEdit()) {
+          <button type="button" (click)="saveDraft()" [disabled]="busy()">Save draft</button>
+        } @else {
+          <span class="muted">You have view-only access to this app.</span>
+        }
+        @if (canEdit()) {
+          <button type="button" (click)="previewDraft()" [disabled]="busy()">Preview</button>
+        }
         @if (form.dirty) { <span class="muted">Unsaved changes</span> }
       </div>
     </form>
@@ -152,11 +257,13 @@
       <app-version-history
         [guide]="g"
         [busy]="busy()"
+        [canEdit]="canEdit()"
+        [canPublish]="canPublish()"
         (rollback)="rollback($event)"
         (load)="loadVersion($event)"
         (preview)="previewVersion($event)"
       />
-      <app-analytics [guideId]="g.id" [scope]="scope" [steps]="analyticsSteps()" />
+      <app-analytics [appId]="appId()" [guideId]="g.id" [steps]="analyticsSteps()" />
     </aside>
   </div>
 }

@@ -1,6 +1,6 @@
 import { Component, computed, effect, inject, input, signal, untracked } from '@angular/core';
 import { ApiService, describeError } from '../core/api.service';
-import { GuideScope, StepPayload } from '../core/models';
+import { StepPayload } from '../core/models';
 
 /** Funnel order for display; event types not listed here are appended after. */
 const FUNNEL = [
@@ -33,7 +33,7 @@ interface StepRow {
   template: `
     <section class="card">
       <div class="section-head">
-        <h2>Analytics{{ scope() === 'global' ? ' · all tenants' : '' }}</h2>
+        <h2>Analytics</h2>
         <button type="button" class="link" (click)="refresh()">Refresh</button>
       </div>
       @if (error()) {
@@ -55,6 +55,9 @@ interface StepRow {
           </tbody>
         </table>
 
+        @if (startedFromHelp() > 0) {
+          <p class="muted small">Started from the help center {{ startedFromHelp() }} time{{ startedFromHelp() === 1 ? '' : 's' }}.</p>
+        }
         @if (stepRows().length > 0) {
           <h3 class="subhead">Per step</h3>
           <p class="muted small">Step ids survive edits, so counts carry across versions. Labels are from the live version.</p>
@@ -81,12 +84,13 @@ interface StepRow {
 })
 export class AnalyticsComponent {
   private readonly api = inject(ApiService);
+  readonly appId = input.required<string>();
   readonly guideId = input.required<string>();
-  readonly scope = input<GuideScope>('tenant');
   /** Steps used to label the per-step table, in display order. */
   readonly steps = input<Array<Pick<StepPayload, 'content'> & { id?: string }>>([]);
 
   private readonly counts = signal<Record<string, number>>({});
+  protected readonly startedFromHelp = signal(0);
   /** step_id -> event_type -> count */
   private readonly stepCounts = signal<Record<string, Record<string, number>>>({});
   protected readonly error = signal<string | null>(null);
@@ -129,18 +133,19 @@ export class AnalyticsComponent {
     // would otherwise make the token a dependency of this effect and re-fire
     // the request on every token renewal (and unauthenticated on sign-out).
     effect(() => {
+      this.appId();
       this.guideId();
-      this.scope();
       untracked(() => this.refresh());
     });
   }
 
   refresh(): void {
-    this.api.analytics(this.scope(), this.guideId()).subscribe({
+    this.api.analytics(this.appId(), this.guideId()).subscribe({
       next: (res) => {
         this.error.set(null);
         // pg returns COUNT as int (cast server-side); Number() guards older responses.
         this.counts.set(Object.fromEntries(res.counts.map((c) => [c.event_type, Number(c.count)])));
+        this.startedFromHelp.set(Number(res.startedFromHelp ?? 0));
         const byStep: Record<string, Record<string, number>> = {};
         for (const c of res.steps ?? []) {
           (byStep[c.step_id] ??= {})[c.event_type] = Number(c.count);

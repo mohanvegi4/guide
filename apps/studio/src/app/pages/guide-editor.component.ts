@@ -1,12 +1,23 @@
 import { DatePipe } from '@angular/common';
-import { Component, OnInit, computed, inject, signal } from '@angular/core';
-import { FormArray, FormBuilder, FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
-import { ActivatedRoute, RouterLink } from '@angular/router';
-import { ApiService, describeError } from '../core/api.service';
+import { Component, computed, effect, inject, input, signal, untracked } from '@angular/core';
+import { Observable, forkJoin } from 'rxjs';
 import {
+  FormArray,
+  FormBuilder,
+  FormControl,
+  FormGroup,
+  ReactiveFormsModule,
+  Validators,
+} from '@angular/forms';
+import { RouterLink } from '@angular/router';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { AuthService } from '../core/auth.service';
+import { ApiService, describeError } from '../core/api.service';
+import { runRequest } from '../core/request';
+import {
+  AppPage,
   GUIDE_TYPES,
   GuideDetail,
-  GuideScope,
   GuideType,
   GuideVersion,
   PreviewLink,
@@ -17,6 +28,7 @@ import {
   StepActionType,
   StepPayload,
   StepPosition,
+  appRoleAtLeast,
 } from '../core/models';
 import { VersionHistoryComponent } from '../components/version-history.component';
 import { AnalyticsComponent } from '../components/analytics.component';
@@ -46,19 +58,31 @@ const SELECTOR_PATTERN = /^\[data-guide-id="([A-Za-z0-9_-]+)"\]$/;
   imports: [ReactiveFormsModule, RouterLink, DatePipe, VersionHistoryComponent, AnalyticsComponent],
   templateUrl: './guide-editor.component.html',
 })
-export class GuideEditorComponent implements OnInit {
+export class GuideEditorComponent {
   private readonly api = inject(ApiService);
   private readonly fb = inject(FormBuilder).nonNullable;
-  private readonly route = inject(ActivatedRoute).snapshot;
-  private readonly guideId = this.route.paramMap.get('id')!;
-  protected readonly scope: GuideScope = this.route.data['scope'] ?? 'tenant';
-  protected readonly basePath = this.scope === 'global' ? '/global' : '/guides';
+  private readonly auth = inject(AuthService);
+  // Route params, bound as inputs (withComponentInputBinding) so switching
+  // guides/apps re-loads instead of showing stale data.
+  readonly orgId = input.required<string>();
+  readonly appId = input.required<string>();
+  readonly id = input.required<string>();
+  private get guideId(): string {
+    return this.id();
+  }
+  protected readonly canEdit = computed(() => appRoleAtLeast(this.auth.appRole(this.appId()), 'editor'));
+  protected readonly canPublish = computed(() =>
+    appRoleAtLeast(this.auth.appRole(this.appId()), 'publisher'),
+  );
 
   protected readonly guideTypes = GUIDE_TYPES;
   protected readonly positions = STEP_POSITIONS;
   protected readonly actionTypes = STEP_ACTIONS;
 
   protected readonly guide = signal<GuideDetail | null>(null);
+  /** The app's saved pages, for the "Where" picker. */
+  protected readonly pages = signal<AppPage[]>([]);
+  protected readonly newPageName = signal('');
   protected readonly loading = signal(true);
   protected readonly busy = signal(false);
   protected readonly error = signal<string | null>(null);
@@ -76,10 +100,23 @@ export class GuideEditorComponent implements OnInit {
   });
 
   protected readonly form = this.fb.group({
+    // Where the guide shows: one of the app's saved pages (it then follows the
+    // page's URL as it's edited), or a route of its own.
+    where: this.fb.control<'page' | 'custom'>('custom'),
+    pageId: this.fb.control(''),
     routeType: this.fb.control<'exact' | 'pattern'>('exact'),
     routeValue: this.fb.control('/', [Validators.required, Validators.pattern(/^\//)]),
     startAt: this.fb.control(''),
     endAt: this.fb.control(''),
+    // Audience: everyone, or only the listed account ids (one per line / comma separated).
+    audience: this.fb.control<'all' | 'accounts'>('all'),
+    accountIds: this.fb.control(''),
+    // Help center listing (on-demand, searchable).
+    helpListed: this.fb.control(false),
+    helpTitle: this.fb.control('', Validators.maxLength(120)),
+    helpDescription: this.fb.control('', Validators.maxLength(500)),
+    helpKeywords: this.fb.control(''),
+    helpStartPath: this.fb.control('', Validators.pattern(/^(\/(?!\/).*)?$/)),
     steps: this.fb.array<StepForm>([]),
   });
 
@@ -87,24 +124,41 @@ export class GuideEditorComponent implements OnInit {
     return this.form.controls.steps;
   }
 
-  ngOnInit(): void {
-    this.reload(true);
+  constructor() {
+    effect(() => {
+      this.appId();
+      this.id();
+      untracked(() => this.load()); // untracked: the interceptor reads the auth token signal
+    });
+    // The custom-route fields only count while "A custom route" is chosen.
+    // Disabling them keeps Angular's own validity honest (form.invalid,
+    // ng-invalid styling), so validate() needs no special case; getRawValue()
+    // still includes their values for "Save as page" and the auto-match below.
+    this.form.controls.where.valueChanges.pipe(takeUntilDestroyed()).subscribe((where) => {
+      for (const c of [this.form.controls.routeType, this.form.controls.routeValue]) {
+        if (where === 'page') c.disable({ emitEvent: false });
+        else c.enable({ emitEvent: false });
+      }
+      // Switching to "A saved page" picks the page matching the custom route, if one exists.
+      const v = this.form.getRawValue();
+      if (where !== 'page' || v.pageId) return;
+      const match = this.pages().find(
+        (p) => p.routeMatch.type === v.routeType && p.routeMatch.value === v.routeValue.trim(),
+      );
+      if (match) this.form.controls.pageId.setValue(match.id);
+    });
   }
 
-  /** Re-fetches the guide; optionally (re)populates the form from its live version. */
-  reload(populate: boolean): void {
-    this.api.getGuide(this.scope, this.guideId).subscribe({
-      next: (guide) => {
-        this.guide.set(guide);
-        this.loading.set(false);
-        if (populate) {
-          // Prefer the working draft (newest unpublished work), then the live version.
-          const draft = guide.versions.find((v) => !v.published_at);
-          const live = guide.versions.find((v) => v.id === guide.current_version_id);
-          const source = draft ?? live ?? guide.versions[0];
-          if (source) this.loadVersion(source);
-          else this.resetToBlank(guide.type);
-        }
+  /** First load: the guide and the app's pages together, so the form is populated once both are known. */
+  private load(): void {
+    this.loading.set(true);
+    forkJoin({
+      guide: this.api.getGuide(this.appId(), this.guideId),
+      pages: this.api.listPages(this.appId()),
+    }).subscribe({
+      next: ({ guide, pages }) => {
+        this.pages.set(pages);
+        this.setGuide(guide, true);
       },
       error: (err) => {
         this.error.set(describeError(err));
@@ -113,10 +167,85 @@ export class GuideEditorComponent implements OnInit {
     });
   }
 
+  /** The saved page currently picked in the form (if any). */
+  protected selectedPage(): AppPage | undefined {
+    const v = this.form.getRawValue();
+    return v.where === 'page' ? this.pages().find((p) => p.id === v.pageId) : undefined;
+  }
+
+  pageLabel(page: AppPage): string {
+    return `${page.name} — ${page.routeMatch.value}`;
+  }
+
+  /** Saves the custom route as a reusable page and switches the guide onto it. */
+  saveRouteAsPage(): void {
+    const v = this.form.getRawValue();
+    const name = this.newPageName().trim();
+    if (!name) {
+      this.error.set('Give the page a name, e.g. "Team settings".');
+      return;
+    }
+    if (v.routeType === 'pattern' && !v.helpStartPath.trim()) {
+      this.error.set(
+        'A pattern page needs a start page — fill in the help center start page first, or use an exact path.',
+      );
+      return;
+    }
+    const routeMatch = { type: v.routeType, value: v.routeValue.trim() };
+    this.run(
+      this.api.createPage(this.appId(), {
+        name,
+        routeMatch,
+        ...(v.routeType === 'pattern' ? { startPath: v.helpStartPath.trim() } : {}),
+      }),
+      (page) => {
+        this.pages.update((list) => [...list, page].sort((a, b) => a.name.localeCompare(b.name)));
+        this.form.patchValue({ where: 'page', pageId: page.id });
+        // The page now carries the start page; the guide doesn't need its own.
+        if (v.routeType === 'pattern') this.form.controls.helpStartPath.setValue('');
+        this.form.markAsDirty();
+        this.newPageName.set('');
+        this.message.set(`Saved page “${page.name}”. Other guides can use it too.`);
+      },
+    );
+  }
+
+  /** Re-fetches the guide; optionally (re)populates the form from its live version. */
+  reload(populate: boolean): void {
+    this.api.getGuide(this.appId(), this.guideId).subscribe({
+      next: (guide) => this.setGuide(guide, populate),
+      error: (err) => {
+        this.error.set(describeError(err));
+        this.loading.set(false);
+      },
+    });
+  }
+
+  private setGuide(guide: GuideDetail, populate: boolean): void {
+    this.guide.set(guide);
+    this.loading.set(false);
+    if (!populate) return;
+    // Prefer the working draft (newest unpublished work), then the live version.
+    const draft = guide.versions.find((v) => !v.published_at);
+    const live = guide.versions.find((v) => v.id === guide.current_version_id);
+    const source = draft ?? live ?? guide.versions[0];
+    if (source) this.loadVersion(source);
+    else this.resetToBlank(guide.type);
+  }
+
   loadVersion(version: GuideVersion): void {
     this.form.patchValue({
+      where: version.page_id ? 'page' : 'custom',
+      pageId: version.page_id ?? '',
       routeType: version.route_match.type,
       routeValue: version.route_match.value,
+      audience: version.account_ids?.length ? 'accounts' : 'all',
+      accountIds: (version.account_ids ?? []).join('\n'),
+      helpListed: version.help !== null && version.help !== undefined,
+      helpTitle: version.help?.title ?? '',
+      helpDescription: version.help?.description ?? '',
+      helpKeywords: (version.help?.keywords ?? []).join(', '),
+      helpStartPath: version.help?.startPath ?? '',
       startAt: toLocalInput(version.start_at),
       endAt: toLocalInput(version.end_at),
     });
@@ -127,6 +256,8 @@ export class GuideEditorComponent implements OnInit {
   }
 
   private resetToBlank(type: GuideType): void {
+    // A brand-new guide starts on "A saved page" once the app has some.
+    this.form.controls.where.setValue(this.pages().length ? 'page' : 'custom');
     this.steps.clear();
     this.steps.push(this.stepForm({ type }));
     this.loadedFrom.set(null);
@@ -192,7 +323,25 @@ export class GuideEditorComponent implements OnInit {
   private buildPayload(): PublishPayload {
     const v = this.form.getRawValue();
     return {
-      routeMatch: { type: v.routeType, value: v.routeValue.trim() },
+      ...(v.where === 'page'
+        ? { pageId: v.pageId }
+        : { routeMatch: { type: v.routeType, value: v.routeValue.trim() } }),
+      accountIds: v.audience === 'accounts' ? parseAccountIds(v.accountIds) : null,
+      help: v.helpListed
+        ? {
+            title: v.helpTitle.trim() || this.guide()?.name || 'Untitled',
+            description: v.helpDescription.trim(),
+            keywords: [
+              ...new Set(
+                v.helpKeywords
+                  .split(',')
+                  .map((k) => k.trim())
+                  .filter(Boolean),
+              ),
+            ],
+            ...(v.helpStartPath.trim() ? { startPath: v.helpStartPath.trim() } : {}),
+          }
+        : null,
       ...(v.startAt ? { startAt: new Date(v.startAt).toISOString() } : {}),
       ...(v.endAt ? { endAt: new Date(v.endAt).toISOString() } : {}),
       steps: v.steps.map((s, order) => ({
@@ -207,8 +356,34 @@ export class GuideEditorComponent implements OnInit {
     };
   }
 
+  /** A wildcard route has no single page to send help-center visitors to. */
+  protected helpNeedsStartPage(): boolean {
+    const v = this.form.getRawValue();
+    // Saved pattern pages always carry their own start page.
+    return v.helpListed && v.where === 'custom' && v.routeType === 'pattern' && !v.helpStartPath.trim();
+  }
+
+  /** Placeholder for the help start page: what's used when it's left empty. */
+  protected defaultStartPage(): string {
+    const v = this.form.getRawValue();
+    const page = this.selectedPage();
+    if (page) return page.startPath ?? page.routeMatch.value;
+    return v.routeType === 'exact' ? v.routeValue : '/projects/new';
+  }
+
   private validate(action: string): boolean {
     this.form.markAllAsTouched();
+    const v = this.form.getRawValue();
+    if (v.where === 'page' && !this.selectedPage()) {
+      this.error.set('Choose a saved page for this guide, or switch to a custom route.');
+      return false;
+    }
+    if (this.helpNeedsStartPage()) {
+      this.error.set(
+        'Help center: add a start page — the route is a pattern, so we need a page to send people to.',
+      );
+      return false;
+    }
     if (this.form.invalid || this.steps.length === 0) {
       this.error.set(`Fix the highlighted fields before you ${action} (at least one step is required).`);
       return false;
@@ -219,7 +394,7 @@ export class GuideEditorComponent implements OnInit {
   /** Publishing sends the form, which the backend saves as the draft and promotes in one step. */
   publish(): void {
     if (!this.validate('publish')) return;
-    this.run(this.api.publish(this.scope, this.guideId, this.buildPayload()), (v) => {
+    this.run(this.api.publish(this.appId(), this.guideId, this.buildPayload()), (v) => {
       this.message.set(`Published v${v.versionNumber}.`);
       this.previewLink.set(null);
       this.reload(true);
@@ -228,7 +403,7 @@ export class GuideEditorComponent implements OnInit {
 
   saveDraft(): void {
     if (!this.validate('save')) return;
-    this.run(this.api.saveDraft(this.scope, this.guideId, this.buildPayload()), (v) => {
+    this.run(this.api.saveDraft(this.appId(), this.guideId, this.buildPayload()), (v) => {
       this.message.set(`Draft saved (v${v.versionNumber}, not live).`);
       this.form.markAsPristine();
       this.loadedFrom.set({ number: v.versionNumber, draft: true });
@@ -240,7 +415,7 @@ export class GuideEditorComponent implements OnInit {
   previewDraft(): void {
     if (!this.validate('preview')) return;
     this.busy.set(true);
-    this.api.saveDraft(this.scope, this.guideId, this.buildPayload()).subscribe({
+    this.api.saveDraft(this.appId(), this.guideId, this.buildPayload()).subscribe({
       next: (draft) => {
         this.form.markAsPristine();
         this.loadedFrom.set({ number: draft.versionNumber, draft: true });
@@ -260,7 +435,7 @@ export class GuideEditorComponent implements OnInit {
 
   private mintPreview(versionId: string, versionNumber: number): void {
     this.copied.set(false);
-    this.run(this.api.previewLink(this.scope, this.guideId, versionId), (link) => {
+    this.run(this.api.previewLink(this.appId(), this.guideId, versionId), (link) => {
       this.previewLink.set({ ...link, versionNumber });
     });
   }
@@ -270,39 +445,28 @@ export class GuideEditorComponent implements OnInit {
     if (!link) return;
     void navigator.clipboard?.writeText(link.url ?? link.token).then(
       () => this.copied.set(true),
-      () => this.error.set('Could not copy — select the link and copy it manually.')
+      () => this.error.set('Could not copy — select the link and copy it manually.'),
     );
   }
 
   rollback(versionNumber: number): void {
-    if (!confirm(`Make v${versionNumber} the live version? End users will see it on their next page load.`)) return;
-    this.run(this.api.rollback(this.scope, this.guideId, versionNumber), () => {
+    if (!confirm(`Make v${versionNumber} the live version? End users will see it on their next page load.`))
+      return;
+    this.run(this.api.rollback(this.appId(), this.guideId, versionNumber), () => {
       this.message.set(`Rolled back to v${versionNumber}.`);
       this.reload(false);
     });
   }
 
   toggleEnabled(enabled: boolean): void {
-    this.run(this.api.setEnabled(this.scope, this.guideId, enabled), () => {
+    this.run(this.api.setEnabled(this.appId(), this.guideId, enabled), () => {
       this.guide.update((g) => (g ? { ...g, enabled } : g));
       this.message.set(enabled ? 'Guide enabled.' : 'Guide disabled.');
     });
   }
 
-  private run<T>(obs: import('rxjs').Observable<T>, onOk: (value: T) => void): void {
-    this.busy.set(true);
-    this.error.set(null);
-    this.message.set(null);
-    obs.subscribe({
-      next: (value) => {
-        this.busy.set(false);
-        onOk(value);
-      },
-      error: (err) => {
-        this.busy.set(false);
-        this.error.set(describeError(err));
-      },
-    });
+  private run<T>(obs: Observable<T>, onOk: (value: T) => void): void {
+    runRequest({ busy: this.busy, error: this.error, message: this.message }, obs, onOk);
   }
 }
 
@@ -311,4 +475,17 @@ function toLocalInput(iso: string | null): string {
   if (!iso) return '';
   const d = new Date(iso);
   return new Date(d.getTime() - d.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
+}
+
+/** Account ids from the audience box: one per line or comma separated, de-duplicated. */
+function parseAccountIds(text: string): string[] | null {
+  const ids = [
+    ...new Set(
+      text
+        .split(/[\n,]/)
+        .map((s) => s.trim())
+        .filter(Boolean),
+    ),
+  ];
+  return ids.length ? ids : null;
 }

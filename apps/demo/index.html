@@ -4,23 +4,51 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Demo Host App</title>
+
+    <!-- Guide Engine install snippet — copied from Studio → App settings.
+         Vite fills in the key and API origin from .env.local (npm run seed). -->
+    <script>
+      (function (w, d, k, a) {
+        var g = (w.guideEngine = w.guideEngine || { _q: [] });
+        ['initialize', 'identify', 'openHelp', 'closeHelp', 'toggleHelp'].forEach(function (m) {
+          g[m] = g[m] || function () { g._q.push([m].concat([].slice.call(arguments))); };
+        });
+        var s = d.createElement('script'); s.async = 1;
+        s.src = a + '/agent/v1/' + k + '/guides.js';
+        d.head.appendChild(s);
+      })(window, document, '%VITE_GE_APP_KEY%', '%VITE_GE_API%');
+    </script>
+    <!-- The host app tells Guide Engine who is signed in (here: picked on the page). -->
+    <script>
+      (function () {
+        var who = null;
+        try { who = JSON.parse(localStorage.getItem('demo-user') || 'null'); } catch (e) {}
+        guideEngine.initialize(
+          who ? { visitor: { id: who.visitor }, account: who.account ? { id: who.account } : null } : {}
+        );
+      })();
+    </script>
+
     <link rel="stylesheet" href="/src/style.css" />
   </head>
   <body>
     <header>
-      <strong>Acme Product (demo host app)</strong>
+      <strong>Acme Product <span class="muted">(demo host app)</span></strong>
       <nav>
-        <a href="/dashboard" data-link>Dashboard</a>
-        <a href="/projects" data-link>Projects</a>
+        <a href="/dashboard" data-link data-guide-id="nav-dashboard">Dashboard</a>
+        <a href="/projects" data-link data-guide-id="nav-projects">Projects</a>
+        <a href="/team" data-link data-guide-id="nav-team">Team</a>
+        <!-- A product's own help entry point, calling the same action as the floating button. -->
+        <button type="button" class="linkish" data-guide-id="help-link" onclick="guideEngine.openHelp()">? Help</button>
       </nav>
-      <span id="who" class="muted"></span>
+      <form id="who" data-guide-id="sign-in">
+        <input name="visitor" placeholder="visitor id" aria-label="Visitor id" />
+        <input name="account" placeholder="account id" aria-label="Account id" />
+        <button>Sign in as</button>
+        <span id="current" class="muted"></span>
+      </form>
     </header>
-    <section id="login" hidden>
-      <p>This stands in for the product's own login. Paste an <em>end-user</em> token
-        (<code>npm run mint-token -- --tenant &lt;uuid&gt; --user bob</code>):</p>
-      <textarea id="token" rows="3"></textarea>
-      <button id="save-token">Sign in</button>
-    </section>
+    <p id="setup" class="notice" hidden>No app key yet — run <code>npm run seed --workspace=packages/backend</code>, then restart this dev server.</p>
     <main id="view"></main>
     <script type="module" src="/src/main.ts"></script>
   </body>

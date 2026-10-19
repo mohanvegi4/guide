@@ -3,9 +3,11 @@ import { z } from 'zod';
 
 /**
  * Signed preview links: the Studio mints a short-lived token naming one
- * guide version; the SDK, seeing ?guidePreview=<token> in the host app's URL,
- * asks the backend to verify it and force-render that version regardless of
- * the guide's enabled flag or publish state.
+ * guide version of one app; the agent, seeing ?guidePreview=<token> in the
+ * host page's URL, asks the backend to verify it and force-render that
+ * version regardless of the guide's enabled flag or publish state. The token
+ * only resolves through that same app's public key, so a leaked link can't be
+ * used to read guides from another app.
  *
  * Signed with PREVIEW_TOKEN_SECRET, which must differ from JWT_SECRET, and a
  * dedicated audience — so a preview token can never be replayed as an auth
@@ -18,14 +20,14 @@ export const PREVIEW_TTL_SECONDS = 15 * 60;
 export interface PreviewClaims {
   guideId: string;
   versionId: string;
-  tenantId: string;
+  appId: string;
 }
 
 const claimsSchema = z.object({
   typ: z.literal('guide_preview'),
   guideId: z.string().uuid(),
   versionId: z.string().uuid(),
-  tenantId: z.string().uuid(),
+  appId: z.string().uuid(),
 });
 
 /** Returns the preview secret, or null when preview is not configured (feature off). */
@@ -59,8 +61,8 @@ export function verifyPreviewToken(token: string, secret: string): PreviewClaims
     });
     const parsed = claimsSchema.safeParse(payload);
     if (!parsed.success) return null;
-    const { guideId, versionId, tenantId } = parsed.data;
-    return { guideId, versionId, tenantId };
+    const { guideId, versionId, appId } = parsed.data;
+    return { guideId, versionId, appId };
   } catch {
     return null;
   }

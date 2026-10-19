@@ -15,23 +15,20 @@ export default defineConfig({
     fileParallelism: false,
     env: {
       NODE_ENV: 'test',
-      // Fixed test-only secret; suites mint real HS256 tokens with it so they
-      // exercise production auth, not the dev bypass.
+      DATABASE_URL: process.env.TEST_DATABASE_URL ?? TEST_DB,
+      TEST_ADMIN_DATABASE_URL: process.env.TEST_ADMIN_DATABASE_URL ?? TEST_ADMIN_DB,
+      // Fixed test-only secret for development Studio tokens (signed per test).
       JWT_SECRET: 'test-secret-test-secret-test-secret-0123456789',
-      JWT_ISSUER: 'guide-engine-test',
-      JWT_AUDIENCE: 'guide-engine-api',
-      GUIDE_ENGINE_DEV_AUTH: 'false',
       PREVIEW_TOKEN_SECRET: 'preview-secret-preview-secret-0123456789',
-      PREVIEW_APP_BASE_URL: 'http://app.test',
+      AGENT_BUNDLE_PATH: 'test/fixtures/agent-bundle.js',
+      AGENT_APP_CACHE_MS: '0',
       // Pin everything else the backend reads, so a developer's .env (loaded
       // by migrate.ts during global setup) can't leak into the tests.
       OIDC_ISSUER: '',
       OIDC_AUDIENCE: '',
       OIDC_JWKS_URI: '',
       OIDC_STUDIO_CLIENT_ID: '',
-      CORS_ORIGINS: '',
-      DATABASE_URL: process.env.TEST_DATABASE_URL ?? TEST_DB,
-      TEST_ADMIN_DATABASE_URL: process.env.TEST_ADMIN_DATABASE_URL ?? TEST_ADMIN_DB,
+      AGENT_RATE_LIMIT_PER_MIN: '600',
     },
   },
 });
