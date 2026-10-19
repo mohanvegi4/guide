@@ -122,12 +122,42 @@ import { runRequest } from '../core/request';
                   >
                     {{ o.suspendedAt ? 'Lift suspension' : 'Suspend' }}
                   </button>
+                  <button
+                    type="button"
+                    class="danger"
+                    (click)="askDelete(o)"
+                    [disabled]="busy()"
+                    title="Delete this organization and all its data (a customer's deletion request)"
+                  >
+                    Delete
+                  </button>
                 </div>
               </td>
             </tr>
           }
         </tbody>
       </table>
+    }
+
+    @if (pendingDelete(); as o) {
+      <section class="card danger-zone" aria-live="polite">
+        <h2>Delete {{ o.name }}</h2>
+        <p class="muted small">
+          For a customer's deletion request (GDPR, end of contract) when no owner can do it from their own
+          Members page. Removes the organization with its apps, guides, pages, analytics, members and
+          invitations; the people keep their Studio accounts. This cannot be undone and is logged.
+        </p>
+        <form class="inline-form" (ngSubmit)="deleteOrg(o)">
+          <label>
+            Type <strong>{{ o.name }}</strong> to confirm
+            <input name="confirmName" [(ngModel)]="confirmName" autocomplete="off" />
+          </label>
+          <button type="submit" class="danger" [disabled]="busy() || confirmName !== o.name">
+            Delete organization
+          </button>
+          <button type="button" (click)="askDelete(null)" [disabled]="busy()">Cancel</button>
+        </form>
+      </section>
     }
 
     <section class="card">
@@ -185,6 +215,9 @@ export class OperatorComponent {
   protected readonly message = signal<string | null>(null);
   protected newAdminEmail = '';
   protected readonly myId = () => this.auth.me()?.user.id;
+  /** The organization whose type-the-name deletion form is open. */
+  protected readonly pendingDelete = signal<PlatformOrg | null>(null);
+  protected confirmName = '';
 
   constructor() {
     // untracked: the interceptor reads the auth token signal (see guide list).
@@ -233,6 +266,22 @@ export class OperatorComponent {
         list.map((o) => (o.id === org.id ? { ...o, suspendedAt: r.suspendedAt } : o)),
       );
       this.message.set(suspend ? `${org.name} is suspended.` : `${org.name} is active again.`);
+    });
+  }
+
+  /** Opens (or closes, with null) the deletion form for an organization. */
+  askDelete(org: PlatformOrg | null): void {
+    this.confirmName = '';
+    this.pendingDelete.set(org);
+  }
+
+  /** Deletes the organization on a customer's request; the backend checks the typed name again. */
+  deleteOrg(org: PlatformOrg): void {
+    if (this.confirmName !== org.name) return;
+    this.run(this.api.deleteOrgByPlatform(org.id, this.confirmName), () => {
+      this.orgs.update((list) => list.filter((o) => o.id !== org.id));
+      this.askDelete(null);
+      this.message.set(`${org.name} and all its data have been deleted.`);
     });
   }
 

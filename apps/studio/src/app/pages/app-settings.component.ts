@@ -1,7 +1,7 @@
 import { DatePipe } from '@angular/common';
 import { Component, effect, inject, input, signal, untracked } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { ActivatedRoute } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import { Observable } from 'rxjs';
 import { ApiService, describeError } from '../core/api.service';
 import { runRequest } from '../core/request';
@@ -16,7 +16,7 @@ import { parseWebsites } from './websites';
  *  - optional signed visitor identity (secret shown once)
  *  - how the app routes (path or hash), which decides what guides match on
  *  - the help center's button and placement, with its usage over the last 30 days
- *  - app on/off, key rotation
+ *  - app on/off, key rotation, deleting the app (type-the-name confirmation)
  *  - the newest errors the agent reported from the app's pages
  */
 @Component({
@@ -280,11 +280,27 @@ import { parseWebsites } from './websites';
       </section>
 
       <section class="card danger-zone">
-        <h2>Public key</h2>
+        <h2>Danger zone</h2>
+        <h3 class="subhead">Public key</h3>
         <p class="muted small">
           Rotating stops every installed snippet immediately until you update it with the new key.
         </p>
         <button type="button" class="danger" (click)="rotate()" [disabled]="busy()">Rotate public key</button>
+        <h3 class="subhead">Delete app</h3>
+        <p class="muted small">
+          Deletes <strong>{{ a.name }}</strong> with its guides, pages, analytics and per-app roles. Installed
+          snippets stop loading guides immediately. This cannot be undone; an owner can export the
+          organization's data first (Members → Danger zone).
+        </p>
+        <form class="inline-form" (ngSubmit)="deleteApp(a)">
+          <label>
+            Type <strong>{{ a.name }}</strong> to confirm
+            <input name="confirmName" [(ngModel)]="confirmName" autocomplete="off" />
+          </label>
+          <button type="submit" class="danger" [disabled]="busy() || confirmName !== a.name">
+            Delete app
+          </button>
+        </form>
       </section>
     } @else if (!error()) {
       <p class="muted">Loading…</p>
@@ -296,6 +312,7 @@ import { parseWebsites } from './websites';
 export class AppSettingsComponent {
   private readonly api = inject(ApiService);
   private readonly auth = inject(AuthService);
+  private readonly router = inject(Router);
   readonly appId = input.required<string>();
 
   protected readonly app = signal<App | null>(null);
@@ -309,6 +326,7 @@ export class AppSettingsComponent {
   protected readonly analyticsError = signal<string | null>(null);
   protected readonly justCreated = inject(ActivatedRoute).snapshot.queryParamMap.has('new');
   protected websites = '';
+  protected confirmName = '';
   protected helpLabel = 'Help';
   protected helpColor = '#4f46e5';
   protected helpPosition: HelpPosition = 'bottom-right';
@@ -407,6 +425,16 @@ const token = jwt.sign(
     this.run(this.api.rotateKey(this.appId()), (a) => {
       this.setApp(a);
       this.message.set('New key issued — update your snippet.');
+    });
+  }
+
+  /** Danger zone: deletes the app (the typed name is checked again by the backend). */
+  deleteApp(a: App): void {
+    if (this.confirmName !== a.name) return;
+    this.run(this.api.deleteApp(a.id, this.confirmName), async () => {
+      // The app is gone: re-read /me so the switchers no longer offer it, then leave its pages.
+      await this.auth.refresh();
+      void this.router.navigate(['/o', a.org_id, 'apps']);
     });
   }
 

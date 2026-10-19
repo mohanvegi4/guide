@@ -81,6 +81,19 @@ platform admins can view the organization's guides, pages, analytics and members
 and every page they open is listed in the card's access log, which admins can also see. **Close
 now** ends it early; otherwise it closes by itself.
 
+## Your data (org owners)
+
+Below it, **Members** ends with a **Danger zone** card for owners:
+
+- **Export organization data** downloads one JSON file with everything the organization
+  authored: apps (settings and public keys, never signing secrets), saved pages, guides with every
+  version, members and roles, pending invitations, and lifetime totals per guide. Raw visitor
+  events are not included.
+- **Delete organization** removes the organization with all its apps, guides, pages, analytics,
+  members and invitations. Type the organization's name to enable the button; the backend checks
+  it again. Afterwards the Studio re-reads your organizations and takes you to your next one (or
+  onboarding). Studio accounts stay.
+
 ## Administration (platform admins)
 
 People with the platform-admin flag get an **Administration** link in the top bar (`/operator`):
@@ -93,6 +106,8 @@ People with the platform-admin flag get an **Administration** link in the top ba
   Studio enters *support mode*, shows a banner naming the organization and the expiry, and the
   ordinary Guides / Pages / Analytics / Members pages work as a viewer. **Exit** in the banner
   leaves it. Support mode survives a reload in the same tab (sessionStorage).
+- **Delete**: for a customer's deletion request when no owner can do it themselves. Opens a
+  type-the-name confirmation; the deletion is the same as the owner's, and the backend logs it;
 - the global kill switch (every guide for every customer);
 - the list of platform admins, with grant-by-email and remove (never yourself).
 
@@ -123,8 +138,10 @@ after that, grants happen here.
     many searches were made, how many guides were started from it, and the top 20 search
     queries with the average number of topics each found. A query that finds nothing is marked
     in red: a topic worth adding.
-- **Guides on/off** for the whole app, and **Rotate public key**, which breaks old snippets
-  until they're updated.
+- **Guides on/off** for the whole app, and the **Danger zone**: **Rotate public key**, which
+  breaks old snippets until they're updated, and **Delete app** (type the app's name), which
+  removes the app with its guides, pages, analytics and per-app roles and returns you to the apps
+  list.
 
 ## Working with a guide
 
@@ -190,14 +207,15 @@ src/app/
     auth.interceptor.ts    adds the bearer token; 401 -> login
     auth.guard.ts          signedIn / orgMember / appRole(min) guards (UX only; the backend enforces)
     api.service.ts         typed client for /api/v1 (orgs, apps, members, invitations, pages, guides)
+    download.ts            saves an API download (Blob) under the name the backend gives it
     models.ts              request/response types and the role ladder
   pages/
     login, auth-callback   sign-in
     onboarding             first org + first app
     apps                   an org's applications; create app
-    app-settings           install snippet, websites, signed identity, key rotation, app switch
-    members                members, org and app roles, invite links, support access (owners)
-    operator               Guide Engine administration: organizations, suspension, kill switch, admins
+    app-settings           install snippet, websites, signed identity, key rotation, app switch, delete app
+    members                members, org and app roles, invite links, support access, export / delete org (owners)
+    operator               Guide Engine administration: organizations, suspension, deletion, kill switch, admins
     invite                 accept an invitation
     guide-list             an app's guides, create, enable toggle (optimistic)
     guide-editor           form editor: saved page or custom route, audience, help, draft / preview / publish

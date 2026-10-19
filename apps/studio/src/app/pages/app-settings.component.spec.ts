@@ -1,7 +1,7 @@
-import { TestBed } from '@angular/core/testing';
+import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
-import { provideRouter } from '@angular/router';
+import { Router, provideRouter } from '@angular/router';
 import { AppSettingsComponent } from './app-settings.component';
 import { AgentError, App, HelpAnalytics } from '../core/models';
 
@@ -37,6 +37,7 @@ const analytics: HelpAnalytics = {
 
 describe('AppSettingsComponent', () => {
   let http: HttpTestingController;
+  let lastFixture: ComponentFixture<AppSettingsComponent>;
 
   async function render(
     overrides: Partial<App> = {},
@@ -56,6 +57,7 @@ describe('AppSettingsComponent', () => {
     http.expectOne((r) => r.url === '/api/v1/apps/a1/errors').flush(errors);
     http.expectOne('/api/v1/apps/a1/help-analytics').flush(stats);
     await fixture.whenStable();
+    lastFixture = fixture;
     return fixture.nativeElement as HTMLElement;
   }
 
@@ -123,6 +125,29 @@ describe('AppSettingsComponent', () => {
       helpPosition: 'center',
     });
     req.flush({ ...app, help_button_label: 'Need help?', help_button_color: '#0ea5e9' });
+  });
+
+  it('deletes the app only after its exact name is typed, then goes back to the apps list', async () => {
+    const el = await render();
+    const fixture = lastFixture;
+    const navigate = vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
+    const zone = el.querySelector('section.danger-zone')!;
+    const input = zone.querySelector<HTMLInputElement>('input[name="confirmName"]')!;
+    const submit = [...Array.from(zone.querySelectorAll('button'))].find(
+      (b) => b.textContent?.trim() === 'Delete app',
+    )!;
+    expect(submit.disabled).toBe(true);
+    input.value = 'Web app';
+    input.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    expect(submit.disabled).toBe(false);
+    zone.querySelector('form')!.dispatchEvent(new Event('submit'));
+    const req = http.expectOne('/api/v1/apps/a1');
+    expect(req.request.method).toBe('DELETE');
+    expect(req.request.body).toEqual({ confirmName: 'Web app' });
+    req.flush(null, { status: 204, statusText: 'No Content' });
+    await fixture.whenStable();
+    expect(navigate).toHaveBeenCalledWith(['/o', 'o1', 'apps']);
   });
 
   it('offers path or hash routing and saves a change right away', async () => {

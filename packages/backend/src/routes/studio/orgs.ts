@@ -6,6 +6,14 @@ import { HttpError, notFound } from '../../httpError';
 import { generatePublicKey, generateSigningSecret } from '../../keys';
 import { sanitizePlainText } from '../../sanitize';
 import { encryptSecret, getSecretsKey } from '../../secrets';
+import { requestLogger } from '../../logging';
+import {
+  assertConfirmName,
+  deleteApplication,
+  deleteOrganization,
+  exportFilename,
+  exportOrganization,
+} from '../../services/lifecycle';
 import {
   APP_COLUMNS,
   AppRow,
@@ -106,6 +114,51 @@ orgsRouter.patch(
       ).rows[0];
     });
     res.json(org);
+  }),
+);
+
+// ------------------------------------------------------------
+// Data lifecycle (owners): take the organization's data out, or delete it.
+// Both are owner-only, so a platform admin under support access (a viewer)
+// gets the same 403 as any other member.
+// ------------------------------------------------------------
+const confirmSchema = z.object({ confirmName: z.string().max(200) });
+
+// GET /orgs/:orgId/export — one JSON document, served as a download
+orgsRouter.get(
+  '/orgs/:orgId/export',
+  asyncHandler(async (req, res) => {
+    const orgId = idParam(req, 'orgId');
+    const doc = await studio(req, async (client, ctx) => {
+      requireOrgRole(ctx, orgId, 'owner');
+      return exportOrganization(client, orgId);
+    });
+    res.attachment(exportFilename(doc.organization.name));
+    res.json(doc);
+  }),
+);
+
+// DELETE /orgs/:orgId — { confirmName: the exact organization name }
+orgsRouter.delete(
+  '/orgs/:orgId',
+  asyncHandler(async (req, res) => {
+    const orgId = idParam(req, 'orgId');
+    const body = parseBody(confirmSchema, req.body);
+    const deleted = await studio(req, async (client, ctx) => {
+      requireOrgRole(ctx, orgId, 'owner');
+      const org = await client.query<{ name: string }>(`SELECT name FROM organization WHERE id = $1`, [
+        orgId,
+      ]);
+      if (org.rows.length === 0) throw notFound();
+      assertConfirmName(org.rows[0].name, body.confirmName);
+      return deleteOrganization(client, orgId);
+    });
+    // An audit line for an irreversible action; the org name is the customer's, not personal data.
+    requestLogger(req).warn(
+      { orgId, orgName: deleted.name, userId: (req as StudioRequest).studioUser!.id },
+      'organization deleted by its owner',
+    );
+    res.status(204).end();
   }),
 );
 
@@ -219,6 +272,29 @@ orgsRouter.patch(
       return result.rows[0];
     });
     res.json(app);
+  }),
+);
+
+// DELETE /apps/:appId — { confirmName: the exact app name } (app admins).
+// Takes the app's guides, pages, events, visitor state, agent errors and
+// grants with it; installed snippets get a 404 for the key from then on.
+orgsRouter.delete(
+  '/apps/:appId',
+  asyncHandler(async (req, res) => {
+    const appId = idParam(req, 'appId');
+    const body = parseBody(confirmSchema, req.body);
+    const deleted = await studio(req, async (client, ctx) => {
+      requireAppRole(ctx, appId, 'app_admin');
+      const app = await client.query<{ name: string }>(`SELECT name FROM application WHERE id = $1`, [appId]);
+      if (app.rows.length === 0) throw notFound();
+      assertConfirmName(app.rows[0].name, body.confirmName);
+      return deleteApplication(client, appId);
+    });
+    requestLogger(req).warn(
+      { appId, appName: deleted.name, userId: (req as StudioRequest).studioUser!.id },
+      'application deleted',
+    );
+    res.status(204).end();
   }),
 );
 

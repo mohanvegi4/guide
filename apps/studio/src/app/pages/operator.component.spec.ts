@@ -93,6 +93,36 @@ describe('OperatorComponent', () => {
     expect(button(rows(el)[0], 'Lift suspension')).toBeTruthy();
   });
 
+  it('deletes an organization only after its exact name is typed', async () => {
+    const fixture = await render();
+    const el = fixture.nativeElement as HTMLElement;
+    expect(el.querySelector('section.danger-zone')).toBeNull();
+    button(rows(el)[0], 'Delete').click();
+    fixture.detectChanges();
+    await fixture.whenStable(); // ngModel binds the new form's input asynchronously
+    fixture.detectChanges();
+    const zone = el.querySelector('section.danger-zone')!;
+    expect(zone.textContent).toContain('Delete Acme');
+    const submit = button(zone, 'Delete organization');
+    const input = zone.querySelector<HTMLInputElement>('input[name="confirmName"]')!;
+    expect(submit.disabled).toBe(true);
+    input.value = 'Acme';
+    input.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    expect(submit.disabled).toBe(false);
+    zone.querySelector('form')!.dispatchEvent(new Event('submit'));
+    const req = http.expectOne('/api/v1/platform/orgs/o1');
+    expect(req.request.method).toBe('DELETE');
+    expect(req.request.body).toEqual({ confirmName: 'Acme' });
+    req.flush(null, { status: 204, statusText: 'No Content' });
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(rows(el)).toHaveLength(1);
+    expect(rows(el)[0].textContent).toContain('Globex');
+    expect(el.querySelector('section.danger-zone')).toBeNull();
+    expect(el.textContent).toContain('Acme and all its data have been deleted.');
+  });
+
   it('lists platform admins and cannot remove yourself', async () => {
     const el = (await render()).nativeElement as HTMLElement;
     const items = Array.from(el.querySelectorAll('.versions li'));

@@ -87,6 +87,12 @@ export async function resolveStudioContext(client: PoolClient, userId: string): 
   const adminOrgIds = [...orgs].filter(([, role]) => role !== 'member').map(([id]) => id);
   await setVar(client, 'app.org_ids', uuidArray(orgs.keys()));
   await setVar(client, 'app.admin_org_ids', uuidArray(adminOrgIds));
+  // Owners only: deleting the organization (migration 013).
+  await setVar(
+    client,
+    'app.owner_org_ids',
+    uuidArray([...orgs].filter(([, role]) => role === 'owner').map(([id]) => id)),
+  );
 
   const memberRows = await client.query<{ app_id: string; role: AppRole }>(
     `SELECT app_id, role FROM app_member WHERE user_id = $1`,
@@ -209,6 +215,7 @@ export async function withSupportSession<T>(
     await setVar(client, 'app.platform_admin', 'false');
     await setVar(client, 'app.org_ids', uuidArray([orgId]));
     await setVar(client, 'app.admin_org_ids', uuidArray([]));
+    await setVar(client, 'app.owner_org_ids', uuidArray([]));
     await setVar(client, 'app.app_ids', uuidArray(apps.rows.map((a) => a.id)));
     await setVar(client, 'app.admin_app_ids', uuidArray([]));
     await client.query(`SET LOCAL transaction_read_only = on`);
