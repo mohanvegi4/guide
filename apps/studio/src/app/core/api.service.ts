@@ -1,4 +1,4 @@
-import { HttpClient, HttpErrorResponse } from '@angular/common/http';
+import { HttpClient, HttpErrorResponse, HttpResponse } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import {
@@ -89,6 +89,22 @@ export class ApiService {
     return this.http.post<{ secret: string }>(`${this.base}/apps/${appId}/signing-secret`, {});
   }
 
+  // ---- data lifecycle (org owners / app admins) ----
+  /** The organization's data as a JSON download; the response names the file (Content-Disposition). */
+  exportOrg(orgId: string): Observable<HttpResponse<Blob>> {
+    return this.http.get(`${this.base}/orgs/${orgId}/export`, { responseType: 'blob', observe: 'response' });
+  }
+
+  /** Irreversible: the backend requires the exact organization name. */
+  deleteOrg(orgId: string, confirmName: string): Observable<void> {
+    return this.http.delete<void>(`${this.base}/orgs/${orgId}`, { body: { confirmName } });
+  }
+
+  /** Irreversible: the backend requires the exact app name. */
+  deleteApp(appId: string, confirmName: string): Observable<void> {
+    return this.http.delete<void>(`${this.base}/apps/${appId}`, { body: { confirmName } });
+  }
+
   // ---- members & invitations ----
   listMembers(orgId: string): Observable<Member[]> {
     return this.http.get<Member[]>(`${this.base}/orgs/${orgId}/members`);
@@ -166,6 +182,11 @@ export class ApiService {
         suspended,
       },
     );
+  }
+
+  /** Operators handling a customer's deletion request; the backend requires the exact name. */
+  deleteOrgByPlatform(orgId: string, confirmName: string): Observable<void> {
+    return this.http.delete<void>(`${this.base}/platform/orgs/${orgId}`, { body: { confirmName } });
   }
 
   setAppEnabledByPlatform(appId: string, enabled: boolean): Observable<{ id: string; enabled: boolean }> {
@@ -291,6 +312,7 @@ const MESSAGES: Record<string, string> = {
   unknown_page: 'That saved page no longer exists. Pick another page or use a custom route.',
   unknown_user: 'No one with that email has signed in to the Studio yet. Ask them to sign in first.',
   cannot_revoke_self: "You can't remove your own admin access — ask another platform admin.",
+  confirmation_mismatch: "The name you typed doesn't match. Nothing was deleted.",
 };
 
 /** Human-readable message from a backend error response. */

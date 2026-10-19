@@ -1,9 +1,11 @@
 import { DatePipe } from '@angular/common';
 import { Component, computed, effect, inject, input, signal, untracked } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { Router } from '@angular/router';
 import { Observable, forkJoin } from 'rxjs';
 import { ApiService, describeError } from '../core/api.service';
 import { AuthService } from '../core/auth.service';
+import { saveResponseAsFile } from '../core/download';
 import {
   APP_ROLES,
   App,
@@ -245,11 +247,42 @@ import {
         }
       </section>
     }
+
+    @if (owner()) {
+      <section class="card danger-zone">
+        <h2>Danger zone</h2>
+        <p class="muted small">
+          <strong>Export</strong> downloads everything this organization authored as one JSON file: apps
+          (never their signing secrets), saved pages, guides with every version, members, pending invitations
+          and per-guide totals. Raw visitor events are not included.
+        </p>
+        <button type="button" (click)="exportData()" [disabled]="busy()">Export organization data</button>
+        @if (exported()) {
+          <p class="small" role="status">Downloaded {{ exported() }}.</p>
+        }
+        <h3 class="subhead">Delete organization</h3>
+        <p class="muted small">
+          Deletes <strong>{{ orgName() }}</strong> with all its apps, guides, pages, analytics, members and
+          invitations. Installed snippets stop loading guides immediately. This cannot be undone; export first
+          if you may need the data.
+        </p>
+        <form class="inline-form" (ngSubmit)="deleteOrg()">
+          <label>
+            Type <strong>{{ orgName() }}</strong> to confirm
+            <input name="confirmName" [(ngModel)]="confirmName" autocomplete="off" />
+          </label>
+          <button type="submit" class="danger" [disabled]="busy() || confirmName !== orgName()">
+            Delete organization
+          </button>
+        </form>
+      </section>
+    }
   `,
 })
 export class MembersComponent {
   private readonly api = inject(ApiService);
   private readonly auth = inject(AuthService);
+  private readonly router = inject(Router);
   readonly orgId = input.required<string>();
 
   protected readonly appRoles = APP_ROLES;
@@ -272,6 +305,10 @@ export class MembersComponent {
   protected readonly owner = computed(() => this.auth.orgRole(this.orgId()) === 'owner');
   protected readonly support = signal<SupportAccess | null>(null);
   protected supportDays = 7;
+  protected readonly orgName = computed(() => this.auth.org(this.orgId())?.name ?? '');
+  /** The file name of the last export, for the confirmation line. */
+  protected readonly exported = signal<string | null>(null);
+  protected confirmName = '';
   /** Only owners can hand out or take away "owner". */
   protected readonly orgRoles = computed<OrgRole[]>(() =>
     this.auth.orgRole(this.orgId()) === 'owner' ? ['owner', 'admin', 'member'] : ['admin', 'member'],
@@ -326,6 +363,45 @@ export class MembersComponent {
       next: (s) => {
         this.support.set(s);
         this.busy.set(false);
+      },
+      error: (err) => {
+        this.error.set(describeError(err));
+        this.busy.set(false);
+      },
+    });
+  }
+
+  /** Danger zone: the organization's data as a JSON download (owners). */
+  exportData(): void {
+    this.busy.set(true);
+    this.error.set(null);
+    this.api.exportOrg(this.orgId()).subscribe({
+      next: (res) => {
+        const fallback = `guide-engine-${this.orgName() || 'organization'}.json`;
+        saveResponseAsFile(res, fallback);
+        this.exported.set(
+          res.headers.get('content-disposition')?.match(/filename="?([^";]+)/)?.[1] ?? fallback,
+        );
+        this.busy.set(false);
+      },
+      error: (err) => {
+        this.error.set(describeError(err));
+        this.busy.set(false);
+      },
+    });
+  }
+
+  /** Danger zone: deletes the organization (the typed name is checked again by the backend). */
+  deleteOrg(): void {
+    if (this.confirmName !== this.orgName()) return;
+    this.busy.set(true);
+    this.error.set(null);
+    this.api.deleteOrg(this.orgId(), this.confirmName).subscribe({
+      next: async () => {
+        // The org is gone: re-read /me first so the home path no longer points at it.
+        await this.auth.refresh();
+        this.busy.set(false);
+        void this.router.navigateByUrl(this.auth.homePath());
       },
       error: (err) => {
         this.error.set(describeError(err));
