@@ -1,0 +1,21 @@
+{
+  "name": "@guide-engine/angular",
+  "version": "0.1.0",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json"
+  },
+  "peerDependencies": {
+    "@angular/core": ">=14.0.0",
+    "@angular/router": ">=14.0.0"
+  },
+  "dependencies": {
+    "@guide-engine/core": "0.1.0"
+  },
+  "devDependencies": {
+    "@angular/core": "^17.0.0",
+    "@angular/router": "^17.0.0",
+    "typescript": "^5.5.4"
+  }
+}

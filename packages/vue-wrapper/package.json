@@ -1,0 +1,21 @@
+{
+  "name": "@guide-engine/vue",
+  "version": "0.1.0",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json"
+  },
+  "peerDependencies": {
+    "vue": ">=3.0.0",
+    "vue-router": ">=4.0.0"
+  },
+  "dependencies": {
+    "@guide-engine/core": "0.1.0"
+  },
+  "devDependencies": {
+    "vue": "^3.4.0",
+    "vue-router": "^4.3.0",
+    "typescript": "^5.5.4"
+  }
+}

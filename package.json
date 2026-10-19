@@ -1,0 +1,15 @@
+{
+  "name": "guide-engine",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "dev:backend": "npm run dev --workspace=packages/backend"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.4"
+  }
+}
