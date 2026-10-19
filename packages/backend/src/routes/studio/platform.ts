@@ -80,7 +80,9 @@ platformRouter.get(
         `SELECT a.id, a.name, a.public_key, a.enabled, a.allowed_origins, a.created_at,
                 (SELECT COUNT(*)::int FROM guide g WHERE g.app_id = a.id) AS guides,
                 (SELECT COUNT(*)::int FROM guide_event e
-                  WHERE e.app_id = a.id AND e.occurred_at > now() - interval '30 days') AS events_30d
+                  WHERE e.app_id = a.id AND e.occurred_at > now() - interval '30 days') AS events_30d,
+                (SELECT COUNT(*)::int FROM agent_error x
+                  WHERE x.app_id = a.id AND x.occurred_at > now() - interval '24 hours') AS errors_24h
          FROM application a WHERE a.org_id = $1 ORDER BY lower(a.name)`,
         [orgId],
       );
@@ -93,7 +95,7 @@ platformRouter.get(
           enabled: a.enabled,
           websites: a.allowed_origins,
           createdAt: a.created_at,
-          usage: { guides: a.guides, events30d: a.events_30d },
+          usage: { guides: a.guides, events30d: a.events_30d, errors24h: a.errors_24h },
         })),
       };
     });

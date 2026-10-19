@@ -9,6 +9,7 @@ const logInfo = (msg: string) => logger.info(msg);
  * Keeps the database from growing forever:
  *  - guide_event rows older than EVENT_RETENTION_DAYS are deleted in batches
  *    (the only code path allowed to delete events — migration 010);
+ *  - agent_error rows age out on the same schedule (migration 011);
  *  - spent agent_rate_limit windows are swept.
  * Runs daily inside the backend (scheduleRetention) and on demand
  * (`npm run retention -- --days 400`). Several replicas may run it at once:
@@ -16,30 +17,37 @@ const logInfo = (msg: string) => logger.info(msg);
  */
 export interface RetentionResult {
   events: number;
+  errors: number;
   rateLimitRows: number;
 }
 
 const BATCH = 10_000;
+
+/** Deletes rows of `table` older than `days`, one batch per transaction, until none are left. */
+async function deleteOlderThan(table: 'guide_event' | 'agent_error', days: number): Promise<number> {
+  let total = 0;
+  for (;;) {
+    const deleted = await withRetentionSession(async (client) => {
+      const result = await client.query(
+        `DELETE FROM ${table} WHERE id IN (
+           SELECT id FROM ${table} WHERE occurred_at < now() - make_interval(days => $1)
+           ORDER BY occurred_at LIMIT $2)`,
+        [days, BATCH],
+      );
+      return result.rowCount ?? 0;
+    });
+    total += deleted;
+    if (deleted < BATCH) return total;
+  }
+}
 
 export async function runRetention(
   days: number,
   log: (msg: string) => void = logInfo,
 ): Promise<RetentionResult> {
   if (!Number.isInteger(days) || days < 1) throw new Error('retention: days must be a positive integer');
-  let events = 0;
-  for (;;) {
-    const deleted = await withRetentionSession(async (client) => {
-      const result = await client.query(
-        `DELETE FROM guide_event WHERE id IN (
-           SELECT id FROM guide_event WHERE occurred_at < now() - make_interval(days => $1)
-           ORDER BY occurred_at LIMIT $2)`,
-        [days, BATCH],
-      );
-      return result.rowCount ?? 0;
-    });
-    events += deleted;
-    if (deleted < BATCH) break;
-  }
+  const events = await deleteOlderThan('guide_event', days);
+  const errors = await deleteOlderThan('agent_error', days);
   const swept = await withoutScope((client) =>
     client.query(`DELETE FROM agent_rate_limit WHERE window_start < now() - interval '1 hour'`),
   );
@@ -48,9 +56,10 @@ export async function runRetention(
   retentionDeletedTotal.inc({ table: 'guide_event' }, events);
   retentionDeletedTotal.inc({ table: 'agent_rate_limit' }, rateLimitRows);
   log(
-    `retention: deleted ${events} events older than ${days} days, ${rateLimitRows} spent rate-limit windows`,
+    `retention: deleted ${events} events and ${errors} agent errors older than ${days} days, ` +
+      `${rateLimitRows} spent rate-limit windows`,
   );
-  return { events, rateLimitRows };
+  return { events, errors, rateLimitRows };
 }
 
 /** EVENT_RETENTION_DAYS: a positive number of days; 0 disables; unset = 400 in production, off elsewhere. */

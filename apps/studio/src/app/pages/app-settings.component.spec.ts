@@ -3,7 +3,7 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { provideRouter } from '@angular/router';
 import { AppSettingsComponent } from './app-settings.component';
-import { App } from '../core/models';
+import { AgentError, App } from '../core/models';
 
 const app: App = {
   id: 'a1',
@@ -26,7 +26,7 @@ const app: App = {
 describe('AppSettingsComponent', () => {
   let http: HttpTestingController;
 
-  async function render(overrides: Partial<App> = {}) {
+  async function render(overrides: Partial<App> = {}, errors: AgentError[] = []) {
     TestBed.configureTestingModule({
       imports: [AppSettingsComponent],
       providers: [provideHttpClient(), provideHttpClientTesting(), provideRouter([])],
@@ -37,6 +37,7 @@ describe('AppSettingsComponent', () => {
     fixture.detectChanges();
     await fixture.whenStable();
     http.expectOne('/api/v1/apps/a1').flush({ ...app, ...overrides });
+    http.expectOne((r) => r.url === '/api/v1/apps/a1/errors').flush(errors);
     await fixture.whenStable();
     return fixture.nativeElement as HTMLElement;
   }
@@ -57,6 +58,28 @@ describe('AppSettingsComponent', () => {
     expect(toggle(await render()).disabled).toBe(true);
     TestBed.resetTestingModule();
     expect(toggle(await render({ has_signing_secret: true })).disabled).toBe(false);
+  });
+
+  it('lists recent agent errors as text, and says so when there are none', async () => {
+    const card = (el: HTMLElement) => el.querySelector('[data-testid="agent-errors"]')!;
+    expect(card(await render()).textContent).toContain('None reported.');
+    TestBed.resetTestingModule();
+    const el = await render({}, [
+      {
+        id: 'e1',
+        message: 'render: <img src=x onerror=alert(1)>',
+        stack: null,
+        agentVersion: '0.1.0',
+        url: 'https://app.acme.test/dashboard',
+        occurredAt: '2026-10-19T10:00:00Z',
+      },
+    ]);
+    const rows = card(el).querySelectorAll('tbody tr');
+    expect(rows).toHaveLength(1);
+    expect(rows[0].textContent).toContain('render: <img src=x onerror=alert(1)>');
+    expect(rows[0].textContent).toContain('agent 0.1.0');
+    expect(rows[0].textContent).toContain('https://app.acme.test/dashboard');
+    expect(card(el).querySelector('img')).toBeNull(); // rendered as text, never as HTML
   });
 
   it('saves the help button label, color and placement', async () => {

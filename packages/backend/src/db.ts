@@ -23,9 +23,9 @@ export const pool = new Pool({
 //                        granted time-boxed support access: viewer-shaped
 //                        context, READ ONLY transaction, every call logged
 //
-// NEVER query guide / guide_version / guide_event / user_guide_state /
-// organization / application / *_member / invitation / studio_user /
-// support_access_log through pool.query() directly.
+// NEVER query guide / guide_version / guide_event / agent_error /
+// user_guide_state / organization / application / *_member / invitation /
+// studio_user / support_access_log through pool.query() directly.
 // ------------------------------------------------------------
 
 export type OrgRole = 'owner' | 'admin' | 'member';
@@ -310,7 +310,7 @@ function readSigningSecret(stored: string, appId: string): string | null {
   }
 }
 
-/** The retention job (retention.ts): may read and delete guide_event rows, nothing else. */
+/** The retention job (retention.ts): may read and delete guide_event and agent_error rows, nothing else. */
 export function withRetentionSession<T>(fn: (client: PoolClient) => Promise<T>): Promise<T> {
   return inTransaction(async (client) => {
     await setVar(client, 'app.retention', 'true');

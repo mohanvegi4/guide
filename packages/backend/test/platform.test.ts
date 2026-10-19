@@ -91,7 +91,7 @@ describe('platform admins (service administration)', () => {
         enabled: true,
         websites: ['https://app.acme.test'],
         createdAt: expect.any(String),
-        usage: { guides: 1, events30d: 1 },
+        usage: { guides: 1, events30d: 1, errors24h: 0 },
       },
     ]);
   });

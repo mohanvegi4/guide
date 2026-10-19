@@ -48,12 +48,18 @@ declare global {
   }
 }
 
-export const AGENT_VERSION = '1';
+/** Injected by build.mjs (esbuild `define`) from package.json; 'dev' when run from source (tests). */
+declare const __GUIDE_ENGINE_VERSION__: string | undefined;
+export const AGENT_VERSION: string =
+  typeof __GUIDE_ENGINE_VERSION__ === 'string' && __GUIDE_ENGINE_VERSION__ ? __GUIDE_ENGINE_VERSION__ : 'dev';
 const SCRIPT_SRC = /\/agent\/v1\/(ge_pk_[0-9a-f]{32})\/guides\.js(?:[?#].*)?$/;
 
 /** Finds this script's <script> tag and reads the app key + API origin from its src. */
 export function locateInstall(doc: Document): { apiBaseUrl: string; appKey: string } | null {
-  const candidates: Array<Element | null> = [doc.currentScript, ...Array.from(doc.querySelectorAll('script[src]'))];
+  const candidates: Array<Element | null> = [
+    doc.currentScript,
+    ...Array.from(doc.querySelectorAll('script[src]')),
+  ];
   for (const el of candidates) {
     const src = (el as HTMLScriptElement | null)?.src;
     const match = src?.match(SCRIPT_SRC);
@@ -123,7 +129,9 @@ export function startAgent(win: Window = window): void {
           return;
         }
         started = true;
-        void engine.init({ ...options, apiBaseUrl, appKey }, renderer, help);
+        // agentVersion rides along on error reports, so operators can tell
+        // which build of the script misbehaved.
+        void engine.init({ ...options, apiBaseUrl, appKey, agentVersion: AGENT_VERSION }, renderer, help);
         watchNavigation((path) => void engine.onRouteChange(path), win);
       } catch {
         // fail silent

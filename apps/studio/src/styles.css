@@ -89,3 +89,8 @@ fieldset.where legend { font-weight: 500; padding: 0; margin-bottom: 4px; }
 .banner { padding: 10px 16px; font-size: 14px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .banner.support { background: #fef0c7; color: #7a2e0e; }
 .banner.suspended { background: #fee4e2; color: #b42318; }
+.nowrap { white-space: nowrap; }
+/* App settings: the agent-error list holds free text from customers' pages (shown as text). */
+.agent-errors { width: 100%; border-collapse: collapse; }
+.agent-errors td, .agent-errors th { vertical-align: top; }
+.agent-errors code { white-space: pre-wrap; word-break: break-word; }

@@ -58,7 +58,10 @@ describe('install snippet agent', () => {
     expect(first[0]).toBe(`https://guides.example.com/v1/agent/${KEY}/guides`);
     expect(body(first)).toEqual({ visitor: { id: 'u-1' }, account: { id: 'acme' } });
     expect(body(second)).toMatchObject({ visitor: { id: 'later-user' } }); // the identify that came after
-    expect((window as unknown as { guideEngine: { version: string } }).guideEngine.version).toBe('1');
+    // The package version, injected at build time (vitest.config defines it the same way).
+    expect((window as unknown as { guideEngine: { version: string } }).guideEngine.version).toMatch(
+      /^\d+\.\d+\.\d+/
+    );
   });
 
   it('follows client-side navigation (pushState, replaceState, back/forward)', async () => {

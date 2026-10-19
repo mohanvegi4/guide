@@ -2,6 +2,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import {
+  AgentError,
   AnalyticsResponse,
   App,
   AppAnalytics,
@@ -186,6 +187,11 @@ export class ApiService {
       email,
       platformAdmin,
     });
+  }
+
+  /** The newest agent errors reported from this app's pages (text only; shown as such). */
+  listErrors(appId: string, limit = 50): Observable<AgentError[]> {
+    return this.http.get<AgentError[]>(`${this.base}/apps/${appId}/errors`, { params: { limit } });
   }
 
   // ---- saved pages (per app) ----

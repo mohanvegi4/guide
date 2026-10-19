@@ -60,8 +60,18 @@ export interface PlatformOrgDetail extends PlatformOrg {
     enabled: boolean;
     websites: string[];
     createdAt: string;
-    usage: { guides: number; events30d: number };
+    usage: { guides: number; events30d: number; errors24h: number };
   }>;
+}
+
+/** GET /v1/apps/:appId/errors — an exception the install snippet reported from a customer's page. */
+export interface AgentError {
+  id: string;
+  message: string;
+  stack: string | null;
+  agentVersion: string | null;
+  url: string | null;
+  occurredAt: string;
 }
 
 export interface PlatformAdmin {

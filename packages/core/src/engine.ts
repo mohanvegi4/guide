@@ -128,6 +128,8 @@ export interface SdkInitOptions extends IdentityOptions {
    * button and call openHelp() / toggleHelp() from it.
    */
   helpButton?: boolean;
+  /** The agent build in use; attached to error reports (the snippet agent fills it in). */
+  agentVersion?: string;
 }
 
 export interface GuideEventPayload {
@@ -282,6 +284,20 @@ export class EventQueue {
 }
 
 // ------------------------------------------------------------
+// Error reporting
+// ------------------------------------------------------------
+
+/**
+ * The engine fails silent towards the host page, which also means nobody
+ * hears about a bug unless it's reported somewhere. reportError (below)
+ * sends a sampled, capped trickle of them to POST /v1/agent/:key/errors.
+ * @internal exported for unit tests
+ */
+export const ERROR_SAMPLE_RATE = 0.1;
+/** @internal exported for unit tests */
+export const MAX_ERROR_REPORTS_PER_PAGE = 5;
+
+// ------------------------------------------------------------
 // Route matching (simple wildcard support; swap for real regex if needed)
 // ------------------------------------------------------------
 
@@ -370,6 +386,8 @@ export class GuideEngine {
   private helpUi: HelpUi | null = null;
   private helpItems: HelpItem[] = [];
   private helpLoaded = false;
+  /** Error reports sent during this page load (see reportError). */
+  private errorReports = 0;
   /**
    * How a help guide on another page is reached: a normal page load (like
    * Pendo). Overridable for tests.
@@ -408,8 +426,38 @@ export class GuideEngine {
 
       await this.evaluateGuidesForRoute(stripQueryAndHash(window.location.pathname));
       if (!this.disabled && !this.helpLoaded) await this.loadHelp();
-    } catch {
+    } catch (err) {
       this.disabled = true;
+      this.reportError(err, 'init');
+    }
+  }
+
+  /**
+   * Tells the backend about an exception the engine swallowed, so operators
+   * learn about broken pages. Fail silent also applies here: a failed report
+   * is dropped. Sampled client-side (ERROR_SAMPLE_RATE) and capped per page
+   * load, so a page that throws in a loop can't flood the API; the backend
+   * caps per app on top of that.
+   */
+  reportError(err: unknown, context: string): void {
+    try {
+      if (!this.client || this.errorReports >= MAX_ERROR_REPORTS_PER_PAGE) return;
+      if (Math.random() >= ERROR_SAMPLE_RATE) return;
+      this.errorReports += 1;
+      const error = err instanceof Error ? err : null;
+      const message = `${context}: ${error ? error.message : String(err)}`.slice(0, 500);
+      const report: Record<string, unknown> = { message };
+      if (error?.stack) report.stack = error.stack.slice(0, 4000);
+      if (this.options?.agentVersion) report.agentVersion = this.options.agentVersion;
+      try {
+        report.url = window.location.href.slice(0, 2000);
+      } catch {
+        // no location (non-browser host): the report still carries the message
+      }
+      // keepalive: the error may have happened while the page is going away.
+      this.client.post('/errors', report, true).catch(() => undefined);
+    } catch {
+      // reporting must never become a second error
     }
   }
 
@@ -496,11 +544,15 @@ export class GuideEngine {
       // fail closed: no help center
     }
     this.helpItems = items;
-    this.helpUi?.update({
-      items,
-      button,
-      showButton: this.options?.helpButton !== false && items.length > 0,
-    });
+    try {
+      this.helpUi?.update({
+        items,
+        button,
+        showButton: this.options?.helpButton !== false && items.length > 0,
+      });
+    } catch (err) {
+      this.reportError(err, 'help');
+    }
   }
 
   /** Call on every SPA route change. The install-snippet agent does this automatically. */
@@ -508,8 +560,9 @@ export class GuideEngine {
     if (this.disabled || this.previewMode || !this.client) return;
     try {
       await this.evaluateGuidesForRoute(stripQueryAndHash(newPath));
-    } catch {
+    } catch (err) {
       // never throw into the host app's router hooks
+      this.reportError(err, 'route');
     }
   }
 
@@ -529,8 +582,9 @@ export class GuideEngine {
         await this.evaluateGuidesForRoute(stripQueryAndHash(window.location.pathname));
         if (!this.disabled) await this.loadHelp(); // the new user's help list (account targeting)
       }
-    } catch {
+    } catch (err) {
       // fail silent
+      this.reportError(err, 'identify');
     }
   }
 
@@ -575,8 +629,13 @@ export class GuideEngine {
       }
       if (data?.enabled !== true || !Array.isArray(data.guides)) return;
       guides = data.guides as Guide[];
-    } catch {
-      return; // silent failure — never block the host app
+    } catch (err) {
+      // Silent failure — never block the host app. Reported because a
+      // non-JSON 200 (a CDN or proxy error page) is a deployment problem
+      // operators want to hear about; a plain network failure is noise, but
+      // its report fails to send anyway.
+      this.reportError(err, 'guides');
+      return;
     }
 
     const matched = guides.filter((g) => g?.routeMatch && matchesRoute(g.routeMatch, path));
@@ -621,7 +680,18 @@ export class GuideEngine {
     this.stopObserving(state.guide.id);
 
     state.status = 'showing';
-    this.renderer?.renderStep(state.guide, step, targetEl);
+    try {
+      this.renderer?.renderStep(state.guide, step, targetEl);
+    } catch (err) {
+      // A renderer failure (bad content, a host page that breaks the DOM
+      // APIs) leaves nothing half-drawn: the guide is taken down for this
+      // page load and the failure reported. Not marked finished — a reload
+      // may well work.
+      state.status = 'error';
+      this.teardownGuide(state.guide.id);
+      this.reportError(err, 'render');
+      return;
+    }
     this.emitEvent(state, step.id, state.currentStepIndex === 0 ? 'guide_shown' : 'guide_step_viewed');
 
     if (targetEl) {
@@ -680,7 +750,12 @@ export class GuideEngine {
         if (!state || state.status !== 'showing' || state.guide.steps[state.currentStepIndex] !== step)
           return;
         const target = document.querySelector(step.targetSelector!);
-        if (target) this.renderer?.renderStep(state.guide, step, target);
+        try {
+          if (target) this.renderer?.renderStep(state.guide, step, target);
+        } catch (err) {
+          // Keep the last good render rather than throwing in a rAF callback.
+          this.reportError(err, 'render');
+        }
       });
     });
     observer.observe(document.body, { childList: true, subtree: true, attributes: true });
@@ -692,11 +767,16 @@ export class GuideEngine {
     const state = this.activeGuides.get(guideId);
     if (!state) return;
 
-    const step = state.guide.steps[state.currentStepIndex];
-    this.emitEvent(state, step.id, 'guide_step_completed');
+    try {
+      const step = state.guide.steps[state.currentStepIndex];
+      this.emitEvent(state, step.id, 'guide_step_completed');
 
-    state.currentStepIndex += 1;
-    this.showCurrentStep(state);
+      state.currentStepIndex += 1;
+      this.showCurrentStep(state);
+    } catch (err) {
+      // Runs from a click handler: never let it surface as an uncaught error.
+      this.reportError(err, 'advance');
+    }
   }
 
   /** Called by the renderer when the user dismisses the guide. */
@@ -704,11 +784,15 @@ export class GuideEngine {
     const state = this.activeGuides.get(guideId);
     if (!state) return;
 
-    state.status = 'dismissed';
-    const step = state.guide.steps[state.currentStepIndex];
-    this.emitEvent(state, step?.id, 'guide_dismissed');
-    this.finished.add(finishedKey(state.guide));
-    this.teardownGuide(guideId);
+    try {
+      state.status = 'dismissed';
+      const step = state.guide.steps[state.currentStepIndex];
+      this.emitEvent(state, step?.id, 'guide_dismissed');
+      this.finished.add(finishedKey(state.guide));
+      this.teardownGuide(guideId);
+    } catch (err) {
+      this.reportError(err, 'dismiss');
+    }
   }
 
   private completeGuide(state: GuideRuntimeState): void {
@@ -719,7 +803,13 @@ export class GuideEngine {
   }
 
   private teardownGuide(guideId: string): void {
-    this.renderer?.clear(guideId);
+    try {
+      this.renderer?.clear(guideId);
+    } catch (err) {
+      // Also reached from the render-failure path: a renderer that can't
+      // clear must not keep the engine's bookkeeping from moving on.
+      this.reportError(err, 'render');
+    }
     this.stopObserving(guideId);
     this.activeGuides.delete(guideId);
   }
