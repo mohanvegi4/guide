@@ -1,0 +1,162 @@
+<p class="crumbs"><a [routerLink]="basePath">← All {{ scope === 'global' ? 'global ' : '' }}guides</a></p>
+
+@if (loading()) {
+  <p class="muted">Loading…</p>
+} @else if (guide(); as g) {
+  <div class="page-header">
+    <div>
+      <h1>{{ g.name }}</h1>
+      <p class="muted">
+        @if (scope === 'global') { <span class="badge archived">global · every tenant</span> · }
+        {{ g.type }} ·
+        <span class="badge" [class]="'badge ' + g.status">{{ g.status }}</span>
+        @if (loadedFrom(); as from) { · editing from v{{ from.number }}{{ from.draft ? ' (draft)' : '' }} }
+      </p>
+    </div>
+    <label class="switch big">
+      <input type="checkbox" [checked]="g.enabled" [disabled]="busy()" (change)="toggleEnabled($any($event.target).checked)" />
+      <span>{{ g.enabled ? 'Enabled' : 'Disabled' }}</span>
+    </label>
+  </div>
+
+  @if (error()) {
+    <p class="error" role="alert">{{ error() }}</p>
+  }
+  @if (message()) {
+    <p class="success" role="status">{{ message() }}</p>
+  }
+  @if (previewLink(); as link) {
+    <section class="card preview-link" aria-live="polite">
+      <div class="section-head">
+        <h2>Preview link for v{{ link.versionNumber }}</h2>
+        <button type="button" class="link" (click)="previewLink.set(null)">Close</button>
+      </div>
+      <p class="muted small">
+        Opens the product with this version force-rendered for you, even while it's disabled or unpublished.
+        Requires being signed in to the product as a user of this tenant. Expires {{ link.expiresAt | date: 'shortTime' }}.
+      </p>
+      @if (link.url) {
+        <input class="mono" [value]="link.url" readonly aria-label="Preview link" (focus)="$any($event.target).select()" />
+        <div class="toolbar">
+          <a class="button primary" [href]="link.url" target="_blank" rel="noopener noreferrer">Open preview</a>
+          <button type="button" (click)="copyPreview()">{{ copied() ? 'Copied ✓' : 'Copy link' }}</button>
+        </div>
+      } @else {
+        <p class="muted small">PREVIEW_APP_BASE_URL isn't set on the backend — append this to any product URL as <code>?guidePreview=…</code>:</p>
+        <input class="mono" [value]="link.token" readonly aria-label="Preview token" />
+      }
+    </section>
+  }
+
+  <div class="layout">
+    <form class="editor" [formGroup]="form" (ngSubmit)="publish()">
+      <section class="card">
+        <h2>Where &amp; when</h2>
+        <div class="grid-2">
+          <label>
+            Route match
+            <select formControlName="routeType">
+              <option value="exact">Exact path</option>
+              <option value="pattern">Pattern (* wildcard)</option>
+            </select>
+          </label>
+          <label>
+            Path
+            <input formControlName="routeValue" placeholder="/dashboard or /projects/*" />
+            @if (form.controls.routeValue.invalid && form.controls.routeValue.touched) {
+              <small class="error">Must start with /</small>
+            }
+          </label>
+          <label>
+            Start (optional)
+            <input type="datetime-local" formControlName="startAt" />
+          </label>
+          <label>
+            End (optional)
+            <input type="datetime-local" formControlName="endAt" />
+          </label>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="section-head">
+          <h2>Steps</h2>
+          <button type="button" (click)="addStep()">+ Add step</button>
+        </div>
+
+        @for (step of steps.controls; track step; let i = $index; let first = $first; let last = $last) {
+          <fieldset class="step" [formGroup]="step">
+            <legend>Step {{ i + 1 }}</legend>
+            <div class="step-tools">
+              <button type="button" (click)="moveStep(i, -1)" [disabled]="first" aria-label="Move step up">↑</button>
+              <button type="button" (click)="moveStep(i, 1)" [disabled]="last" aria-label="Move step down">↓</button>
+              <button type="button" class="danger" (click)="removeStep(i)" [disabled]="steps.length === 1">Remove</button>
+            </div>
+
+            <div class="grid-3">
+              <label>
+                Type
+                <select formControlName="type">
+                  @for (t of guideTypes; track t) { <option [value]="t">{{ t }}</option> }
+                </select>
+              </label>
+              <label>
+                Anchor (data-guide-id)
+                <input formControlName="anchorId" placeholder="invite-button — blank = centered" />
+                @if (step.controls.anchorId.invalid) {
+                  <small class="error">Letters, digits, - and _ only</small>
+                }
+              </label>
+              <label>
+                Position
+                <select formControlName="position">
+                  @for (p of positions; track p) { <option [value]="p">{{ p }}</option> }
+                </select>
+              </label>
+            </div>
+
+            <label>
+              Content (HTML — scripts, styles and event handlers are stripped on save)
+              <textarea formControlName="content" rows="4" placeholder="<p>Invite your team to collaborate.</p>"></textarea>
+              @if (step.controls.content.invalid && step.controls.content.touched) {
+                <small class="error">Content is required</small>
+              }
+            </label>
+
+            <div class="actions-editor" formArrayName="actions">
+              <span class="label">Buttons</span>
+              @for (action of step.controls.actions.controls; track action; let j = $index) {
+                <div class="action-row" [formGroupName]="j">
+                  <input formControlName="label" placeholder="Label" aria-label="Button label" />
+                  <select formControlName="action" aria-label="Button action">
+                    @for (a of actionTypes; track a) { <option [value]="a">{{ a }}</option> }
+                  </select>
+                  <button type="button" class="link" (click)="removeAction(step, j)">remove</button>
+                </div>
+              }
+              <button type="button" class="link" (click)="addAction(step)">+ button</button>
+            </div>
+          </fieldset>
+        }
+      </section>
+
+      <div class="toolbar">
+        <button type="submit" class="primary" [disabled]="busy()">Publish new version</button>
+        <button type="button" (click)="saveDraft()" [disabled]="busy()">Save draft</button>
+        <button type="button" (click)="previewDraft()" [disabled]="busy()">Preview</button>
+        @if (form.dirty) { <span class="muted">Unsaved changes</span> }
+      </div>
+    </form>
+
+    <aside>
+      <app-version-history
+        [guide]="g"
+        [busy]="busy()"
+        (rollback)="rollback($event)"
+        (load)="loadVersion($event)"
+        (preview)="previewVersion($event)"
+      />
+      <app-analytics [guideId]="g.id" [scope]="scope" [steps]="analyticsSteps()" />
+    </aside>
+  </div>
+}

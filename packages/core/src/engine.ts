@@ -41,6 +41,8 @@ export interface Guide {
   type: GuideType;
   steps: Step[];
   routeMatch: RouteMatch;
+  /** Set when force-rendered from a signed preview link (renderer shows a badge). */
+  preview?: boolean;
 }
 
 export type GuideRuntimeStatus =
@@ -61,6 +63,13 @@ export interface SdkInitOptions {
   tenantId: string;
   userId: string;
   apiBaseUrl: string;
+  /**
+   * Returns the end user's bearer token for the guide-engine backend. The
+   * backend derives tenant and user from this token only — tenantId/userId
+   * above are informational for the host app and are never trusted
+   * server-side. Called per request so the host app can refresh tokens.
+   */
+  getAuthToken: () => string | Promise<string>;
   traits?: Record<string, unknown>;
   locale?: string;
 }
@@ -94,24 +103,40 @@ export interface GuideRenderer {
 // Event bus (fire-and-forget, batched)
 // ------------------------------------------------------------
 
-class EventQueue {
+const URGENT_EVENTS = new Set<GuideEventPayload['eventType']>(['guide_dismissed', 'guide_completed']);
+
+/** @internal exported for unit tests */
+export class EventQueue {
   private queue: GuideEventPayload[] = [];
   private flushTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly flushIntervalMs = 5000;
   private readonly maxBatchSize = 20;
 
-  constructor(private apiBaseUrl: string) {}
+  constructor(
+    private apiBaseUrl: string,
+    private getAuthToken: () => string | Promise<string>
+  ) {
+    // Last chance to deliver queued events before the page goes away
+    // (keepalive lets the request outlive the page).
+    if (typeof window !== 'undefined') {
+      window.addEventListener('pagehide', () => void this.flush());
+    }
+  }
 
   push(event: GuideEventPayload): void {
     this.queue.push(event);
-    if (this.queue.length >= this.maxBatchSize) {
+    // Dismiss/complete are sent right away rather than batched: the backend
+    // records them per user, and that must land before the user's next page
+    // load or the guide would show again.
+    if (this.queue.length >= this.maxBatchSize || URGENT_EVENTS.has(event.eventType)) {
       this.flush();
     } else if (!this.flushTimer) {
       this.flushTimer = setTimeout(() => this.flush(), this.flushIntervalMs);
     }
   }
 
-  private async flush(): Promise<void> {
+  /** @internal visible for tests; normally driven by size/timer */
+  async flush(): Promise<void> {
     if (this.flushTimer) {
       clearTimeout(this.flushTimer);
       this.flushTimer = null;
@@ -120,9 +145,10 @@ class EventQueue {
 
     const batch = this.queue.splice(0, this.queue.length);
     try {
+      const token = await this.getAuthToken();
       await fetch(`${this.apiBaseUrl}/events`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ events: batch }),
         keepalive: true, // survive page unload
       });
@@ -137,7 +163,8 @@ class EventQueue {
 // Route matching (simple wildcard support; swap for real regex if needed)
 // ------------------------------------------------------------
 
-function matchesRoute(routeMatch: RouteMatch, currentPath: string): boolean {
+/** @internal exported for unit tests */
+export function matchesRoute(routeMatch: RouteMatch, currentPath: string): boolean {
   if (routeMatch.type === 'exact') {
     return routeMatch.value === currentPath;
   }
@@ -146,6 +173,23 @@ function matchesRoute(routeMatch: RouteMatch, currentPath: string): boolean {
     .replace(/[.+?^${}()|[\]\\]/g, '\\$&')
     .replace(/\*/g, '.*');
   return new RegExp(`^${escaped}$`).test(currentPath);
+}
+
+function finishedKey(guide: Guide): string {
+  return `${guide.id}:${guide.versionId}`;
+}
+
+function readPreviewToken(): string | null {
+  try {
+    return new URLSearchParams(window.location.search).get('guidePreview');
+  } catch {
+    return null;
+  }
+}
+
+/** Route matching is on the path only — query strings and hashes vary freely. */
+function stripQueryAndHash(path: string): string {
+  return path.split(/[?#]/)[0] || '/';
 }
 
 // ------------------------------------------------------------
@@ -161,39 +205,101 @@ export class GuideEngine {
   private tenantEnabled = true;
   private renderer: GuideRenderer | null = null;
   private targetObservers = new Map<string, MutationObserver>();
+  /** True when this page load is showing a signed preview (see startPreview). */
+  private previewMode = false;
+  /**
+   * Guide versions the user dismissed/completed during this session. The
+   * backend also records these (user_guide_state), but this covers the gap
+   * before that write lands so a finished guide can't flash back on the next
+   * navigation. Keyed by version so a newer version may still show.
+   */
+  private finished = new Set<string>();
 
-  /** Call once at app startup. */
+  /**
+   * Call once at app startup. Never rejects: any failure leaves the engine
+   * disabled (fail closed) rather than throwing into the host app.
+   */
   async init(options: SdkInitOptions, renderer: GuideRenderer): Promise<void> {
-    this.options = options;
-    this.eventQueue = new EventQueue(options.apiBaseUrl);
-    this.renderer = renderer;
+    try {
+      this.options = options;
+      this.eventQueue = new EventQueue(options.apiBaseUrl, options.getAuthToken);
+      this.renderer = renderer;
 
-    const flagsOk = await this.checkKillSwitches();
-    if (!flagsOk) return; // engine disabled globally or for this tenant — do nothing further
+      const flagsOk = await this.checkKillSwitches();
+      if (!flagsOk) return; // engine disabled globally or for this tenant — do nothing further
 
-    await this.evaluateGuidesForRoute(window.location.pathname);
+      // Preview links (?guidePreview=<signed token>) still respect the kill
+      // switches above; they only bypass the per-guide enabled flag and
+      // publish state. An invalid/expired token falls back to normal mode.
+      const previewToken = readPreviewToken();
+      if (previewToken && (await this.startPreview(previewToken))) return;
+
+      await this.evaluateGuidesForRoute(window.location.pathname);
+    } catch {
+      this.globalEnabled = false;
+      this.tenantEnabled = false;
+    }
   }
 
   /** Call on every SPA route change (Angular Router NavigationEnd / Vue Router afterEach). */
   async onRouteChange(newPath: string): Promise<void> {
     if (!this.globalEnabled || !this.tenantEnabled) return;
-    await this.evaluateGuidesForRoute(newPath);
+    if (this.previewMode) return; // a preview session shows only the previewed guide
+    try {
+      await this.evaluateGuidesForRoute(stripQueryAndHash(newPath));
+    } catch {
+      // never throw into the host app's router hooks
+    }
+  }
+
+  /** GET against the backend with the end user's bearer token. */
+  private async apiGet(path: string): Promise<Response> {
+    const token = await this.options!.getAuthToken();
+    return fetch(`${this.options!.apiBaseUrl}${path}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  }
+
+  /**
+   * Asks the backend to verify a preview token and return the version it
+   * names. The signature can only be checked server-side (the secret never
+   * reaches the browser), so "valid" here means "the backend accepted it".
+   */
+  private async startPreview(token: string): Promise<boolean> {
+    try {
+      const auth = await this.options!.getAuthToken();
+      const res = await fetch(`${this.options!.apiBaseUrl}/preview/guide`, {
+        headers: { Authorization: `Bearer ${auth}`, 'X-Guide-Preview': token },
+      });
+      if (!res.ok) return false;
+      const guide = (await res.json()) as Guide;
+      if (!guide || typeof guide.id !== 'string' || !Array.isArray(guide.steps)) return false;
+
+      this.previewMode = true;
+      // Force-render: no route matching, no enabled/publish checks.
+      this.startGuide({ ...guide, preview: true });
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   private async checkKillSwitches(): Promise<boolean> {
     if (!this.options) return false;
+    // Fail closed: anything other than an explicit, successful "true" from
+    // the backend disables the engine. Previously a 401/500 body ({error})
+    // was read as "enabled" because only `=== false` was treated as off.
+    this.globalEnabled = false;
+    this.tenantEnabled = false;
     try {
-      const res = await fetch(
-        `${this.options.apiBaseUrl}/system/flag?tenantId=${encodeURIComponent(this.options.tenantId)}`
-      );
+      const res = await this.apiGet('/system/flag');
+      if (!res.ok) return false;
       const data = await res.json();
-      this.globalEnabled = data.globalEnabled !== false;
-      this.tenantEnabled = data.tenantEnabled !== false;
+      this.globalEnabled = data?.globalEnabled === true;
+      this.tenantEnabled = data?.tenantEnabled === true;
     } catch {
       // Network failure: fail closed on the side of "don't show guides" rather
       // than risk showing something when we can't confirm it's safe to.
-      this.globalEnabled = false;
-      this.tenantEnabled = false;
     }
     return this.globalEnabled && this.tenantEnabled;
   }
@@ -203,20 +309,20 @@ export class GuideEngine {
 
     let guides: Guide[] = [];
     try {
-      const res = await fetch(
-        `${this.options.apiBaseUrl}/guides/active?tenantId=${encodeURIComponent(
-          this.options.tenantId
-        )}&route=${encodeURIComponent(path)}`
-      );
-      guides = await res.json();
+      const res = await this.apiGet('/guides/active');
+      if (!res.ok) return;
+      const data: unknown = await res.json();
+      if (!Array.isArray(data)) return; // unexpected shape — show nothing
+      guides = data as Guide[];
     } catch {
       return; // silent failure — never block the host app
     }
 
-    const matched = guides.filter((g) => matchesRoute(g.routeMatch, path));
+    const matched = guides.filter((g) => g?.routeMatch && matchesRoute(g.routeMatch, path));
 
     for (const guide of matched) {
       if (this.activeGuides.has(guide.id)) continue; // already showing/tracked
+      if (this.finished.has(finishedKey(guide))) continue; // user already dismissed/completed it
       this.startGuide(guide);
     }
   }
@@ -248,13 +354,24 @@ export class GuideEngine {
       return;
     }
 
+    // A new step replaces whatever the previous step was tracking. Without
+    // this, a targeted step's observer outlived it and re-rendered the NEXT
+    // step (e.g. a centered modal) next to the old step's element on the
+    // first unrelated DOM change.
+    this.stopObserving(state.guide.id);
+
     state.status = 'showing';
     this.renderer?.renderStep(state.guide, step, targetEl);
     this.emitEvent(state, step.id, state.currentStepIndex === 0 ? 'guide_shown' : 'guide_step_viewed');
 
     if (targetEl) {
-      this.observeTarget(state.guide.id, targetEl);
+      this.observeTarget(state.guide.id, step);
     }
+  }
+
+  private stopObserving(guideId: string): void {
+    this.targetObservers.get(guideId)?.disconnect();
+    this.targetObservers.delete(guideId);
   }
 
   private watchForTarget(state: GuideRuntimeState, step: Step, attempt = 0): void {
@@ -275,16 +392,32 @@ export class GuideEngine {
     }, 300 * (attempt + 1)); // backoff
   }
 
-  private observeTarget(guideId: string, el: Element): void {
-    this.targetObservers.get(guideId)?.disconnect();
-    const observer = new MutationObserver(() => {
-      // Re-render position on relevant DOM mutations. Actual repositioning
-      // logic lives in the renderer; this just triggers a re-render call.
-      const state = this.activeGuides.get(guideId);
-      if (state && state.status === 'showing') {
-        const step = state.guide.steps[state.currentStepIndex];
-        this.renderer?.renderStep(state.guide, step, el);
-      }
+  private observeTarget(guideId: string, step: Step): void {
+    this.stopObserving(guideId);
+    let frameScheduled = false;
+    const observer = new MutationObserver((mutations) => {
+      // Ignore mutations caused by our own guide hosts: the renderer writes
+      // host.style on every render, which is itself an attribute mutation
+      // under <body> and would otherwise re-trigger this observer forever.
+      const external = mutations.some(
+        (m) => !(m.target instanceof Element && m.target.closest('[data-guide-host]'))
+      );
+      if (!external || frameScheduled) return;
+
+      // Coalesce bursts of host-app mutations into one re-render per frame.
+      frameScheduled = true;
+      requestAnimationFrame(() => {
+        frameScheduled = false;
+        // Re-render position on relevant DOM mutations. Actual repositioning
+        // logic lives in the renderer; this just triggers a re-render call.
+        const state = this.activeGuides.get(guideId);
+        // Only for the step this observer was created for, and against the
+        // target as it is NOW — SPAs often re-mount elements, so a captured
+        // element reference can go stale. If it's gone, keep the last position.
+        if (!state || state.status !== 'showing' || state.guide.steps[state.currentStepIndex] !== step) return;
+        const target = document.querySelector(step.targetSelector!);
+        if (target) this.renderer?.renderStep(state.guide, step, target);
+      });
     });
     observer.observe(document.body, { childList: true, subtree: true, attributes: true });
     this.targetObservers.set(guideId, observer);
@@ -310,19 +443,20 @@ export class GuideEngine {
     state.status = 'dismissed';
     const step = state.guide.steps[state.currentStepIndex];
     this.emitEvent(state, step?.id, 'guide_dismissed');
+    this.finished.add(finishedKey(state.guide));
     this.teardownGuide(guideId);
   }
 
   private completeGuide(state: GuideRuntimeState): void {
     state.status = 'completed';
     this.emitEvent(state, undefined, 'guide_completed');
+    this.finished.add(finishedKey(state.guide));
     this.teardownGuide(state.guide.id);
   }
 
   private teardownGuide(guideId: string): void {
     this.renderer?.clear(guideId);
-    this.targetObservers.get(guideId)?.disconnect();
-    this.targetObservers.delete(guideId);
+    this.stopObserving(guideId);
     this.activeGuides.delete(guideId);
   }
 
@@ -333,6 +467,8 @@ export class GuideEngine {
     metadata?: Record<string, unknown>
   ): void {
     if (!this.options || !this.eventQueue) return;
+    // Authors clicking through a preview must not pollute real analytics.
+    if (this.previewMode) return;
     this.eventQueue.push({
       tenantId: this.options.tenantId,
       guideId: state.guide.id,

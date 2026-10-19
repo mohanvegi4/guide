@@ -76,28 +76,31 @@ export function createDomRenderer(engine: {
           button { border: none; border-radius: 6px; padding: 6px 12px; cursor: pointer; font-size: 14px; }
           .primary { background: #4f46e5; color: #fff; }
           .secondary { background: #f3f4f6; color: #111; }
+          .preview-badge { display: inline-block; margin-bottom: 8px; padding: 1px 8px; border-radius: 999px;
+                           background: #fef0c7; color: #7a2e0e; font-size: 11px; font-weight: 600; }
         </style>
         <div class="card">
+          ${guide.preview ? '<div class="preview-badge">Preview — only you can see this</div>' : ''}
           <div class="content">${step.content}</div>
-          <div class="actions">
-            ${step.actions
-              .map(
-                (a) =>
-                  `<button class="${a.action === 'dismiss' ? 'secondary' : 'primary'}" data-action="${a.action}">${a.label}</button>`
-              )
-              .join('')}
-          </div>
+          <div class="actions"></div>
         </div>
       `;
 
-      shadow.querySelectorAll('button[data-action]').forEach((btn) => {
+      // Buttons are built with DOM APIs, not string interpolation: labels and
+      // action names come from guide data, and interpolating them into
+      // innerHTML would bypass the server-side content sanitization.
+      const actionsEl = shadow.querySelector('.actions');
+      for (const a of step.actions) {
+        const btn = document.createElement('button');
+        btn.className = a.action === 'dismiss' ? 'secondary' : 'primary';
+        btn.textContent = a.label;
         btn.addEventListener('click', () => {
-          const action = btn.getAttribute('data-action');
-          if (action === 'dismiss') engine.dismissGuide(guide.id);
-          else if (action === 'next' || action === 'complete') engine.advanceStep(guide.id);
+          if (a.action === 'dismiss') engine.dismissGuide(guide.id);
+          else if (a.action === 'next' || a.action === 'complete') engine.advanceStep(guide.id);
           // 'back' / 'custom' left as an exercise — wire up per your actions schema
         });
-      });
+        actionsEl?.appendChild(btn);
+      }
     },
 
     clear(guideId: string) {

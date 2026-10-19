@@ -1,0 +1,38 @@
+# Local Postgres for development and the backend integration tests.
+# Port 5433 on the host to avoid clashing with any Postgres already on 5432.
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      # Bootstrap superuser — used ONLY by docker/init.sql to create the
+      # non-superuser app role. The app itself never connects as this user,
+      # because superusers bypass Row-Level Security unconditionally.
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5433:5432"
+    volumes:
+      - ./docker/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - guide_engine_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d guide_engine_test"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  # DEV-ONLY mock OpenID Connect provider for exercising Studio SSO locally
+  # (https://github.com/navikt/mock-oauth2-server). Opt-in: `npm run idp:up`.
+  # Its login page lets you type any username plus the claims to put in the
+  # token (tenantId, roles) — see docker/mock-idp.json for the defaults.
+  mock-idp:
+    image: ghcr.io/navikt/mock-oauth2-server:2.1.10
+    profiles: ["sso"]
+    ports:
+      - "8080:8080"
+    environment:
+      JSON_CONFIG_PATH: /config/mock-idp.json
+    volumes:
+      - ./docker/mock-idp.json:/config/mock-idp.json:ro
+
+volumes:
+  guide_engine_pg:

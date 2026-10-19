@@ -14,6 +14,9 @@ packages/
   backend/           Express + Postgres API
   angular-wrapper/   @guide-engine/angular
   vue-wrapper/       @guide-engine/vue
+apps/
+  studio/            Authoring Studio (Angular 21)
+  demo/              minimal SDK host app for end-to-end checks
 ```
 This is an npm workspaces monorepo. Run commands from the repo root unless a
 task is scoped to one package (`npm run build --workspace=packages/backend`).
@@ -69,7 +72,11 @@ deliberately for this project's scale and constraints:
 ## Common commands
 ```bash
 npm install                                    # from repo root, installs all workspaces
-npm run build                                  # builds all packages
-cd packages/backend && npm run migrate         # applies pending migrations
+npm run db:up                                  # Postgres 16 in docker on :5433 (non-superuser app role)
+npm run idp:up                                 # optional: mock OIDC provider on :8080 for Studio SSO
+npm run build                                  # builds all packages (core first)
+npm run migrate                                # builds backend + applies pending migrations
+npm test                                       # all workspace tests (backend needs db:up)
 cd packages/backend && npm run dev             # starts backend on :3000 with hot reload
+cd packages/backend && npm run mint-token -- --tenant <uuid> --user <id> [--role guide_admin[,platform_admin]]
 ```

@@ -1,0 +1,8 @@
+.topbar { display: flex; align-items: center; justify-content: space-between; padding: 12px 24px;
+  background: var(--surface); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 10; }
+.brand { font-weight: 700; color: var(--text); text-decoration: none; }
+.who { display: flex; align-items: center; gap: 12px; }
+.container { max-width: 1200px; margin: 0 auto; padding: 24px 16px 64px; }
+.tabs { display: flex; gap: 4px; margin-right: auto; margin-left: 24px; }
+.tabs a { padding: 6px 10px; border-radius: 6px; color: var(--muted); text-decoration: none; }
+.tabs a.active { background: var(--bg); color: var(--text); font-weight: 600; }

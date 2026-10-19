@@ -1,0 +1,18 @@
+{
+  "interactiveLogin": true,
+  "tokenCallbacks": [
+    {
+      "issuerId": "default",
+      "tokenExpiry": 3600,
+      "requestMappings": [
+        {
+          "requestParam": "client_id",
+          "match": "guide-studio",
+          "claims": {
+            "aud": ["guide-engine-api"]
+          }
+        }
+      ]
+    }
+  ]
+}

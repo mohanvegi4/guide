@@ -3,11 +3,17 @@
   "private": true,
   "version": "0.1.0",
   "workspaces": [
-    "packages/*"
+    "packages/*",
+    "apps/*"
   ],
   "scripts": {
-    "build": "npm run build --workspaces --if-present",
-    "dev:backend": "npm run dev --workspace=packages/backend"
+    "build": "npm run build --workspace=packages/core && npm run build --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "dev:backend": "npm run dev --workspace=packages/backend",
+    "db:up": "docker compose up -d --wait",
+    "db:down": "docker compose down",
+    "migrate": "npm run build --workspace=packages/backend && npm run migrate --workspace=packages/backend",
+    "idp:up": "docker compose --profile sso up -d mock-idp"
   },
   "devDependencies": {
     "typescript": "^5.5.4"

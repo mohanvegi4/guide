@@ -1,0 +1,13 @@
+{
+  "name": "@guide-engine/demo",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "dev": "vite --port 5174 --strictPort",
+    "build": "tsc --noEmit -p tsconfig.json && vite build"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.4",
+    "vite": "^7.1.0"
+  }
+}

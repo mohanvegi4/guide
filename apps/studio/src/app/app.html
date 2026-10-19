@@ -1,0 +1,22 @@
+<header class="topbar">
+  <a [routerLink]="auth.homePath()" class="brand">Guide Studio</a>
+  @if (auth.info()) {
+    <nav class="tabs">
+      @if (auth.hasRole('guide_admin')) {
+        <a routerLink="/guides" routerLinkActive="active">Guides</a>
+      }
+      @if (auth.hasRole('platform_admin')) {
+        <a routerLink="/global" routerLinkActive="active">Global guides</a>
+      }
+    </nav>
+  }
+  @if (auth.info(); as who) {
+    <div class="who">
+      <span class="muted small" [title]="'Tenant ' + who.tenantId">{{ who.userId }} · tenant {{ who.tenantId.slice(0, 8) }}…</span>
+      <button type="button" class="link" (click)="logout()">Sign out</button>
+    </div>
+  }
+</header>
+<main class="container">
+  <router-outlet />
+</main>

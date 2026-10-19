@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Demo Host App</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <header>
+      <strong>Acme Product (demo host app)</strong>
+      <nav>
+        <a href="/dashboard" data-link>Dashboard</a>
+        <a href="/projects" data-link>Projects</a>
+      </nav>
+      <span id="who" class="muted"></span>
+    </header>
+    <section id="login" hidden>
+      <p>This stands in for the product's own login. Paste an <em>end-user</em> token
+        (<code>npm run mint-token -- --tenant &lt;uuid&gt; --user bob</code>):</p>
+      <textarea id="token" rows="3"></textarea>
+      <button id="save-token">Sign in</button>
+    </section>
+    <main id="view"></main>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
