@@ -651,6 +651,7 @@ Bodies may be `text/plain` or `application/json`. Each one carries an identity:
 | `GET` / `PATCH /apps/:appId` | viewer / app_admin | `GET` includes `snippet`. `PATCH` takes `{ name?, websites?, identityMode?, enabled?, helpEnabled?, helpButtonLabel?, helpButtonColor?, helpPosition?, routeMode? }`; the color must be hex, the position one of `bottom-right`, `bottom-left`, `top-right`, `top-left`, `center`, the route mode `path` or `hash` (returned as `route_mode`). |
 | `GET /apps/:appId/help-analytics` | viewer | Help-center usage over the last 30 days: `{ days, opens, searches, guidesStarted, topQueries: [{ query, count, avgResults }] }` (top 20 queries, normalized to lower case). |
 | `POST /apps/:appId/rotate-key` | app_admin | New public key; old snippets stop working. |
+| `GET` / `DELETE /apps/:appId/visitors/:visitorId` | app_admin | Data-subject requests for one end user: `GET` downloads their events and guide state as JSON; `DELETE` ("forget this visitor") removes them → `{ visitorId, events, guideState }`. |
 | `DELETE /apps/:appId` | app_admin | `{ confirmName }` must equal the app's name. Deletes the app with its guides, pages, events, visitor state, agent errors and grants; `204`. |
 | `POST /apps/:appId/signing-secret` | app_admin | `{ secret }`, shown once. |
 | `GET /apps/:appId/errors?limit=50` | viewer | The newest agent errors (1–200): `[{ id, message, stack, agentVersion, url, occurredAt }]`. |
@@ -741,6 +742,7 @@ versions and events with it without any session being allowed to delete those di
 | `010_production.sql` | `agent_rate_limit` (the shared agent-API budget), the `app_retention()` function and the retention policies on `guide_event`, an index on `occurred_at`. |
 | `011_agent_delivery.sql` | `agent_error` with its RLS: agent insert/select for its own app (the hourly cap counts in the same session), Studio and platform select, retention select/delete. |
 | `012_engine_gaps.sql` | Adds `application.route_mode` (CHECK-limited to `path` / `hash`), the `help_opened` / `help_searched` event types, and makes `guide_event.guide_id` nullable for those two types only (a CHECK constraint; the foreign keys stay). |
+| `014_forget_visitor.sql` | App admins may delete one visitor's `guide_event` rows and read/delete their `user_guide_state` rows ("forget this visitor"). |
 | `013_data_lifecycle.sql` | Deletion policies: `app_owner_org_ids()` (a new session variable, owners only) with `organization_owner_delete`, `organization_platform_delete`, and `application_app_admin_delete`. Nothing new is readable. |
 
 ---
@@ -757,10 +759,10 @@ npm test --workspace=apps/studio          # Studio components and services
 
 | Suite | Tests | Covers |
 |---|---|---|
-| **Backend** | 234 | self-serve orgs; apps and settings; the role matrix; invitations; members; saved pages; platform admins and support access (consent, read-only, logging, RLS); secrets at rest, the shared rate limiter, retention (events and agent errors), production boot checks; the agent script's ETag / 304 / cache headers and the version endpoint; agent error reports (validation, the hourly cap, the Studio list, RLS isolation, platform counts); org/app isolation through the API **and directly in RLS** (including replaying the owner bootstrap and forging memberships); the agent API (origins, keys, identity modes, account targeting, kill switches, events and per-visitor state, preview); the guide lifecycle; sanitization; stable step ids; analytics; OIDC (a local JWKS server, algorithm confusion); and migration 005's data conversion |
+| **Backend** | 238 | self-serve orgs; apps and settings; the role matrix; invitations; members; saved pages; platform admins and support access (consent, read-only, logging, RLS); secrets at rest, the shared rate limiter, retention (events and agent errors), production boot checks; the agent script's ETag / 304 / cache headers and the version endpoint; agent error reports (validation, the hourly cap, the Studio list, RLS isolation, platform counts); org/app isolation through the API **and directly in RLS** (including replaying the owner bootstrap and forging memberships); the agent API (origins, keys, identity modes, account targeting, kill switches, events and per-visitor state, preview); the guide lifecycle; sanitization; stable step ids; analytics; OIDC (a local JWKS server, algorithm confusion); and migration 005's data conversion |
 | **Core** | 89 | includes the help widget (search, keyboard, safe rendering), help launches (same page, other page, arrival, shared links) and error reporting (sampling, the per-page cap, never throwing) |
 | **Agent** | 8 | includes `openHelp` queued before load and the build-time version |
-| **Studio** | 40 | guide list and editor (saved pages), Pages, app settings (including the agent-error list), the Administration page |
+| **Studio** | 41 | guide list and editor (saved pages), Pages, app settings (including the agent-error list), the Administration page |
 
 Type-checking is part of every `test` script, with strict TypeScript throughout.
 

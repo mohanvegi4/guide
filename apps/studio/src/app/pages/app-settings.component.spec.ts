@@ -141,13 +141,38 @@ describe('AppSettingsComponent', () => {
     input.dispatchEvent(new Event('input'));
     fixture.detectChanges();
     expect(submit.disabled).toBe(false);
-    zone.querySelector('form')!.dispatchEvent(new Event('submit'));
+    input.closest('form')!.dispatchEvent(new Event('submit'));
     const req = http.expectOne('/api/v1/apps/a1');
     expect(req.request.method).toBe('DELETE');
     expect(req.request.body).toEqual({ confirmName: 'Web app' });
     req.flush(null, { status: 204, statusText: 'No Content' });
     await fixture.whenStable();
     expect(navigate).toHaveBeenCalledWith(['/o', 'o1', 'apps']);
+  });
+
+  it('forgets a visitor after confirmation and reports what was deleted', async () => {
+    const el = await render();
+    const fixture = lastFixture;
+    const zone = el.querySelector('section.danger-zone')!;
+    const input = zone.querySelector<HTMLInputElement>('input[name="visitorId"]')!;
+    const forget = [...Array.from(zone.querySelectorAll('button'))].find(
+      (b) => b.textContent?.trim() === 'Forget visitor',
+    )!;
+    expect(forget.disabled).toBe(true);
+    input.value = 'user/42';
+    input.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    expect(forget.disabled).toBe(false);
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    forget.closest('form')!.dispatchEvent(new Event('submit'));
+    const req = http.expectOne('/api/v1/apps/a1/visitors/user%2F42');
+    expect(req.request.method).toBe('DELETE');
+    req.flush({ visitorId: 'user/42', events: 3, guideState: 1 });
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(el.querySelector('[role="status"]')?.textContent).toContain(
+      '3 events and 1 guide state row deleted',
+    );
   });
 
   it('offers path or hash routing and saves a change right away', async () => {

@@ -6,6 +6,7 @@ import { guidesRouter } from './guides';
 import { pagesRouter } from './pages';
 import { analyticsRouter } from './analytics';
 import { errorsRouter } from './errors';
+import { visitorsRouter } from './visitors';
 import { platformRouter } from './platform';
 
 /**
@@ -20,4 +21,5 @@ studioRouter.use('/apps/:appId/guides', guidesRouter);
 studioRouter.use('/apps/:appId/pages', pagesRouter);
 studioRouter.use(analyticsRouter);
 studioRouter.use('/apps/:appId/errors', errorsRouter);
+studioRouter.use('/apps/:appId/visitors', visitorsRouter);
 studioRouter.use('/platform', platformRouter);

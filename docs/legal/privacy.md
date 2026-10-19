@@ -204,10 +204,10 @@ the organization holds, including all end-user events and state for its applicat
 **End users**: because the customer is the controller, please contact the website operator
 whose site you were using; their privacy notice tells you how. When a customer asks us to
 assist, it identifies the visitor by the visitor id its website used, and we delete or export
-that visitor's events and guide state for the customer's applications. There is no per-visitor
-export or deletion function in the Studio: the Operator performs it directly in the database
-within `[number]` days of a verified request from the customer. Visitors can also clear their
-anonymous id by clearing the customer website's site data in their browser.
+that visitor's events and guide state for the customer's applications. The customer's own
+administrators do this themselves in the Studio (**Install & settings → Danger zone → Forget a
+visitor**: export as JSON, then delete), immediately and without our involvement. Visitors can
+also clear their anonymous id by clearing the customer website's site data in their browser.
 
 ## 9. International transfers
 

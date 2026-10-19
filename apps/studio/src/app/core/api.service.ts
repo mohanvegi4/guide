@@ -101,6 +101,23 @@ export class ApiService {
   }
 
   /** Irreversible: the backend requires the exact app name. */
+  /** Data-subject requests for one end user of an app (app admins): export, then forget. */
+  exportVisitor(appId: string, visitorId: string): Observable<HttpResponse<Blob>> {
+    return this.http.get(`${this.base}/apps/${appId}/visitors/${encodeURIComponent(visitorId)}`, {
+      observe: 'response',
+      responseType: 'blob',
+    });
+  }
+
+  forgetVisitor(
+    appId: string,
+    visitorId: string,
+  ): Observable<{ visitorId: string; events: number; guideState: number }> {
+    return this.http.delete<{ visitorId: string; events: number; guideState: number }>(
+      `${this.base}/apps/${appId}/visitors/${encodeURIComponent(visitorId)}`,
+    );
+  }
+
   deleteApp(appId: string, confirmName: string): Observable<void> {
     return this.http.delete<void>(`${this.base}/apps/${appId}`, { body: { confirmName } });
   }

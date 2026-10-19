@@ -5,6 +5,7 @@ import { ActivatedRoute, Router } from '@angular/router';
 import { Observable } from 'rxjs';
 import { ApiService, describeError } from '../core/api.service';
 import { runRequest } from '../core/request';
+import { saveResponseAsFile } from '../core/download';
 import { AuthService } from '../core/auth.service';
 import { AgentError, App, HELP_POSITIONS, HelpAnalytics, HelpPosition, ROUTE_MODES } from '../core/models';
 import { parseWebsites } from './websites';
@@ -286,6 +287,25 @@ import { parseWebsites } from './websites';
           Rotating stops every installed snippet immediately until you update it with the new key.
         </p>
         <button type="button" class="danger" (click)="rotate()" [disabled]="busy()">Rotate public key</button>
+        <h3 class="subhead">Forget a visitor</h3>
+        <p class="muted small">
+          For an end user's "what do you hold about me?" or "forget me" request. Enter the visitor id your
+          site passed to <code>guideEngine.initialize</code>: <strong>Export</strong> downloads their events
+          and guide state; <strong>Forget</strong> deletes them (the guides they finished will show again for
+          that id).
+        </p>
+        <form class="inline-form" (ngSubmit)="forgetVisitor(a)">
+          <label>
+            Visitor id
+            <input name="visitorId" [(ngModel)]="visitorId" autocomplete="off" aria-label="Visitor id" />
+          </label>
+          <button type="button" (click)="exportVisitor(a)" [disabled]="busy() || !visitorId.trim()">
+            Export visitor
+          </button>
+          <button type="submit" class="danger" [disabled]="busy() || !visitorId.trim()">
+            Forget visitor
+          </button>
+        </form>
         <h3 class="subhead">Delete app</h3>
         <p class="muted small">
           Deletes <strong>{{ a.name }}</strong> with its guides, pages, analytics and per-app roles. Installed
@@ -327,6 +347,7 @@ export class AppSettingsComponent {
   protected readonly justCreated = inject(ActivatedRoute).snapshot.queryParamMap.has('new');
   protected websites = '';
   protected confirmName = '';
+  protected visitorId = '';
   protected helpLabel = 'Help';
   protected helpColor = '#4f46e5';
   protected helpPosition: HelpPosition = 'bottom-right';
@@ -425,6 +446,32 @@ const token = jwt.sign(
     this.run(this.api.rotateKey(this.appId()), (a) => {
       this.setApp(a);
       this.message.set('New key issued — update your snippet.');
+    });
+  }
+
+  /** Data-subject request, step 1: a JSON file with everything held about this visitor id. */
+  exportVisitor(a: App): void {
+    const id = this.visitorId.trim();
+    if (!id) return;
+    this.run(this.api.exportVisitor(a.id, id), (response) => {
+      saveResponseAsFile(response, `guide-engine-visitor-${id}.json`);
+      this.message.set(`Exported visitor “${id}”.`);
+    });
+  }
+
+  /** Data-subject request, step 2: delete that visitor's events and guide state. */
+  forgetVisitor(a: App): void {
+    const id = this.visitorId.trim();
+    if (!id) return;
+    if (
+      !confirm(`Forget visitor “${id}” in ${a.name}? Their events and guide state are deleted permanently.`)
+    )
+      return;
+    this.run(this.api.forgetVisitor(a.id, id), (r) => {
+      this.visitorId = '';
+      this.message.set(
+        `Forgot visitor “${id}”: ${r.events} event${r.events === 1 ? '' : 's'} and ${r.guideState} guide state row${r.guideState === 1 ? '' : 's'} deleted.`,
+      );
     });
   }
 

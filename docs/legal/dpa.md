@@ -110,9 +110,11 @@ decrease.
 1. **Data subject requests.** Taking into account the nature of the processing, the Processor
    assists the Customer in responding to requests from end users. The Customer identifies the
    data subject by the visitor id its website used; the Processor then exports or deletes that
-   visitor's events and guide state for the Customer's applications within `[number]` days.
-   (Per-visitor requests are performed by the Processor in the database; the Studio offers no
-   per-visitor function. Organization-wide export and deletion are self-service: section 9.)
+   visitor's events and guide state for the Customer's applications. The Customer can do this
+   itself at any time in the Studio (**Install & settings → Danger zone → Forget a visitor**:
+   export as JSON, then delete), with immediate effect; the Processor assists within `[number]`
+   days where the Customer cannot. Organization-wide export and deletion are also self-service
+   (section 9).
 2. **Security, breach notification and impact assessments.** The Processor assists the Customer
    with its security obligations, notifies the Customer without undue delay `[and within
    [number] hours]` after becoming aware of a personal data breach affecting the Customer's data,

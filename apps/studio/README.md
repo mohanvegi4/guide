@@ -143,6 +143,11 @@ after that, grants happen here.
   removes the app with its guides, pages, analytics and per-app roles and returns you to the apps
   list.
 
+**Danger zone → Forget a visitor** (app admins): for an end user's data request, enter the
+visitor id your site passed to `guideEngine.initialize`; **Export visitor** downloads their
+events and guide state as JSON, **Forget visitor** deletes them (guides they finished show again
+for that id).
+
 ## Working with a guide
 
 1. **Create** a guide on the app's Guides page. It starts disabled, with nothing published.
