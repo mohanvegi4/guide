@@ -1,5 +1,10 @@
-import { matchesRoute } from './engine';
-import type { HelpButtonSettings, HelpItem, HelpPosition, HelpUi } from './engine';
+import { currentRoutePath, displayRoutePath, matchesRoute } from './engine';
+import type { HelpButtonSettings, HelpItem, HelpPosition, HelpUi, RouteMode } from './engine';
+
+/** How long typing must pause before a search is recorded (one event per query, not per keystroke). */
+export const SEARCH_TRACK_DELAY_MS = 500;
+/** Queries shorter than this aren't recorded: one letter says nothing about what the visitor wanted. */
+const SEARCH_TRACK_MIN_CHARS = 2;
 
 const POSITIONS: ReadonlySet<string> = new Set([
   'bottom-right',
@@ -14,10 +19,14 @@ const POSITIONS: ReadonlySet<string> = new Set([
  * a dialog listing the visitor's help guides, with search. Picking one calls
  * onSelect (the engine then starts it here, or sends the visitor to its page).
  *
- * Topics that live on another page say so in the list ("Opens on /team"),
- * and picking one shows a confirmation modal first — leaving is a page load,
- * which can drop unsaved work — with "Take me there" / "Stay here"; staying
- * returns to the list.
+ * Topics that live on another page say so in the list ("Opens on /team", or
+ * "/#/team" for hash routers), and picking one shows a confirmation modal
+ * first — leaving is a page load, which can drop unsaved work — with
+ * "Take me there" / "Stay here"; staying returns to the list.
+ *
+ * Usage is reported through the optional callbacks: onOpen when the panel
+ * opens (not when "Stay here" brings the list back), onSearch once typing
+ * pauses for 500 ms on a query of at least two characters.
  *
  * Placement comes from the app's settings (data-ge-pos on the host): the list
  * and the confirmation sit in one of the four corners, or mid-screen; the
@@ -32,13 +41,21 @@ const POSITIONS: ReadonlySet<string> = new Set([
  * through results, Enter starts one, Esc closes; clicking outside closes.
  * The confirmation is an alertdialog with focus on "Take me there".
  */
-export function createHelpWidget(options: { onSelect(item: HelpItem): void }): HelpUi {
+export function createHelpWidget(options: {
+  onSelect(item: HelpItem): void;
+  /** The panel opened (the floating button, or openHelp()). */
+  onOpen?(): void;
+  /** The visitor searched: the query, and how many topics it matched. */
+  onSearch?(query: string, results: number): void;
+}): HelpUi {
   let items: HelpItem[] = [];
   let button: HelpButtonSettings = { label: 'Help', color: '#4f46e5' };
   let showButton = false;
+  let routeMode: RouteMode = 'path';
   let open = false;
   let query = '';
   let active = 0;
+  let searchTimer: ReturnType<typeof setTimeout> | null = null;
   let returnFocus: HTMLElement | null = null;
   /** The pending "leave this page?" question, while the confirmation is showing. */
   let pending: { item: HelpItem; go: () => void } | null = null;
@@ -146,7 +163,19 @@ export function createHelpWidget(options: { onSelect(item: HelpItem): void }): H
 
   /** Whether starting `item` means leaving the current page. */
   function elsewhere(item: HelpItem): boolean {
-    return !matchesRoute(item.routeMatch, window.location.pathname);
+    return !matchesRoute(item.routeMatch, currentRoutePath(routeMode));
+  }
+
+  /** Records the query once typing pauses; an empty or one-letter query cancels a pending one. */
+  function trackSearch(): void {
+    if (searchTimer) clearTimeout(searchTimer);
+    searchTimer = null;
+    const q = query.trim();
+    if (!options.onSearch || q.length < SEARCH_TRACK_MIN_CHARS) return;
+    searchTimer = setTimeout(() => {
+      searchTimer = null;
+      options.onSearch?.(q, results().length);
+    }, SEARCH_TRACK_DELAY_MS);
   }
 
   function renderList(): void {
@@ -173,7 +202,7 @@ export function createHelpWidget(options: { onSelect(item: HelpItem): void }): H
           where.className = 'where';
           where.textContent = 'Opens on ';
           const path = document.createElement('code');
-          path.textContent = item.help.startPath;
+          path.textContent = displayRoutePath(routeMode, item.help.startPath);
           where.appendChild(path);
           li.appendChild(where);
         }
@@ -223,7 +252,25 @@ export function createHelpWidget(options: { onSelect(item: HelpItem): void }): H
   function stay(): void {
     if (!pending) return;
     hideConfirm();
-    ui.open();
+    showList(false); // back to the list the visitor already had open: not a new open
+  }
+
+  /** Shows the topic list. `fresh` = the visitor opened the help center (reported), not returned to it. */
+  function showList(fresh: boolean): void {
+    attach();
+    if (fresh) returnFocus = (document.activeElement as HTMLElement | null) ?? null;
+    open = true;
+    query = '';
+    search.value = '';
+    trackSearch();
+    active = 0;
+    panel.hidden = false;
+    backdrop.hidden = false;
+    renderList();
+    renderButton();
+    document.addEventListener('pointerdown', onOutsidePointer, true);
+    search.focus();
+    if (fresh) options.onOpen?.();
   }
 
   /** "Take me there": leave for the guide's start page. */
@@ -254,6 +301,7 @@ export function createHelpWidget(options: { onSelect(item: HelpItem): void }): H
     query = search.value;
     active = 0;
     renderList();
+    trackSearch();
   });
   panel.addEventListener('keydown', (e) => {
     const found = results();
@@ -295,28 +343,23 @@ export function createHelpWidget(options: { onSelect(item: HelpItem): void }): H
       items = state.items;
       button = state.button;
       showButton = state.showButton;
+      routeMode = state.routeMode ?? 'path';
       attach();
       renderButton();
       if (open) renderList();
     },
     open() {
       if (open) return;
-      attach();
+      // openHelp() while the confirmation is up swaps it for the list; that
+      // is the same visit, not a new open.
+      const fresh = !pending;
       if (pending) hideConfirm();
-      else returnFocus = (document.activeElement as HTMLElement | null) ?? null;
-      open = true;
-      query = '';
-      search.value = '';
-      active = 0;
-      panel.hidden = false;
-      backdrop.hidden = false;
-      renderList();
-      renderButton();
-      document.addEventListener('pointerdown', onOutsidePointer, true);
-      search.focus();
+      showList(fresh);
     },
     close() {
       if (!open && !pending) return;
+      query = '';
+      trackSearch(); // a query abandoned mid-pause isn't recorded
       hideList();
       hideConfirm();
       backdrop.hidden = true;
@@ -332,7 +375,7 @@ export function createHelpWidget(options: { onSelect(item: HelpItem): void }): H
       confirmText.replaceChildren();
       confirmText.append('“', item.help.title, '” starts on ');
       const path = document.createElement('code');
-      path.textContent = item.help.startPath;
+      path.textContent = displayRoutePath(routeMode, item.help.startPath);
       confirmText.append(path, '. Any unsaved changes on this page may be lost.');
       confirm.hidden = false;
       backdrop.hidden = false;

@@ -14,6 +14,7 @@ export const GuidePlugin = {
     const engine = new GuideEngine();
     const renderer = createDomRenderer({
       advanceStep: (id) => engine.advanceStep(id),
+      previousStep: (id) => engine.previousStep(id),
       dismissGuide: (id) => engine.dismissGuide(id),
     });
 
@@ -21,7 +22,12 @@ export const GuidePlugin = {
     // design, so we don't need to await this before the app mounts.
     // Help center: floating button (unless options.helpButton === false);
     // useGuideEngine().openHelp() from your own button.
-    const help = createHelpWidget({ onSelect: (item) => engine.launchHelpGuide(item.id) });
+    // Opens and searches are reported for the Studio's help-center analytics.
+    const help = createHelpWidget({
+      onSelect: (item) => engine.launchHelpGuide(item.id),
+      onOpen: () => engine.trackHelpOpened(),
+      onSearch: (query, results) => engine.trackHelpSearched(query, results),
+    });
     engine.init(options, renderer, help);
 
     options.router.afterEach((to) => {
