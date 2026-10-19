@@ -1,11 +1,48 @@
 {
   "name": "@guide-engine/core",
-  "version": "0.1.0",
+  "version": "0.2.0",
+  "description": "Framework-agnostic in-app guide engine: state machine, transport, DOM renderer and help center for Guide Engine",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mohanvegi4/guide.git",
+    "directory": "packages/core"
+  },
+  "homepage": "https://github.com/mohanvegi4/guide#readme",
+  "bugs": {
+    "url": "https://github.com/mohanvegi4/guide/issues"
+  },
+  "keywords": [
+    "guide-engine",
+    "in-app-guide",
+    "product-tour",
+    "onboarding",
+    "tooltip",
+    "walkthrough",
+    "help-center"
+  ],
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "sideEffects": false,
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "test": "tsc -p tsconfig.test.json && vitest run"
+    "test": "tsc -p tsconfig.test.json && vitest run",
+    "prepack": "node -e \"require('fs').copyFileSync('../../LICENSE', 'LICENSE')\""
   },
   "devDependencies": {
     "jsdom": "^29.1.1",

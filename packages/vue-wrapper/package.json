@@ -1,17 +1,53 @@
 {
   "name": "@guide-engine/vue",
-  "version": "0.1.0",
+  "version": "0.2.0",
+  "description": "Vue 3 plugin, composable and directive for Guide Engine in-app guides (wraps @guide-engine/core)",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mohanvegi4/guide.git",
+    "directory": "packages/vue-wrapper"
+  },
+  "homepage": "https://github.com/mohanvegi4/guide#readme",
+  "bugs": {
+    "url": "https://github.com/mohanvegi4/guide/issues"
+  },
+  "keywords": [
+    "guide-engine",
+    "vue",
+    "vue3",
+    "in-app-guide",
+    "product-tour",
+    "onboarding",
+    "walkthrough",
+    "help-center"
+  ],
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "sideEffects": false,
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
-    "build": "tsc -p tsconfig.json"
+    "build": "tsc -p tsconfig.json",
+    "prepack": "node -e \"require('fs').copyFileSync('../../LICENSE', 'LICENSE')\""
   },
   "peerDependencies": {
-    "vue": ">=3.0.0",
-    "vue-router": ">=4.0.0"
-  },
-  "dependencies": {
-    "@guide-engine/core": "0.1.0"
+    "@guide-engine/core": "^0.2.0",
+    "vue": "^3.3.0",
+    "vue-router": "^4.0.0"
   },
   "devDependencies": {
     "vue": "^3.4.0",

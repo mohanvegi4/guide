@@ -247,8 +247,18 @@ fine for showing tips, but not if visitor identity matters to you.
 
 ### Alternative: npm packages
 
-For bundled apps that prefer a dependency over a script tag, build the packages
-(`npm run build`) and use them from your registry or `npm link`:
+For bundled apps that prefer a dependency over a script tag, three packages are published to
+npm, always together at one version (currently **0.2.0**; see [CHANGELOG.md](CHANGELOG.md)):
+
+| Package | For |
+|---|---|
+| [`@guide-engine/core`](packages/core/README.md) | any framework: the engine, DOM renderer and help center |
+| [`@guide-engine/angular`](packages/angular-wrapper/README.md) | Angular 17–21: `GuideService`, `GuideAnchorDirective`, `GuideModule` |
+| [`@guide-engine/vue`](packages/vue-wrapper/README.md) | Vue 3: `GuidePlugin`, `useGuideEngine()`, `vGuideAnchor` |
+
+```sh
+npm install @guide-engine/core            # plus @guide-engine/angular or @guide-engine/vue
+```
 
 ```ts
 // Angular
@@ -277,6 +287,18 @@ void engine.init({ apiBaseUrl, appKey, visitor, account, jwt },
 `provideAppInitializer` needs Angular 19+. On older versions, call `init` from an
 `APP_INITIALIZER` or the root component's `ngOnInit`. The packages build to CommonJS; Angular
 CLI may ask you to list `@guide-engine/core` in `allowedCommonJsDependencies`.
+
+**Angular packaging limitation.** `@guide-engine/angular` is compiled with plain `tsc`, not
+ng-packagr, so it carries no Ivy partial-compilation metadata and Angular's AOT compiler (the
+default build) can't compile its service and directive from the published output. Either copy
+the three files of [`packages/angular-wrapper/src`](packages/angular-wrapper/src) into your app
+and let its compiler build them (recommended, they're about 100 lines over `@guide-engine/core`),
+or add `import '@angular/compiler'` to `main.ts` for JIT. Details in the
+[package README](packages/angular-wrapper/README.md#packaging-limitation).
+
+**Releasing.** A pushed tag `vX.Y.Z` publishes the three packages and creates the GitHub Release
+([`.github/workflows/release.yml`](.github/workflows/release.yml)); `npm run version:set X.Y.Z`
+bumps them together. See [RELEASING.md](RELEASING.md).
 
 ---
 

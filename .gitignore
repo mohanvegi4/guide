@@ -10,3 +10,5 @@ dist/
 # docs site assembly output (scripts/build-docs.mjs)
 site/
 _site/
+# prepack copies the root LICENSE into each public package; the root file is the source
+packages/*/LICENSE

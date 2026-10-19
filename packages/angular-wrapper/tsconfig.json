@@ -3,7 +3,9 @@
   "compilerOptions": {
     "outDir": "dist",
     "lib": ["ES2020", "DOM"],
+    "inlineSources": true,
     "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
     "useDefineForClassFields": false
   },
   "include": ["src"]

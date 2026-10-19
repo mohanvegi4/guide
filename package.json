@@ -13,7 +13,8 @@
     "db:up": "docker compose up -d --wait",
     "db:down": "docker compose down",
     "migrate": "npm run build --workspace=packages/backend && npm run migrate --workspace=packages/backend",
-    "idp:up": "docker compose --profile sso up -d --wait keycloak"
+    "idp:up": "docker compose --profile sso up -d --wait keycloak",
+    "version:set": "node scripts/set-version.mjs"
   },
   "devDependencies": {
     "typescript": "^5.5.4"
