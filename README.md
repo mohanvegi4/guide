@@ -480,6 +480,22 @@ packages they're `GuideService.openHelp()` (Angular), `useGuideEngine().openHelp
   [Guide Engine administration](#guide-engine-administration).
 - **Secrets at rest.** Invitation tokens are stored hashed. App signing secrets are shown once
   and stored for verification; encrypting them at rest with a KMS is a roadmap item.
+- **Your data.** An organization **owner** can take everything out and delete it, from
+  **Members → Danger zone** (or `GET /v1/orgs/:orgId/export` and `DELETE /v1/orgs/:orgId`):
+  - **Export** is one JSON file: the organization, its apps (every setting, never a signing
+    secret), saved pages, guides with every version, members and their roles, pending
+    invitations (without their link tokens), and lifetime shown / completed / dismissed totals per
+    guide. Raw `guide_event` rows are **not** included because they carry your end users' visitor
+    and account ids; a platform operator can extract them from the database if a data-subject
+    request needs them.
+  - **Delete** (type the organization's name to confirm) removes the organization with its apps,
+    guides and versions, pages, events, visitor state, agent errors, memberships, invitations and
+    the support access log, in one transaction. App admins can delete a single app the same way
+    (`DELETE /v1/apps/:appId`). What is kept: nothing but the Studio user accounts, which may
+    belong to other organizations. Platform admins can perform the deletion on a customer's
+    request (`DELETE /v1/platform/orgs/:orgId`, logged).
+  - **Retention:** events and agent errors older than `EVENT_RETENTION_DAYS` are deleted daily
+    anyway (see [Operations](#operations)); everything else is kept until the customer deletes it.
 
 ### Guide Engine administration
 
@@ -597,15 +613,19 @@ Bodies may be `text/plain` or `application/json`. Each one carries an identity:
 | `GET /support-context` | platform admin, with `X-Support-Org: <orgId>` | The organization as a viewer sees it, if support access is open; otherwise 404. Any `/v1` org/app read works the same way under that header (read-only, logged). |
 | `GET /platform/orgs`, `GET /platform/orgs/:orgId` | platform admin | Organizations with owners and usage; one with its apps (each with `usage: { guides, events30d, errors24h }`). 403 for everyone else. |
 | `PUT /platform/orgs/:orgId/suspension` | platform admin | `{ suspended }` |
+| `DELETE /platform/orgs/:orgId` | platform admin | `{ confirmName }`: the same deletion an owner can do, for a customer's deletion request; logged at `warn` with the admin's user id. |
 | `PATCH /platform/apps/:appId` | platform admin | `{ enabled }` |
 | `GET` / `PUT /platform/kill-switch` | platform admin | `{ enabled }` |
 | `GET` / `PUT /platform/admins` | platform admin | `PUT` takes `{ email, platformAdmin }`; `400 unknown_user` / `cannot_revoke_self`. |
 | `POST /orgs` | anyone | `{ name, app: { name, websites[] } }` → you become owner. |
 | `GET` / `PATCH /orgs/:orgId` | member / admin | `PATCH` takes `{ name }`. |
+| `GET /orgs/:orgId/export` | owner | The organization's data as a JSON download (`Content-Disposition: attachment; filename="guide-engine-<org-slug>-<date>.json"`): `{ format, formatVersion, exportedAt, organization, members[], invitations[], apps: [{ …, pages[], guides: [{ …, analytics: { shown, completed, dismissed }, versions[] }] }], notes[] }`. Never signing secrets, invitation tokens or raw events. |
+| `DELETE /orgs/:orgId` | owner | `{ confirmName }` must equal the organization's name (`400 confirmation_mismatch`). Deletes the organization and everything in it; `204`. |
 | `GET` / `POST /orgs/:orgId/apps` | member / admin | members see only the apps they can access. |
 | `GET` / `PATCH /apps/:appId` | viewer / app_admin | `GET` includes `snippet`. `PATCH` takes `{ name?, websites?, identityMode?, enabled?, helpEnabled?, helpButtonLabel?, helpButtonColor?, helpPosition?, routeMode? }`; the color must be hex, the position one of `bottom-right`, `bottom-left`, `top-right`, `top-left`, `center`, the route mode `path` or `hash` (returned as `route_mode`). |
 | `GET /apps/:appId/help-analytics` | viewer | Help-center usage over the last 30 days: `{ days, opens, searches, guidesStarted, topQueries: [{ query, count, avgResults }] }` (top 20 queries, normalized to lower case). |
 | `POST /apps/:appId/rotate-key` | app_admin | New public key; old snippets stop working. |
+| `DELETE /apps/:appId` | app_admin | `{ confirmName }` must equal the app's name. Deletes the app with its guides, pages, events, visitor state, agent errors and grants; `204`. |
 | `POST /apps/:appId/signing-secret` | app_admin | `{ secret }`, shown once. |
 | `GET /apps/:appId/errors?limit=50` | viewer | The newest agent errors (1–200): `[{ id, message, stack, agentVersion, url, occurredAt }]`. |
 | `GET /orgs/:orgId/members` | member | `[{ userId, email, name, orgRole, appRoles }]` |
@@ -649,7 +669,7 @@ A `VersionBody` is:
 
 | Status | Codes |
 |---|---|
-| 400 | `invalid_body`, `empty_content_after_sanitize`, `no_draft_to_publish`, `signing_secret_required`, `unknown_app`, `unknown_page`, `unknown_user`, `cannot_revoke_self` |
+| 400 | `invalid_body`, `empty_content_after_sanitize`, `no_draft_to_publish`, `signing_secret_required`, `unknown_app`, `unknown_page`, `unknown_user`, `cannot_revoke_self`, `confirmation_mismatch` |
 | 401 | `missing_auth`, `invalid_token`, `visitor_required`, `signed_identity_required`, `identity_invalid` |
 | 403 | `forbidden`, `origin_not_allowed`, `invalid_preview_token`, `invitation_email_mismatch` |
 | 404 | `not_found`, including other organizations' resources and unknown keys |
@@ -679,6 +699,11 @@ A `VersionBody` is:
 | `system_config` | The global kill switch (`guide_engine_enabled`). |
 | `active_guide` (view) | Published, enabled guides inside their date window, with `route_match` resolved through the saved page when there is one (`security_invoker`). |
 
+Every table under an organization references its parent with `ON DELETE CASCADE`, so deleting
+an `organization` (or one `application`) removes everything beneath it in one statement.
+Referential actions bypass Row-Level Security, which is what lets a deletion take published
+versions and events with it without any session being allowed to delete those directly.
+
 | Migration | What it does |
 |---|---|
 | `001`–`004` | The original OCLC-era tenant schema and its RLS hardening, drafts and platform admins (kept, never edited). |
@@ -690,6 +715,7 @@ A `VersionBody` is:
 | `010_production.sql` | `agent_rate_limit` (the shared agent-API budget), the `app_retention()` function and the retention policies on `guide_event`, an index on `occurred_at`. |
 | `011_agent_delivery.sql` | `agent_error` with its RLS: agent insert/select for its own app (the hourly cap counts in the same session), Studio and platform select, retention select/delete. |
 | `012_engine_gaps.sql` | Adds `application.route_mode` (CHECK-limited to `path` / `hash`), the `help_opened` / `help_searched` event types, and makes `guide_event.guide_id` nullable for those two types only (a CHECK constraint; the foreign keys stay). |
+| `013_data_lifecycle.sql` | Deletion policies: `app_owner_org_ids()` (a new session variable, owners only) with `organization_owner_delete`, `organization_platform_delete`, and `application_app_admin_delete`. Nothing new is readable. |
 
 ---
 
@@ -810,6 +836,13 @@ backend, and sign in as `olivia` / `olivia` (see [Studio login details](#studio-
   use **Open (read-only)** on the Administration page. They see every page you open.
 - **Abuse or non-payment:** **Suspend** the organization on the Administration page; its apps
   serve nothing until lifted.
+- **Deletion requests** (GDPR, end of contract): an owner does it themselves from **Members →
+  Danger zone** (export first, then delete by typing the organization's name). When no owner
+  can, a platform admin uses **Delete** on the Administration page, with the same confirmation;
+  the backend logs it at `warn` with the organization and admin ids. Studio user accounts are
+  never deleted. For a request about one end user (visitor), query `guide_event` and
+  `user_guide_state` by `visitor_id` / `account_id` as a database operator: the export never
+  contains them.
 - **A key leaked somewhere unexpected:** **Rotate public key** in the app's settings, then
   update the snippet.
 - **Is the right build live?** `curl https://<api>/agent/v1/version` gives `{ version, hash }`;
