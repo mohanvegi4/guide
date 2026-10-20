@@ -389,7 +389,7 @@ describe('DOM renderer', () => {
       null,
     );
     const shadow = document.querySelector('[data-guide-host]')!.shadowRoot!;
-    const button = shadow.querySelector('button')!;
+    const button = shadow.querySelector('.actions button')!;
     expect(button.textContent).toBe('<img src=x onerror="window.__pwned=1">Next');
     expect(shadow.querySelector('.actions img')).toBeNull();
   });
@@ -465,6 +465,71 @@ describe('DOM renderer', () => {
     target.setAttribute('class', 'moved'); // a genuine host-app change does reposition
     await new Promise((r) => setTimeout(r, 100));
     expect(renderSpy).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('DOM renderer keeps the card on screen', () => {
+  it('nudges a card back inside the viewport when its anchor is near an edge or scrolled away', async () => {
+    const target = document.createElement('button');
+    target.setAttribute('data-guide-id', 'invite-button');
+    document.body.appendChild(target);
+    let rect = { top: 100, left: 20, right: 120, bottom: 130, width: 100, height: 30 };
+    target.getBoundingClientRect = () => rect as DOMRect;
+    const renderer = createDomRenderer({
+      advanceStep: () => {},
+      previousStep: () => {},
+      dismissGuide: () => {},
+    });
+    const guide = makeGuide({
+      steps: [makeStep({ id: 's1', targetSelector: '[data-guide-id="invite-button"]' })],
+    });
+    renderer.renderStep(guide, guide.steps[0], target);
+    const host = document.querySelector<HTMLElement>('[data-guide-host]:not([data-guide-spotlight])')!;
+    // jsdom doesn't lay out: give the card a size that follows its own top/left.
+    host.getBoundingClientRect = () => {
+      const top = parseFloat(host.style.top);
+      const left = parseFloat(host.style.left);
+      return { top, left, right: left + 300, bottom: top + 120, width: 300, height: 120 } as DOMRect;
+    };
+    Object.defineProperty(window, 'innerWidth', { value: 800, configurable: true });
+    Object.defineProperty(window, 'innerHeight', { value: 600, configurable: true });
+
+    // The anchor scrolls above the viewport: the card stays reachable at the top.
+    rect = { ...rect, top: -200, bottom: -170 };
+    window.dispatchEvent(new Event('scroll'));
+    await vi.waitFor(() => expect(host.style.top).toBe('8px'));
+
+    // The anchor sits at the right edge: the card is pulled back in.
+    rect = { ...rect, top: 100, bottom: 130, left: 700, right: 780 };
+    window.dispatchEvent(new Event('scroll'));
+    await vi.waitFor(() => expect(host.style.left).toBe(`${800 - 8 - 300}px`));
+  });
+});
+
+describe('DOM renderer: a way out on every step', () => {
+  it('shows a close control that dismisses the guide, whatever buttons the author chose', () => {
+    const dismissGuide = vi.fn();
+    const renderer = createDomRenderer({ advanceStep: () => {}, previousStep: () => {}, dismissGuide });
+    const guide = makeGuide({
+      steps: [makeStep({ id: 's1', actions: [{ label: 'Next', action: 'next' }] })],
+    });
+    renderer.renderStep(guide, guide.steps[0], null);
+    const shadow = document.querySelector('[data-guide-host]')!.shadowRoot!;
+    const close = shadow.querySelector<HTMLButtonElement>('button[aria-label="Close guide"]')!;
+    expect(close).not.toBeNull();
+    expect([...shadow.querySelectorAll('.actions button')].map((b) => b.textContent)).toEqual(['Next']);
+    close.click();
+    expect(dismissGuide).toHaveBeenCalledWith('guide-1');
+  });
+
+  it('dismisses on Escape', () => {
+    const dismissGuide = vi.fn();
+    const renderer = createDomRenderer({ advanceStep: () => {}, previousStep: () => {}, dismissGuide });
+    const guide = makeGuide();
+    renderer.renderStep(guide, guide.steps[0], null);
+    const host = document.querySelector<HTMLElement>('[data-guide-host]')!;
+    host.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    expect(dismissGuide).toHaveBeenCalledWith('guide-1');
   });
 });
 

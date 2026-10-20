@@ -15,6 +15,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). How a rel
   visitor does something) now shows its card centered at once and moves onto the element when it
   appears, instead of waiting silently and dropping the guide after ~16 s. First steps keep the
   quiet wait, so a guide for a feature the visitor doesn't have still shows nothing.
+- **`@guide-engine/core`**: every step card has a close control (×) and dismisses on Escape, whatever
+  buttons the author chose, so a visitor is never stuck in a guide.
+- **`@guide-engine/core`**: cards are kept inside the viewport: an anchor at the edge of the window,
+  or one the host page scrolled out of view, no longer takes the card (and its buttons) off screen.
 - **`@guide-engine/core`**: the card and spotlight follow their element when the page scrolls or the
   window resizes. They are `position: fixed` and were placed once from the element's position at
   render time, so any scroll — including the smooth `scrollIntoView` that brings the element on

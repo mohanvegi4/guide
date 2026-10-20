@@ -162,6 +162,24 @@ export function createDomRenderer(engine: {
         host.style.left = `${rect.right + 8}px`;
         break;
     }
+    keepOnScreen(host);
+  }
+
+  /**
+   * Nudges the card back inside the viewport. An anchor near an edge would
+   * otherwise push the card off screen, and an anchor the host page scrolled
+   * out of view (a scroll container moving after render, say) would take the
+   * card with it — leaving the visitor with no buttons to press. The
+   * spotlight stays on the element; only the card is kept reachable.
+   */
+  function keepOnScreen(host: HTMLElement): void {
+    const margin = 8;
+    const r = host.getBoundingClientRect();
+    if (r.width === 0 && r.height === 0) return; // not laid out (tests, display:none)
+    const dx = Math.min(0, window.innerWidth - margin - r.right) + Math.max(0, margin - r.left);
+    const dy = Math.min(0, window.innerHeight - margin - r.bottom) + Math.max(0, margin - r.top);
+    if (dx) host.style.left = `${parseFloat(host.style.left) + dx}px`;
+    if (dy) host.style.top = `${parseFloat(host.style.top) + dy}px`;
   }
 
   return {
@@ -187,6 +205,10 @@ export function createDomRenderer(engine: {
           button:disabled { opacity: .5; cursor: default; }
           .preview-badge { display: inline-block; margin-bottom: 8px; padding: 1px 8px; border-radius: 999px;
                            background: #fef0c7; color: #7a2e0e; font-size: 11px; font-weight: 600; }
+          .close { position: absolute; top: 6px; right: 6px; width: 28px; height: 28px; padding: 0;
+                   border-radius: 999px; background: none; color: #6b7280; font-size: 18px; line-height: 1; }
+          .close:hover, .close:focus-visible { background: #f3f4f6; color: #111; outline: none; }
+          .card { position: relative; padding-right: 36px; }
         </style>
         <div class="card">
           ${guide.preview ? '<div class="preview-badge">Preview — only you can see this</div>' : ''}
@@ -194,6 +216,21 @@ export function createDomRenderer(engine: {
           <div class="actions"></div>
         </div>
       `;
+
+      // Every step has a way out, whatever buttons the author chose: a close
+      // control in the corner, and Escape. Both dismiss the guide (it's
+      // remembered as dismissed, like a "Maybe later" button).
+      const close = document.createElement('button');
+      close.type = 'button';
+      close.className = 'close';
+      close.setAttribute('aria-label', 'Close guide');
+      close.title = 'Close guide';
+      close.textContent = '×';
+      close.addEventListener('click', () => engine.dismissGuide(guide.id));
+      shadow.querySelector('.card')!.prepend(close);
+      host.onkeydown = (e: KeyboardEvent) => {
+        if (e.key === 'Escape') engine.dismissGuide(guide.id);
+      };
 
       // Buttons are built with DOM APIs, not string interpolation: labels and
       // action names come from guide data, and interpolating them into
