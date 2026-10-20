@@ -549,7 +549,7 @@ describe('DOM renderer: a way out on every step', () => {
     const shadow = document.querySelector('[data-guide-host]')!.shadowRoot!;
     const close = shadow.querySelector<HTMLButtonElement>('button[aria-label="Close guide"]')!;
     expect(close).not.toBeNull();
-    expect([...shadow.querySelectorAll('.actions button')].map((b) => b.textContent)).toEqual(['Next']);
+    expect(Array.from(shadow.querySelectorAll('.actions button'), (b) => b.textContent)).toEqual(['Next']);
     close.click();
     expect(dismissGuide).toHaveBeenCalledWith('guide-1');
   });
