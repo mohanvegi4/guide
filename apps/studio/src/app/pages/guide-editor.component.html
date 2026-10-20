@@ -12,15 +12,10 @@
         @if (loadedFrom(); as from) { · editing from v{{ from.number }}{{ from.draft ? ' (draft)' : '' }} }
       </p>
     </div>
-    <div class="page-actions">
-      <label class="switch big">
-        <input type="checkbox" [checked]="g.enabled" [disabled]="busy() || !canPublish()" (change)="toggleEnabled($any($event.target).checked)" />
-        <span>{{ g.enabled ? 'Enabled' : 'Disabled' }}</span>
-      </label>
-      @if (canEdit()) {
-        <button type="button" class="link danger" [disabled]="busy()" (click)="remove()">Delete guide</button>
-      }
-    </div>
+    <label class="switch big">
+      <input type="checkbox" [checked]="g.enabled" [disabled]="busy() || !canPublish()" (change)="toggleEnabled($any($event.target).checked)" />
+      <span>{{ g.enabled ? 'Enabled' : 'Disabled' }}</span>
+    </label>
   </div>
 
   @if (error()) {
@@ -269,6 +264,9 @@
         }
         @if (canEdit()) {
           <button type="button" (click)="previewDraft()" [disabled]="busy()">Preview</button>
+          <button type="button" class="danger filled push-right" [disabled]="busy()" (click)="remove()">
+            Delete guide
+          </button>
         }
         @if (form.dirty) { <span class="muted">Unsaved changes</span> }
       </div>

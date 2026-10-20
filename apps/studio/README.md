@@ -179,7 +179,7 @@ for that id).
    link to the app's first website. That version renders with a "Preview" badge and no
    analytics.
 6. **Publish new version** makes it live as the next version. Published versions never change.
-7. **Delete guide** (editors; in the editor's header and on the guide list) removes the guide with
+7. **Delete guide** (editors; the red button at the bottom of the editor, and on the guide list) removes the guide with
    all its versions, analytics and visitor state after a confirmation. There is no undo; to pause
    a guide instead, switch it off.
 8. **Enabled** is the guide's on/off switch. Nothing shows until a version is published **and**

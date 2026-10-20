@@ -94,9 +94,12 @@ test('sign in with SSO, create an org and an app, publish a guide, see it on the
       const zone = page.locator('section.danger-zone');
       await fillField(zone.getByLabel(/to confirm/), ORG_NAME);
       await zone.getByRole('button', { name: 'Delete organization' }).click();
-      // The Studio leaves the deleted org: to another org, or to Welcome.
+      // The Studio leaves the deleted org: to another org, or (olivia's only
+      // org, as in CI) to Welcome, which has no org switcher at all.
       await page.waitForURL((url) => !url.pathname.includes(orgId));
-      await expect(page.getByRole('combobox', { name: 'Organization' })).not.toHaveValue(orgId);
+      await expect(
+        page.getByRole('combobox', { name: 'Organization' }).locator('option', { hasText: ORG_NAME }),
+      ).toHaveCount(0);
     });
   }
 

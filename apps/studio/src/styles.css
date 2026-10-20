@@ -24,7 +24,6 @@ code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-si
 .card.nested .subhead { margin-top: 0; }
 .table tr.bad td { color: var(--danger); }
 .page-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 16px; }
-.page-actions { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
 .section-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
 .section-head h2 { margin: 0; }
 .crumbs { margin: 0 0 8px; }
@@ -36,6 +35,8 @@ button { font: inherit; padding: 7px 12px; border-radius: 6px; border: 1px solid
 button:disabled { opacity: .5; cursor: not-allowed; }
 button.primary { background: var(--primary); color: var(--primary-text); border-color: var(--primary); }
 button.danger { color: var(--danger); }
+button.danger.filled { background: var(--danger); color: #fff; border-color: var(--danger); }
+.push-right { margin-left: auto; }
 button.link { border: none; background: none; color: var(--primary); padding: 2px 4px; }
 .inline-form { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; }
 .inline-form label { margin: 0; }
