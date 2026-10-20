@@ -234,6 +234,7 @@ src/app/
     analytics              totals + per-step funnel (CSS bars, no chart library)
   app.ts / app.html        top bar: org + app switchers, section links
   app.routes.ts            /welcome, /invite/:token, /o/:orgId/{apps,members}, /o/:orgId/apps/:appId/{guides,guides/:id,pages,settings}
+                           (every page except login / auth callback is `loadComponent`, so each is its own lazy chunk)
 ```
 
 Route params are bound to component inputs, so switching orgs, apps or guides reloads the data

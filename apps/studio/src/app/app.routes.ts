@@ -4,36 +4,31 @@ import { appRole, orgMember, platformAdmin, signedIn } from './core/auth.guard';
 import { AuthService } from './core/auth.service';
 import { LoginComponent } from './pages/login.component';
 import { AuthCallbackComponent } from './pages/auth-callback.component';
-import { OnboardingComponent } from './pages/onboarding.component';
-import { InviteComponent } from './pages/invite.component';
-import { AppsComponent } from './pages/apps.component';
-import { AppSettingsComponent } from './pages/app-settings.component';
-import { MembersComponent } from './pages/members.component';
-import { GuideListComponent } from './pages/guide-list.component';
-import { GuideEditorComponent } from './pages/guide-editor.component';
-import { PagesComponent } from './pages/pages.component';
-import { OperatorComponent } from './pages/operator.component';
 
 // Route params (:orgId, :appId, :id, :token) are bound to component inputs
-// (withComponentInputBinding in app.config.ts).
+// (withComponentInputBinding in app.config.ts); that works the same for lazy routes.
+//
+// Only the sign-in pages are eager: everything a signed-in author lands on is
+// `loadComponent`, so each page is its own chunk and the initial bundle stays
+// within the budget in angular.json (the guide editor alone is the largest page).
 export const routes: Routes = [
   { path: 'login', component: LoginComponent, title: 'Sign in · Guide Studio' },
   { path: 'auth/callback', component: AuthCallbackComponent, title: 'Signing in · Guide Studio' },
   {
     path: 'welcome',
-    component: OnboardingComponent,
+    loadComponent: () => import('./pages/onboarding.component').then((m) => m.OnboardingComponent),
     canActivate: [signedIn],
     title: 'Welcome · Guide Studio',
   },
   {
     path: 'invite/:token',
-    component: InviteComponent,
+    loadComponent: () => import('./pages/invite.component').then((m) => m.InviteComponent),
     canActivate: [signedIn],
     title: 'Invitation · Guide Studio',
   },
   {
     path: 'operator',
-    component: OperatorComponent,
+    loadComponent: () => import('./pages/operator.component').then((m) => m.OperatorComponent),
     canActivate: [platformAdmin],
     title: 'Administration · Guide Studio',
   },
@@ -41,29 +36,37 @@ export const routes: Routes = [
     path: 'o/:orgId',
     canActivate: [orgMember],
     children: [
-      { path: 'apps', component: AppsComponent, title: 'Applications · Guide Studio' },
-      { path: 'members', component: MembersComponent, title: 'Members · Guide Studio' },
+      {
+        path: 'apps',
+        loadComponent: () => import('./pages/apps.component').then((m) => m.AppsComponent),
+        title: 'Applications · Guide Studio',
+      },
+      {
+        path: 'members',
+        loadComponent: () => import('./pages/members.component').then((m) => m.MembersComponent),
+        title: 'Members · Guide Studio',
+      },
       {
         path: 'apps/:appId/guides',
-        component: GuideListComponent,
+        loadComponent: () => import('./pages/guide-list.component').then((m) => m.GuideListComponent),
         canActivate: [appRole('viewer')],
         title: 'Guides · Guide Studio',
       },
       {
         path: 'apps/:appId/guides/:id',
-        component: GuideEditorComponent,
+        loadComponent: () => import('./pages/guide-editor.component').then((m) => m.GuideEditorComponent),
         canActivate: [appRole('viewer')],
         title: 'Edit guide · Guide Studio',
       },
       {
         path: 'apps/:appId/pages',
-        component: PagesComponent,
+        loadComponent: () => import('./pages/pages.component').then((m) => m.PagesComponent),
         canActivate: [appRole('viewer')],
         title: 'Pages · Guide Studio',
       },
       {
         path: 'apps/:appId/settings',
-        component: AppSettingsComponent,
+        loadComponent: () => import('./pages/app-settings.component').then((m) => m.AppSettingsComponent),
         // Every member may read the install instructions; the settings themselves render for app admins only.
         canActivate: [appRole('viewer')],
         title: 'App settings · Guide Studio',
