@@ -807,8 +807,11 @@ export class GuideEngine {
 
     const targetEl = step.targetSelector ? document.querySelector(step.targetSelector) : null;
 
-    if (step.targetSelector && !targetEl) {
-      // Target not yet in the DOM (common in SPAs) — watch for it to appear.
+    if (step.targetSelector && !targetEl && state.currentStepIndex === 0 && !revisit) {
+      // A first step whose anchor isn't in the DOM yet: the page may still be
+      // rendering (common in SPAs), or the feature may not be there for this
+      // visitor at all. Wait quietly for a while, then give up without
+      // showing anything.
       this.watchForTarget(state, step, revisit);
       return;
     }
@@ -821,6 +824,11 @@ export class GuideEngine {
 
     state.status = 'showing';
     try {
+      // A later step whose anchor isn't on the page yet (it appears after the
+      // visitor does something: the item scanner once a customer is picked,
+      // a dialog once a button is clicked) shows its card centered right away,
+      // so "Next" visibly did something and the buttons still work, and moves
+      // onto the element when it appears (see waitForLateTarget).
       this.renderer?.renderStep(state.guide, step, targetEl);
     } catch (err) {
       // A renderer failure (bad content, a host page that breaks the DOM
@@ -841,7 +849,44 @@ export class GuideEngine {
 
     if (targetEl) {
       this.observeTarget(state.guide.id, step);
+    } else if (step.targetSelector) {
+      this.waitForLateTarget(state, step);
     }
+  }
+
+  /**
+   * Keeps watching the page for a later step's anchor and, once it exists,
+   * re-renders the card anchored to it (no new analytics event: the visitor
+   * already saw the step). Stops when the step changes or the guide ends,
+   * which is also what bounds it: the visitor can always finish or dismiss
+   * from the centered card.
+   */
+  private waitForLateTarget(state: GuideRuntimeState, step: Step): void {
+    let frameScheduled = false;
+    const observer = new MutationObserver(() => {
+      if (frameScheduled) return;
+      frameScheduled = true;
+      requestAnimationFrame(() => {
+        frameScheduled = false;
+        if (
+          this.activeGuides.get(state.guide.id) !== state ||
+          state.guide.steps[state.currentStepIndex] !== step
+        )
+          return;
+        const el = document.querySelector(step.targetSelector!);
+        if (!el) return;
+        try {
+          this.renderer?.renderStep(state.guide, step, el);
+        } catch (err) {
+          this.reportError(err, 'render');
+          return;
+        }
+        // From here on, track the element like any targeted step.
+        this.observeTarget(state.guide.id, step);
+      });
+    });
+    observer.observe(document.body, { childList: true, subtree: true, attributes: true });
+    this.targetObservers.set(state.guide.id, observer);
   }
 
   private stopObserving(guideId: string): void {

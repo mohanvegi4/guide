@@ -59,7 +59,7 @@ describe('previousStep', () => {
     expect(() => new GuideEngine().previousStep('nope')).not.toThrow();
   });
 
-  it('waits for a targeted previous step whose anchor is gone, like any other step', async () => {
+  it('shows a targeted previous step whose anchor is gone centered, then re-anchors when it returns', async () => {
     window.history.replaceState({}, '', '/dashboard');
     const anchor = document.createElement('button');
     anchor.setAttribute('data-guide-id', 'a');
@@ -79,10 +79,16 @@ describe('previousStep', () => {
     anchor.remove();
 
     engine.previousStep('guide-1');
-    expect(rendered.map((r) => r.step.id)).toEqual(['s1', 's2']); // not yet: the anchor is missing
+    // The visitor asked for it, so it shows at once — centered, the anchor being gone.
+    expect(rendered.map((r) => [r.step.id, r.target])).toEqual([
+      ['s1', anchor],
+      ['s2', null],
+      ['s1', null],
+    ]);
+    vi.useRealTimers();
     document.body.appendChild(anchor);
-    await vi.advanceTimersByTimeAsync(300);
-    expect(rendered.map((r) => r.step.id)).toEqual(['s1', 's2', 's1']);
+    await vi.waitFor(() => expect(rendered).toHaveLength(4));
+    expect(rendered[3]).toMatchObject({ step: { id: 's1' }, target: anchor });
   });
 });
 

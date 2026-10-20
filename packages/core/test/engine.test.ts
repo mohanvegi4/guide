@@ -265,6 +265,51 @@ describe('target-not-found retries', () => {
   });
 });
 
+describe('a later step whose anchor appears after the visitor acts', () => {
+  beforeEach(() => window.history.replaceState({}, '', '/dashboard'));
+
+  it('shows the card centered at once, then moves it onto the element when it appears', async () => {
+    const guide = makeGuide({
+      steps: [
+        makeStep({ id: 's1', type: 'modal' }),
+        makeStep({ id: 's2', targetSelector: '[data-guide-id="item-scanner"]' }),
+      ],
+    });
+    const fetchMock = mockFetch({ [R.guides]: serving(guide), [R.events]: () => ({ status: 202 }) });
+    const { renderer, rendered } = fakeRenderer();
+    const engine = new GuideEngine();
+    await engine.init(baseOptions, renderer);
+    expect(rendered.map((r) => r.step.id)).toEqual(['s1']);
+
+    // "Next" with the scanner not on the page yet: the step still shows (centered).
+    engine.advanceStep('guide-1');
+    expect(rendered.map((r) => [r.step.id, r.target])).toEqual([
+      ['s1', null],
+      ['s2', null],
+    ]);
+
+    // The visitor picks a customer; the scanner renders. The card re-anchors,
+    // with no second analytics event for the step.
+    const scanner = document.createElement('input');
+    scanner.setAttribute('data-guide-id', 'item-scanner');
+    document.body.appendChild(scanner);
+    await vi.waitFor(() => expect(rendered).toHaveLength(3));
+    expect(rendered[2]).toMatchObject({ step: { id: 's2' }, target: scanner });
+
+    engine.advanceStep('guide-1'); // completes
+    await vi.waitFor(() =>
+      expect(eventsSent(fetchMock).map((e) => e.eventType)).toEqual([
+        'guide_shown',
+        'guide_step_completed',
+        'guide_step_viewed',
+        'guide_step_completed',
+        'guide_completed',
+      ]),
+    );
+    expect(eventsSent(fetchMock).some((e) => e.eventType === 'guide_error')).toBe(false);
+  });
+});
+
 describe('EventQueue', () => {
   const event = (i: number): GuideEventPayload => ({
     guideId: 'g',
