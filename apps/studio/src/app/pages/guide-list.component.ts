@@ -108,6 +108,7 @@ interface OverviewRow {
             <th>Live version</th>
             <th>Updated</th>
             <th>Enabled</th>
+            <th></th>
           </tr>
         </thead>
         <tbody>
@@ -144,6 +145,19 @@ interface OverviewRow {
                   />
                   <span>{{ g.enabled ? 'On' : 'Off' }}</span>
                 </label>
+              </td>
+              <td>
+                @if (canEdit()) {
+                  <button
+                    type="button"
+                    class="link danger"
+                    [disabled]="pending().has(g.id)"
+                    (click)="remove(g)"
+                    [attr.aria-label]="'Delete ' + g.name"
+                  >
+                    Delete
+                  </button>
+                }
               </td>
             </tr>
           }
@@ -231,6 +245,31 @@ export class GuideListComponent {
   }
 
   /** Optimistic toggle; reverted if the backend rejects it. */
+  /** Deletes a guide with its versions, analytics and visitor state. No undo, so the prompt says what goes. */
+  remove(guide: GuideSummary): void {
+    const live =
+      guide.enabled && guide.current_version_id ? ' It is live: visitors stop seeing it right away.' : '';
+    if (!confirm(`Delete the guide “${guide.name}” with all its versions and analytics?${live}`)) return;
+    this.pending.update((p) => new Set(p).add(guide.id));
+    this.api.deleteGuide(this.appId(), guide.id).subscribe({
+      next: () => {
+        this.guides.update((list) => list.filter((g) => g.id !== guide.id));
+        this.pending.update((p) => {
+          const next = new Set(p);
+          next.delete(guide.id);
+          return next;
+        });
+      },
+      error: () => {
+        this.pending.update((p) => {
+          const next = new Set(p);
+          next.delete(guide.id);
+          return next;
+        });
+      },
+    });
+  }
+
   toggle(guide: GuideSummary, enabled: boolean): void {
     this.setGuide(guide.id, { enabled });
     this.pending.update((s) => new Set(s).add(guide.id));

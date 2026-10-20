@@ -64,6 +64,26 @@ describe('GuideListComponent', () => {
 
   afterEach(() => http.verify());
 
+  it('deletes a guide after confirmation and drops it from the list', async () => {
+    setup('app_admin');
+    const fixture = await render();
+    const el = fixture.nativeElement as HTMLElement;
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    el.querySelector<HTMLButtonElement>('button[aria-label="Delete Welcome"]')!.click();
+    const req = http.expectOne('/api/v1/apps/a1/guides/g1');
+    expect(req.request.method).toBe('DELETE');
+    req.flush(null, { status: 204, statusText: 'No Content' });
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(el.textContent).not.toContain('Welcome');
+  });
+
+  it('shows no Delete to viewers', async () => {
+    setup('viewer');
+    const el = (await render()).nativeElement as HTMLElement;
+    expect(el.querySelector('button[aria-label="Delete Welcome"]')).toBeNull();
+  });
+
   it("lists the app's guides with their live version", async () => {
     setup('app_admin');
     const text = ((await render()).nativeElement as HTMLElement).textContent ?? '';

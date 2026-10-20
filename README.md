@@ -677,6 +677,7 @@ Bodies may be `text/plain` or `application/json`. Each one carries an identity:
 | `PUT /apps/:appId/guides/:id/draft` | editor | `VersionBody` |
 | `POST /apps/:appId/guides/:id/publish` | editor | `VersionBody`, or empty to publish the draft as-is. |
 | `PATCH /apps/:appId/guides/:id/flag` | editor | `{ enabled }` |
+| `DELETE /apps/:appId/guides/:id` | editor | Deletes the guide with its versions, analytics events and visitor state; `204`. No undo. |
 | `POST /apps/:appId/guides/:id/rollback/:n` | editor | Published versions only. |
 | `POST /apps/:appId/guides/:id/preview-token` | editor | `{ versionId }` → `{ token, url, expiresAt }` |
 | `GET /apps/:appId/guides/:id/analytics` | viewer | `{ counts[], steps[], startedFromHelp, accounts? }`. `?from=` / `?to=` (ISO date or timestamp; `from` inclusive, a date `to` covers that whole day, a timestamp `to` is exclusive; `400` when `to` isn't after `from`). `?by=account` adds `accounts: [{ accountId \| null, shown, completed, dismissed, visitors }]`: the 50 accounts shown the guide most, most first. |
@@ -782,10 +783,10 @@ npm test --workspace=apps/studio          # Studio components and services
 
 | Suite | Tests | Covers |
 |---|---|---|
-| **Backend** | 251 | self-serve orgs; apps and settings; the role matrix; invitations; members; saved pages; platform admins and support access (consent, read-only, logging, RLS); secrets at rest, the shared rate limiter, retention (events and agent errors), production boot checks; the agent script's ETag / 304 / cache headers and the version endpoint; the security headers (and that the agent surface keeps only nosniff); agent error reports (validation, the hourly cap, the Studio list, RLS isolation, platform counts); org/app isolation through the API **and directly in RLS** (including replaying the owner bootstrap and forging memberships); the agent API (origins, keys, identity modes, account targeting, kill switches, events and per-visitor state, preview); the guide lifecycle; sanitization; stable step ids; analytics; OIDC (a local JWKS server, algorithm confusion); migration 005's data conversion; and concurrent migration runs (the advisory lock) |
+| **Backend** | 252 | self-serve orgs; apps and settings; the role matrix; invitations; members; saved pages; platform admins and support access (consent, read-only, logging, RLS); secrets at rest, the shared rate limiter, retention (events and agent errors), production boot checks; the agent script's ETag / 304 / cache headers and the version endpoint; the security headers (and that the agent surface keeps only nosniff); agent error reports (validation, the hourly cap, the Studio list, RLS isolation, platform counts); org/app isolation through the API **and directly in RLS** (including replaying the owner bootstrap and forging memberships); the agent API (origins, keys, identity modes, account targeting, kill switches, events and per-visitor state, preview); the guide lifecycle; sanitization; stable step ids; analytics; OIDC (a local JWKS server, algorithm confusion); migration 005's data conversion; and concurrent migration runs (the advisory lock) |
 | **Core** | 94 | includes the help widget (search, keyboard, safe rendering), help launches (same page, other page, arrival, shared links) and error reporting (sampling, the per-page cap, never throwing) |
 | **Agent** | 8 | includes `openHelp` queued before load and the build-time version |
-| **Studio** | 43 | guide list and editor (saved pages), Pages, app settings (including the agent-error list), the Administration page |
+| **Studio** | 45 | guide list and editor (saved pages), Pages, app settings (including the agent-error list), the Administration page |
 
 Type-checking is part of every `test` script, with strict TypeScript throughout.
 

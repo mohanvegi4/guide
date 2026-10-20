@@ -9,7 +9,7 @@ import {
   ReactiveFormsModule,
   Validators,
 } from '@angular/forms';
-import { RouterLink } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { AuthService } from '../core/auth.service';
 import { ApiService, describeError } from '../core/api.service';
@@ -61,6 +61,7 @@ const SELECTOR_PATTERN = /^\[data-guide-id="([A-Za-z0-9_-]+)"\]$/;
 })
 export class GuideEditorComponent {
   private readonly api = inject(ApiService);
+  private readonly router = inject(Router);
   private readonly fb = inject(FormBuilder).nonNullable;
   private readonly auth = inject(AuthService);
   // Route params, bound as inputs (withComponentInputBinding) so switching
@@ -467,6 +468,17 @@ export class GuideEditorComponent {
     this.run(this.api.rollback(this.appId(), this.guideId, versionNumber), () => {
       this.message.set(`Rolled back to v${versionNumber}.`);
       this.reload(false);
+    });
+  }
+
+  /** Deletes the guide with everything attached to it; there is no undo, so say what goes. */
+  remove(): void {
+    const g = this.guide();
+    if (!g) return;
+    const live = g.enabled && g.current_version_id ? ' It is live: visitors stop seeing it right away.' : '';
+    if (!confirm(`Delete the guide “${g.name}” with all its versions and analytics?${live}`)) return;
+    this.run(this.api.deleteGuide(this.appId(), this.guideId), () => {
+      void this.router.navigate(['/o', this.orgId(), 'apps', this.appId(), 'guides']);
     });
   }
 

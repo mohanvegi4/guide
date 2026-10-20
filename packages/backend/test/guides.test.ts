@@ -2,6 +2,7 @@ import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import request from 'supertest';
 import { withStudioSession } from '../src/db';
 import {
+  addMember,
   adminPool,
   agent,
   app,
@@ -50,6 +51,39 @@ describe('lifecycle', () => {
     expect(list.body).toEqual([
       expect.objectContaining({ id: guideId, status: 'published', current_version_number: 1 }),
     ]);
+  });
+
+  it('deletes a guide with its versions, events and visitor state; viewers cannot', async () => {
+    await call('post', `${base()}/publish`, sampleVersion);
+    await call('patch', `${base()}/flag`, { enabled: true });
+    // A visitor sees it and leaves an event and some state behind.
+    const seen = await agent(key, '/guides', visitor());
+    expect(seen.body.guides.map((g: { id: string }) => g.id)).toEqual([guideId]);
+    await adminPool.query(
+      `INSERT INTO guide_event (app_id, guide_id, visitor_id, session_id, event_type) VALUES ($1, $2, 'v-1', 's-1', 'guide_shown')`,
+      [appId, guideId],
+    );
+    await adminPool.query(
+      `INSERT INTO user_guide_state (app_id, visitor_id, guide_id, status) VALUES ($1, 'v-1', $2, 'completed')`,
+      [appId, guideId],
+    );
+
+    // Viewers may look, not delete.
+    const orgId = (await call('get', '/v1/me')).body.orgs[0].id as string;
+    await addMember('alice', orgId, 'vic', 'viewer');
+    expect((await request(app).delete(base()).set('Authorization', as('vic')).send()).status).toBe(403);
+
+    expect((await request(app).delete(base()).set('Authorization', as('alice')).send()).status).toBe(204);
+    expect((await call('get', base())).status).toBe(404);
+    expect((await request(app).delete(base()).set('Authorization', as('alice')).send()).status).toBe(404);
+    const left = await adminPool.query(
+      `SELECT (SELECT count(*) FROM guide_version WHERE guide_id = $1)::int AS versions,
+              (SELECT count(*) FROM guide_event WHERE guide_id = $1)::int AS events,
+              (SELECT count(*) FROM user_guide_state WHERE guide_id = $1)::int AS state`,
+      [guideId],
+    );
+    expect(left.rows[0]).toEqual({ versions: 0, events: 0, state: 0 });
+    expect((await agent(key, '/guides', visitor())).body.guides).toEqual([]);
   });
 
   it('saves one draft per guide and publishes it as-is with an empty body', async () => {

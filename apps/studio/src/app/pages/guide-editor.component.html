@@ -12,10 +12,15 @@
         @if (loadedFrom(); as from) { · editing from v{{ from.number }}{{ from.draft ? ' (draft)' : '' }} }
       </p>
     </div>
-    <label class="switch big">
-      <input type="checkbox" [checked]="g.enabled" [disabled]="busy() || !canPublish()" (change)="toggleEnabled($any($event.target).checked)" />
-      <span>{{ g.enabled ? 'Enabled' : 'Disabled' }}</span>
-    </label>
+    <div class="page-actions">
+      <label class="switch big">
+        <input type="checkbox" [checked]="g.enabled" [disabled]="busy() || !canPublish()" (change)="toggleEnabled($any($event.target).checked)" />
+        <span>{{ g.enabled ? 'Enabled' : 'Disabled' }}</span>
+      </label>
+      @if (canEdit()) {
+        <button type="button" class="link danger" [disabled]="busy()" (click)="remove()">Delete guide</button>
+      }
+    </div>
   </div>
 
   @if (error()) {

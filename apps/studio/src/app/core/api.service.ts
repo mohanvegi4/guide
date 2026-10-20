@@ -139,10 +139,7 @@ export class ApiService {
     return this.http.get<Invitation[]>(`${this.base}/orgs/${orgId}/invitations`);
   }
 
-  createInvitation(
-    orgId: string,
-    body: { email?: string; orgRole: Exclude<OrgRole, 'owner'> },
-  ) {
+  createInvitation(orgId: string, body: { email?: string; orgRole: Exclude<OrgRole, 'owner'> }) {
     return this.http.post<Invitation & { token: string }>(`${this.base}/orgs/${orgId}/invitations`, body);
   }
 
@@ -263,6 +260,10 @@ export class ApiService {
   // ---- guides (per app) ----
   private guides(appId: string): string {
     return `${this.base}/apps/${appId}/guides`;
+  }
+
+  deleteGuide(appId: string, guideId: string): Observable<void> {
+    return this.http.delete<void>(`${this.guides(appId)}/${guideId}`);
   }
 
   listGuides(appId: string): Observable<GuideSummary[]> {

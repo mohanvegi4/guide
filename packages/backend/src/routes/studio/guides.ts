@@ -360,6 +360,24 @@ guidesRouter.patch(
   }),
 );
 
+// DELETE /:id — remove the guide for good. Its versions, analytics events and
+// per-visitor state go with it through the foreign keys' ON DELETE CASCADE
+// (run by the table owner, so no event-delete policy is needed). Like pages,
+// editors may do this: the Studio asks for confirmation and names what's lost.
+guidesRouter.delete(
+  '/:id',
+  asyncHandler(async (req, res) => {
+    const appId = idParam(req, 'appId');
+    const id = idParam(req, 'id');
+    await studio(req, async (client, ctx) => {
+      requireAppRole(ctx, appId, 'editor');
+      const deleted = await client.query(`DELETE FROM guide WHERE id = $1 AND app_id = $2`, [id, appId]);
+      if (deleted.rowCount === 0) throw notFound();
+    });
+    res.status(204).end();
+  }),
+);
+
 // PUT /:id/draft — save work-in-progress without going live
 guidesRouter.put(
   '/:id/draft',

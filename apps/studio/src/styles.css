@@ -24,6 +24,7 @@ code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-si
 .card.nested .subhead { margin-top: 0; }
 .table tr.bad td { color: var(--danger); }
 .page-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 16px; }
+.page-actions { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
 .section-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
 .section-head h2 { margin: 0; }
 .crumbs { margin: 0 0 8px; }
