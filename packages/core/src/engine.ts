@@ -520,6 +520,18 @@ export class GuideEngine {
     return currentRoutePath(this.routeMode);
   }
 
+  /** Whether a help start page (a same-site path, maybe with a query) is the page the visitor is on. */
+  private isCurrentPage(startPath: string): boolean {
+    try {
+      const target = new URL(startPath, window.location.origin);
+      const path =
+        this.routeMode === 'hash' ? stripQueryAndHash(target.hash.slice(1) || '/') : target.pathname;
+      return stripQueryAndHash(path) === this.currentPath();
+    } catch {
+      return false;
+    }
+  }
+
   /** Reads the app's route mode from a /guides or /help response; anything unknown means paths. */
   private applyRouteMode(data: { routeMode?: unknown } | null): void {
     const mode: RouteMode = data?.routeMode === 'hash' ? 'hash' : 'path';
@@ -558,7 +570,10 @@ export class GuideEngine {
   launchHelpGuide(guideId: string): void {
     const item = this.helpItems.find((g) => g.id === guideId);
     if (!item || this.disabled) return;
-    if (matchesRoute(item.routeMatch, this.currentPath())) {
+    // Start here when the guide's route matches, and also when its start page
+    // IS this page (same path, query aside): asking "go to another page?" for
+    // the page the visitor is on, then reloading it, helps nobody.
+    if (matchesRoute(item.routeMatch, this.currentPath()) || this.isCurrentPage(item.help.startPath)) {
       this.helpUi?.close();
       this.startOnDemand(item, 'help');
       return;

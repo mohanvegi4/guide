@@ -252,6 +252,20 @@ describe('engine help center', () => {
     expect(help.opened()).toBe(false);
   });
 
+  it('starts right away when the start page is this page, even if the route does not match', async () => {
+    // A hold walkthrough that matches title pages, launched from the results page it starts on.
+    const item = helpItem('hold', 'Place a hold', { startPath: '/team?qs=harry' }, '/title/*');
+    mockFetch({ [R.guides]: serving(), [HELP]: helpBody(item), [R.events]: () => ({ status: 202 }) });
+    const { renderer, rendered } = fakeRenderer();
+    const engine = new GuideEngine();
+    const navigate = vi.fn();
+    engine.navigate = navigate;
+    await engine.init(baseOptions, renderer, fakeHelpUi().ui);
+    engine.launchHelpGuide('hold');
+    expect(navigate).not.toHaveBeenCalled();
+    expect(rendered.map((r) => r.guide.id)).toEqual(['hold']);
+  });
+
   it('starts a guide for the current page right away — even one the visitor already finished — tagged source=help', async () => {
     const item = helpItem('a', 'Invite');
     const fetchMock = mockFetch({
