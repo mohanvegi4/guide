@@ -3,6 +3,7 @@ import { readFileSync, readdirSync } from 'fs';
 import { join } from 'path';
 import { Pool } from 'pg';
 import { pool } from './db';
+import { logger } from './logging';
 
 /**
  * The advisory lock every migration run holds for its whole duration, so two
@@ -13,6 +14,58 @@ import { pool } from './db';
  * a fixed 64-bit key with no other meaning in the schema.
  */
 export const MIGRATION_LOCK_KEY: readonly [number, number] = [0x47554944, 0x4d494752];
+
+const MIGRATIONS_DIR = join(__dirname, '..', 'migrations');
+
+/** Every migration file in apply order; `through` cuts the list off after that file (tests only). */
+function migrationFiles(through?: string): string[] {
+  return readdirSync(MIGRATIONS_DIR)
+    .filter((f) => f.endsWith('.sql'))
+    .sort()
+    .filter((f) => !through || f <= through);
+}
+
+/**
+ * The migration files this build ships that the database has not recorded in
+ * schema_migrations. A database without that table has never been migrated,
+ * so every file is pending. Read-only: the boot check calls this on every
+ * start, and must not take the migration lock or create anything.
+ */
+export async function pendingMigrations(targetPool: Pool): Promise<string[]> {
+  const files = migrationFiles();
+  const table = await targetPool.query<{ present: boolean }>(
+    `SELECT to_regclass('schema_migrations') IS NOT NULL AS present`,
+  );
+  if (!table.rows[0].present) return files;
+  const applied = await targetPool.query<{ filename: string }>(`SELECT filename FROM schema_migrations`);
+  const done = new Set(applied.rows.map((r) => r.filename));
+  return files.filter((f) => !done.has(f));
+}
+
+/**
+ * Boot check: the schema must be as new as the code. With RUN_MIGRATIONS=false
+ * (a release step migrates instead), nothing else notices a forgotten
+ * migration until the first query fails. In production that is a refusal to
+ * start, so the old replica keeps serving; in development it is a warning,
+ * because a developer pulling a branch with a new migration should see what
+ * to run rather than a dead server.
+ */
+export async function assertMigrationsApplied(
+  targetPool: Pool,
+  env: NodeJS.ProcessEnv = process.env,
+  warn: (msg: string) => void = (msg) => logger.warn(msg),
+): Promise<void> {
+  const pending = await pendingMigrations(targetPool);
+  if (pending.length === 0) return;
+  const detail =
+    `${pending.length} database migration(s) not applied:\n - ${pending.join('\n - ')}\n` +
+    'Run them (`node dist/migrate.js` in the backend package, or `npm run migrate` from the repo root), ' +
+    'or leave RUN_MIGRATIONS=true so the container applies them at start.';
+  if (env.NODE_ENV === 'production') {
+    throw new Error(`Refusing to start in production: ${detail}`);
+  }
+  warn(detail);
+}
 
 /**
  * Minimal migration runner: applies every .sql file in migrations/ in
@@ -59,13 +112,7 @@ export async function runMigrations(
       )
     `);
 
-    const dir = join(__dirname, '..', 'migrations');
-    const files = readdirSync(dir)
-      .filter((f) => f.endsWith('.sql'))
-      .sort()
-      .filter((f) => !options.through || f <= options.through);
-
-    for (const file of files) {
+    for (const file of migrationFiles(options.through)) {
       const already = await client.query(`SELECT 1 FROM schema_migrations WHERE filename = $1`, [file]);
       if (already.rows.length > 0) {
         log(`skip ${file} (already applied)`);
@@ -73,7 +120,7 @@ export async function runMigrations(
       }
 
       log(`applying ${file}...`);
-      const sql = readFileSync(join(dir, file), 'utf-8');
+      const sql = readFileSync(join(MIGRATIONS_DIR, file), 'utf-8');
       await client.query('BEGIN');
       try {
         await client.query(sql);

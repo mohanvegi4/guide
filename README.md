@@ -608,7 +608,7 @@ process at boot.
 | `LOG_LEVEL` | `info` (`silent` in test) | Lowest level written to the JSON log on stdout: `trace`, `debug`, `info`, `warn`, `error`, `fatal`. |
 | `METRICS_TOKEN` | — | Bearer token that `GET /metrics` requires. Unset: the endpoint is open in development/test and absent (404) elsewhere. |
 | `SENTRY_DSN` | — | Optional. Set to report 5xx errors to Sentry (tagged with the request id, route and status; `environment` = `NODE_ENV`, `release` = the backend version). |
-| `RUN_MIGRATIONS` | `true` | Container only: apply pending migrations before starting. `false` when a release step runs `node packages/backend/dist/migrate.js`. |
+| `RUN_MIGRATIONS` | `true` | Container only: apply pending migrations before starting. `false` when a release step runs `node packages/backend/dist/migrate.js`. Either way the backend checks at boot that no migration is pending: in production it refuses to start and lists the files; elsewhere it logs a warning. |
 | `AGENT_BUNDLE_PATH` | `packages/agent/dist/guide-engine.js` | Where the backend reads the agent script from. |
 | `SMTP_URL` | — | Invitation emails: `smtp://user:pass@host:587` or `smtps://…`. Unset: invitations are links to copy. `json://` logs messages instead of sending (development/tests). |
 | `MAIL_FROM` | — | Required with `SMTP_URL`: the From header, e.g. `Guide Engine <no-reply@example.com>`. |
@@ -797,7 +797,7 @@ npm test --workspace=apps/studio          # Studio components and services
 
 | Suite | Tests | Covers |
 |---|---|---|
-| **Backend** | 253 | self-serve orgs; apps and settings; the role matrix; invitations; members; saved pages; platform admins and support access (consent, read-only, logging, RLS); secrets at rest, the shared rate limiter, retention (events and agent errors), production boot checks; the agent script's ETag / 304 / cache headers and the version endpoint; the security headers (and that the agent surface keeps only nosniff); agent error reports (validation, the hourly cap, the Studio list, RLS isolation, platform counts); org/app isolation through the API **and directly in RLS** (including replaying the owner bootstrap and forging memberships); the agent API (origins, keys, identity modes, account targeting, kill switches, events and per-visitor state, preview); the guide lifecycle; sanitization; stable step ids; analytics; OIDC (a local JWKS server, algorithm confusion); migration 005's data conversion; and concurrent migration runs (the advisory lock) |
+| **Backend** | 258 | self-serve orgs; apps and settings; the role matrix; invitations; members; saved pages; platform admins and support access (consent, read-only, logging, RLS); secrets at rest, the shared rate limiter, retention (events and agent errors), production boot checks; the agent script's ETag / 304 / cache headers and the version endpoint; the security headers (and that the agent surface keeps only nosniff); agent error reports (validation, the hourly cap, the Studio list, RLS isolation, platform counts); org/app isolation through the API **and directly in RLS** (including replaying the owner bootstrap and forging memberships); the agent API (origins, keys, identity modes, account targeting, kill switches, events and per-visitor state, preview); the guide lifecycle; sanitization; stable step ids; analytics; OIDC (a local JWKS server, algorithm confusion); migration 005's data conversion; concurrent migration runs (the advisory lock); and the pending-migrations boot check |
 | **Core** | 102 | includes the help widget (search, keyboard, safe rendering), help launches (same page, other page, arrival, shared links) and error reporting (sampling, the per-page cap, never throwing) |
 | **Agent** | 8 | includes `openHelp` queued before load and the build-time version |
 | **Studio** | 45 | guide list and editor (saved pages), Pages, app settings (including the agent-error list), the Administration page |
@@ -894,6 +894,9 @@ Use the two images with these guarantees in place:
 - `NODE_ENV=production`, which makes the backend **refuse to start** unless `SECRETS_KEY`,
   `PREVIEW_TOKEN_SECRET`, an `https://` `PUBLIC_API_URL` and `RATE_LIMIT_STORE=postgres` are
   set; `TRUST_PROXY=true` behind a proxy.
+- Every migration applied before the backend starts: with `RUN_MIGRATIONS=false` it refuses to
+  start (in production) while any file in `packages/backend/migrations/` is missing from
+  `schema_migrations`, and names them.
 - Any OpenID Connect provider for `OIDC_ISSUER` / `OIDC_AUDIENCE` / `OIDC_STUDIO_CLIENT_ID`:
   a public (PKCE) client with `https://<studio>/auth/callback` as redirect URI and
   `https://<studio>/login` for logout, issuing JWT access tokens whose `aud` is

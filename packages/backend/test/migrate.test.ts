@@ -1,8 +1,13 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { readdirSync } from 'fs';
 import { join } from 'path';
 import { Pool } from 'pg';
-import { MIGRATION_LOCK_KEY, runMigrations } from '../src/migrate';
+import {
+  MIGRATION_LOCK_KEY,
+  assertMigrationsApplied,
+  pendingMigrations,
+  runMigrations,
+} from '../src/migrate';
 
 /**
  * Two backend replicas start at the same time, and each runs the migrations
@@ -105,5 +110,71 @@ describe('runMigrations under concurrency', () => {
       await su.query(`GRANT SELECT ON schema_migrations TO guide_engine`);
     }
     expect(await heldMigrationLocks()).toBe(0);
+  });
+});
+
+/**
+ * The boot check for RUN_MIGRATIONS=false deployments: a schema behind the
+ * code must be reported (production: refuse to start; development: warn)
+ * instead of failing at the first query. Its own scratch database, since the
+ * suite above leaves everything applied.
+ */
+describe('pendingMigrations and the boot check', () => {
+  const PENDING_DB = 'guide_engine_pendingtest';
+  let db: Pool;
+
+  beforeAll(async () => {
+    await admin.query(`DROP DATABASE IF EXISTS ${PENDING_DB} WITH (FORCE)`);
+    await admin.query(`CREATE DATABASE ${PENDING_DB} OWNER guide_engine`);
+    db = new Pool({ connectionString: appUrl.replace(`/${DB}`, `/${PENDING_DB}`) });
+  });
+
+  afterAll(async () => {
+    await db.end();
+    await admin.query(`DROP DATABASE IF EXISTS ${PENDING_DB}`);
+  });
+
+  it('lists every file on a fresh database (no schema_migrations table yet)', async () => {
+    expect(MIGRATION_FILES.length).toBeGreaterThan(2);
+    await expect(pendingMigrations(db)).resolves.toEqual(MIGRATION_FILES);
+  });
+
+  it('refuses to start in production, naming the files and how to migrate', async () => {
+    const warn = vi.fn();
+    const err = await assertMigrationsApplied(db, { NODE_ENV: 'production' }, warn).catch((e: Error) => e);
+    expect(err).toBeInstanceOf(Error);
+    const message = (err as Error).message;
+    expect(message).toMatch(/^Refusing to start in production/);
+    for (const file of MIGRATION_FILES) expect(message).toContain(` - ${file}`);
+    expect(message).toContain('node dist/migrate.js');
+    expect(message).toContain('RUN_MIGRATIONS=true');
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it('warns and continues outside production', async () => {
+    const warn = vi.fn();
+    await expect(assertMigrationsApplied(db, { NODE_ENV: 'development' }, warn)).resolves.toBeUndefined();
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0][0]).toContain(MIGRATION_FILES[0]);
+    // NODE_ENV unset (the dev server) is not production either.
+    await expect(assertMigrationsApplied(db, {}, warn)).resolves.toBeUndefined();
+    expect(warn).toHaveBeenCalledTimes(2);
+  });
+
+  it('lists exactly the later files after migrating through an earlier one', async () => {
+    await runMigrations(db, () => undefined, { through: MIGRATION_FILES[1] });
+    await expect(pendingMigrations(db)).resolves.toEqual(MIGRATION_FILES.slice(2));
+    await expect(assertMigrationsApplied(db, { NODE_ENV: 'production' }, () => undefined)).rejects.toThrow(
+      `${MIGRATION_FILES.length - 2} database migration(s) not applied`,
+    );
+  });
+
+  it('is empty after runMigrations, and the boot check is silent', async () => {
+    await runMigrations(db, () => undefined);
+    await expect(pendingMigrations(db)).resolves.toEqual([]);
+    const warn = vi.fn();
+    await expect(assertMigrationsApplied(db, { NODE_ENV: 'production' }, warn)).resolves.toBeUndefined();
+    await expect(assertMigrationsApplied(db, { NODE_ENV: 'development' }, warn)).resolves.toBeUndefined();
+    expect(warn).not.toHaveBeenCalled();
   });
 });
