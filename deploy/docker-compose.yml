@@ -10,7 +10,8 @@
 # Images come from CI (ghcr.io) or `docker compose build`.
 #
 # Optional: `docker compose --profile monitoring up -d` adds Prometheus
-# (monitoring/), scraping the backend's /metrics and evaluating the alert rules.
+# (monitoring/), scraping the backend's /metrics and evaluating the alert rules,
+# and Alertmanager, which delivers the firing ones to ALERT_WEBHOOK_URL.
 name: guide-engine
 
 services:
@@ -140,6 +141,9 @@ services:
       API_HOST: ${API_HOST}
       AUTH_HOST: ${AUTH_HOST}
       ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL}
+      # Who may open the Keycloak admin console (/admin* on AUTH_HOST): CIDRs,
+      # space-separated. Empty means nobody from outside (see the Caddyfile).
+      ADMIN_ALLOW_CIDRS: ${ADMIN_ALLOW_CIDRS:-}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
@@ -168,15 +172,41 @@ services:
       - metrics_token
     depends_on:
       - backend
+      - alertmanager
+
+  # Optional (`--profile monitoring`): Alertmanager, where Prometheus sends the
+  # firing alerts (monitoring/prometheus.yml, `alerting:`). One route, one
+  # receiver: a webhook POST to ALERT_WEBHOOK_URL from .env, which reaches it
+  # as a secret file rather than through the config (Alertmanager expands no
+  # environment variables; `url_file` is its way to keep the URL out of the
+  # YAML). Loopback only, like Prometheus: ssh -L 9093:127.0.0.1:9093 <host>,
+  # then http://localhost:9093 to see and silence alerts.
+  alertmanager:
+    image: prom/alertmanager:v0.34.1
+    profiles: ["monitoring"]
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:9093:9093"
+    volumes:
+      - ./monitoring/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - am_data:/alertmanager
+    secrets:
+      - alert_webhook_url
 
 volumes:
   pg_data:
   caddy_data:
   caddy_config:
   prom_data:
+  am_data:
 
 secrets:
   # The token Prometheus presents to GET /metrics, read from .env so it is
   # typed once. Mounted at /run/secrets/metrics_token (see monitoring/prometheus.yml).
   metrics_token:
     environment: METRICS_TOKEN
+  # Where Alertmanager POSTs alerts. Mounted at /run/secrets/alert_webhook_url
+  # (see monitoring/alertmanager.yml); the URL usually embeds a token, which is
+  # why it is a secret and not part of the mounted config.
+  alert_webhook_url:
+    environment: ALERT_WEBHOOK_URL

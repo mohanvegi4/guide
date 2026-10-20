@@ -910,8 +910,9 @@ Everything needed to run Guide Engine for real is in the repo:
 1. Point three DNS names at the host: the Studio, the API, and Keycloak (for example
    `studio.`, `api.` and `auth.example.com`).
 2. `cd deploy && cp .env.example .env` and fill it in: the hostnames, Postgres passwords, the
-   Keycloak admin password, and two secrets from `openssl rand -hex 32`
-   (`PREVIEW_TOKEN_SECRET`, `SECRETS_KEY`).
+   Keycloak admin password, `ADMIN_ALLOW_CIDRS` (the networks that may open the Keycloak admin
+   console: office, VPN or bastion CIDRs, space-separated; empty means nobody, see step 5), and
+   two secrets from `openssl rand -hex 32` (`PREVIEW_TOKEN_SECRET`, `SECRETS_KEY`).
 3. `./render-realm.sh` (needs `jq`) writes `keycloak-import/guide-engine-realm.json` from the
    development realm, made safe for a real deployment: **no users** (the development realm's
    `olivia` / `eddie` / `root` are stripped), brute-force detection on (temporary lockouts:
@@ -926,11 +927,21 @@ Everything needed to run Guide Engine for real is in the repo:
    ([Backups and restore](#backups-and-restore)).
 5. **Create the first user.** Nobody can sign in yet: the realm has no users and
    self-registration is off. Open the Keycloak admin console at `https://AUTH_HOST/admin`
-   with `KEYCLOAK_ADMIN_USER` / `KEYCLOAK_ADMIN_PASSWORD` from `.env`, switch to the
+   with `KEYCLOAK_ADMIN_USER` / `KEYCLOAK_ADMIN_PASSWORD` from `.env`. Caddy serves `/admin*`
+   only to the addresses in `ADMIN_ALLOW_CIDRS` and answers 403 to everyone else, you included
+   while the variable is empty: put the network you are on in it (`203.0.113.0/24`, or your
+   current address as a `/32` for a one-off), then `docker compose up -d caddy` to apply it.
+   Caddy reads the list when its container starts, and recreating it costs the three hosts a
+   few seconds. There is no back door, by design: an SSH tunnel to the host reaches Caddy from
+   the host's own address, not yours, and Keycloak serves the console on `AUTH_HOST` only, so
+   the allowlist is the one way in. Once in, switch to the
    **guide-engine** realm, and under **Users → Add user** enter the person's username and
    email, tick **Email verified**, create the user, then set a password on its
    **Credentials** tab. (Keycloak 26 treats that bootstrap admin as temporary and says so in
-   the console: create a permanent admin in the **master** realm while you are there.)
+   the console: create a permanent admin in the **master** realm while you are there, and turn
+   on that realm's **Realm settings → Security defenses → Brute force detection**:
+   `render-realm.sh` enables it for the guide-engine realm, but the master realm, where the
+   admin account lives, ships with it off.)
    Repeat for each further person, or set up an identity provider under **Identity providers**
    so they sign in with their company account.
 6. The person signs in to the Studio with that user. The Studio's **Welcome** page creates
@@ -945,8 +956,9 @@ More than one backend replica: set `BACKEND_REPLICAS`. The rate limiter is alrea
 through Postgres (`RATE_LIMIT_STORE=postgres`); the app-key cache is per process with a 10 s
 TTL, which is the most a rotated key can linger.
 
-Monitoring is optional: set `METRICS_TOKEN` and `docker compose --profile monitoring up -d`
-adds Prometheus with the alert rules in `deploy/monitoring/` ([Observability](#observability)).
+Monitoring is optional: set `METRICS_TOKEN` and `ALERT_WEBHOOK_URL`, and
+`docker compose --profile monitoring up -d` adds Prometheus and Alertmanager with the alert
+rules in `deploy/monitoring/` ([Observability](#observability)).
 
 ### Any other platform
 
@@ -975,7 +987,12 @@ Use the two images with these guarantees in place:
 Each layer sets the headers it is placed to know about:
 
 - **Caddy** (`deploy/Caddyfile`), where TLS ends: `Strict-Transport-Security` (a year, subdomains
-  included) on all three hosts. Everything else passes through from the services.
+  included) on all three hosts. It is also the one place with an address check: `/admin*` on the
+  Keycloak host (the admin console and its REST API, guarded by the admin password alone)
+  answers 403 unless the client address is in `ADMIN_ALLOW_CIDRS`; empty means nobody
+  ([Staging or production on one host](#staging-or-production-on-one-host), step 5). The
+  sign-in pages and the assets they share with the console stay open. Everything else passes
+  through from the services.
 - **nginx** (`apps/studio/nginx.conf.template`), for the Studio: `X-Content-Type-Options`,
   `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`, a
   `Permissions-Policy` that turns off camera, microphone and geolocation, and a
@@ -1169,14 +1186,23 @@ retention job that has deleted nothing for two days, and rate limiting biting mo
 agent traffic. Every description says what to do and points back here. Thresholds are starting
 points: adjust them in the file.
 
-**Prometheus in the `deploy/` stack:** optional, behind a compose profile. Set `METRICS_TOKEN`
-in `.env`, then `docker compose --profile monitoring up -d`. It scrapes every backend replica
-over the compose network (`backend:3000`), evaluates the rules, and listens on the host's
-loopback only, `127.0.0.1:9090`: open it over an SSH tunnel (`ssh -L 9090:127.0.0.1:9090 <host>`,
-then `http://localhost:9090/alerts`). No Alertmanager is included; to be notified, uncomment the
-`alerting:` block in `deploy/monitoring/prometheus.yml` and point it at yours. If you already run
-Prometheus, skip the profile and take the two files: the scrape job in `prometheus.yml` and
-`alerts.yml`, which only assumes the job is named `guide-engine-backend`.
+**Prometheus and Alertmanager in the `deploy/` stack:** optional, behind a compose profile. Set
+`METRICS_TOKEN` and `ALERT_WEBHOOK_URL` in `.env`, then `docker compose --profile monitoring up -d`.
+Prometheus scrapes every backend replica over the compose network (`backend:3000`), evaluates
+the rules and sends what fires to Alertmanager, which POSTs it, resolved alerts included, to
+`ALERT_WEBHOOK_URL`: the "Prometheus" or "Alertmanager" integration URL of Slack, Teams,
+PagerDuty, Opsgenie, or anything that accepts Alertmanager's JSON. Alertmanager expands no
+environment variables, so the URL (which usually embeds a token) reaches it as a compose secret
+file (`url_file`) and is never written into `deploy/monitoring/alertmanager.yml`. That file is
+one route and one receiver, with an email receiver left commented out as a model. Every rule
+carries `severity: page` or `severity: warn`, so the route can split on it, pager for one and a
+channel for the other; a commented sub-route shows how. Both services listen on the host's
+loopback only, `127.0.0.1:9090` and `127.0.0.1:9093`: open them over an SSH tunnel
+(`ssh -L 9090:127.0.0.1:9090 -L 9093:127.0.0.1:9093 <host>`, then `http://localhost:9090/alerts`
+for what is firing and `http://localhost:9093` to silence it). If you already run Prometheus and
+Alertmanager, skip the profile and take the files: the scrape job in `prometheus.yml`,
+`alerts.yml` (which only assumes the job is named `guide-engine-backend`) and the receiver in
+`alertmanager.yml`.
 
 ---
 
@@ -1192,6 +1218,7 @@ Prometheus, skip the profile and take the two files: the scrape job in `promethe
 | Agent requests fail with 401 `signed_identity_required` / `identity_invalid` | The app requires signed identity. Pass a valid, unexpired `jwt` signed with the current secret. |
 | Studio: `Port 4200 is already in use` | Use `-- --port 4300`. |
 | Studio SSO: "The backend rejected your sign-in token" | `OIDC_ISSUER` must equal the token's `iss`, and `OIDC_AUDIENCE` its `aud`. |
+| `https://AUTH_HOST/admin` answers 403 (deploy stack) | Your address isn't in `ADMIN_ALLOW_CIDRS` in `deploy/.env` (empty = nobody). Add it and `docker compose up -d caddy`. |
 | Demo shows "No app key yet" | Run `npm run seed --workspace=packages/backend` and restart the demo dev server. |
 
 **If a guide doesn't appear**, check in order:
@@ -1210,9 +1237,6 @@ Prometheus, skip the profile and take the two files: the scrape job in `promethe
 
 ## Known gaps and roadmap
 
-- **TODO: Keycloak's admin console (`https://<AUTH_HOST>/admin`) is reachable from the internet**,
-  protected by the admin password alone. Add an IP allowlist for `/admin*` in `deploy/Caddyfile`
-  (see the TODO there) or serve it on a non-public hostname (`KC_HOSTNAME_ADMIN`).
 - **The app-key cache is per process** (10 s TTL): a rotated key can keep working on another
   replica for up to 10 s.
 - **Signing secrets are encrypted with one key from the environment.** A KMS-held key, or

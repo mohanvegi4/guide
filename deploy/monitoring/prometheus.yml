@@ -11,12 +11,14 @@ global:
 rule_files:
   - alerts.yml
 
-# No Alertmanager ships with the stack: firing alerts are listed at
-# http://127.0.0.1:9090/alerts. To be notified, point this at yours.
-# alerting:
-#   alertmanagers:
-#     - static_configs:
-#         - targets: ['alertmanager:9093']
+# Firing alerts go to the stack's Alertmanager (compose service `alertmanager`,
+# config in alertmanager.yml), which delivers them to ALERT_WEBHOOK_URL. They
+# are also listed at http://127.0.0.1:9090/alerts. Running Prometheus
+# elsewhere: point this at your Alertmanager, or drop the stanza.
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ['alertmanager:9093']
 
 scrape_configs:
   # The job name is what alerts.yml matches on.

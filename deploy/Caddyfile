@@ -31,13 +31,22 @@
 }
 
 # Keycloak. Caddy sets X-Forwarded-* headers, which Keycloak trusts (KC_PROXY_HEADERS).
-# TODO: restrict the admin console to an IP allowlist. /admin* is reachable from
-# the internet, guarded by the admin password alone (the master realm's
-# brute-force protection is off by default). Something like:
-#   @admin path /admin*
-#   abort @admin   # unless `remote_ip <office-or-vpn CIDRs>`
-# or move it to a non-public hostname with KC_HOSTNAME_ADMIN.
+#
+# The admin console and its REST API live under /admin* and are guarded by the
+# admin password alone, so only ADMIN_ALLOW_CIDRS (space-separated, e.g.
+# "203.0.113.0/24 10.8.0.0/16") may reach them; everyone else gets a 403.
+# Unset or empty FAILS CLOSED: `remote_ip` with no ranges matches nobody, so
+# `not` matches everybody, and the list is the only way in (README, "Staging or
+# production on one host", step 5). The sign-in pages (/realms/*) and the
+# assets they share with the console (/resources/*) stay open.
+# `remote_ip` is the TCP peer: right here, where TLS ends. Behind another proxy
+# add `forwarded` and trust its header deliberately, never by default.
 {$AUTH_HOST} {
 	import hsts
+	@admin {
+		path /admin*
+		not remote_ip {$ADMIN_ALLOW_CIDRS}
+	}
+	respond @admin 403
 	reverse_proxy keycloak:8080
 }
