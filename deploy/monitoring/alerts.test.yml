@@ -1,0 +1,194 @@
+# Unit tests for alerts.yml: synthetic series, then "does this alert fire, with
+# these labels and annotations, at this moment". Rendered annotations are
+# compared verbatim, so a wording change in alerts.yml shows up here.
+#
+# Run:  promtool test rules alerts.test.yml
+# (or from the repo root, without installing promtool:
+#   docker run --rm -v "$PWD/deploy/monitoring:/m:ro" --entrypoint promtool prom/prometheus:v3 test rules /m/alerts.test.yml)
+
+rule_files:
+  - alerts.yml
+
+evaluation_interval: 1m
+
+tests:
+  # 5 of every 100 requests answer 500: fires after the 5 minute `for`.
+  # Below 1% it stays quiet.
+  - interval: 1m
+    input_series:
+      - series: 'http_requests_total{job="guide-engine-backend",instance="172.18.0.5:3000",route="/v1/agent/:key/guides",method="POST",status="200"}'
+        values: '0+95x20'
+      - series: 'http_requests_total{job="guide-engine-backend",instance="172.18.0.5:3000",route="/v1/agent/:key/guides",method="POST",status="500"}'
+        values: '0+5x20'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: HighErrorRate
+        exp_alerts: []
+      - eval_time: 10m
+        alertname: HighErrorRate
+        exp_alerts:
+          - exp_labels:
+              severity: page
+            exp_annotations:
+              summary: "5% of requests answer 5xx"
+              description: >-
+                More than 1% of all backend responses have been 5xx for 5 minutes. Each one is
+                logged at `error` with a stack trace and a request id (and sent to Sentry when
+                configured); `docker compose logs backend | grep '"level":"error"'` finds them.
+                A database that is down shows up here first. See README, Observability.
+
+  - interval: 1m
+    input_series:
+      - series: 'http_requests_total{job="guide-engine-backend",instance="172.18.0.5:3000",route="/v1/agent/:key/guides",method="POST",status="200"}'
+        values: '0+199x20'
+      - series: 'http_requests_total{job="guide-engine-backend",instance="172.18.0.5:3000",route="/v1/agent/:key/guides",method="POST",status="500"}'
+        values: '0+1x20'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: HighErrorRate
+        exp_alerts: []
+
+  # The pool has had callers waiting since minute 2: pending at 2m, firing from 3m.
+  - interval: 1m
+    input_series:
+      - series: 'db_pool_waiting{job="guide-engine-backend",instance="172.18.0.5:3000"}'
+        values: '0 0 2 2 2 2 2'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: DbPoolSaturated
+        exp_alerts: []
+      - eval_time: 5m
+        alertname: DbPoolSaturated
+        exp_alerts:
+          - exp_labels:
+              severity: page
+              job: guide-engine-backend
+              instance: 172.18.0.5:3000
+            exp_annotations:
+              summary: "2 request(s) waiting for a Postgres connection on 172.18.0.5:3000"
+              description: >-
+                The pool on 172.18.0.5:3000 has been saturated for a minute: slow queries or
+                too few connections for the replica count. Requests queue, then time out, and
+                /ready starts answering 503. Look for long-running queries in Postgres
+                (`pg_stat_activity`) before adding replicas. See README, Operations.
+
+  # Scrapes fail from minute 3: still pending at 4m, firing at 6m.
+  - interval: 1m
+    input_series:
+      - series: 'up{job="guide-engine-backend",instance="172.18.0.5:3000"}'
+        values: '1 1 1 0 0 0 0 0'
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: BackendDown
+        exp_alerts: []
+      - eval_time: 6m
+        alertname: BackendDown
+        exp_alerts:
+          - exp_labels:
+              severity: page
+              job: guide-engine-backend
+              instance: 172.18.0.5:3000
+            exp_annotations:
+              summary: "Backend 172.18.0.5:3000 is not answering /metrics"
+              description: >-
+                Prometheus has failed to scrape 172.18.0.5:3000 for 2 minutes. If it is
+                restarting in a loop, a configuration or database-role check failed: the reason is
+                in its first log line (`docker compose logs backend`). A 401 from /metrics means
+                METRICS_TOKEN differs between the backend and Prometheus. See README, Operations.
+      # A target that answers, however badly, is still discovered.
+      - eval_time: 6m
+        alertname: BackendNotDiscovered
+        exp_alerts: []
+
+  # No backend container at all: the job has no targets and no `up` series.
+  - interval: 1m
+    input_series: []
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: BackendNotDiscovered
+        exp_alerts:
+          - exp_labels:
+              severity: page
+              job: guide-engine-backend
+            exp_annotations:
+              summary: "No backend target found for 2 minutes"
+              description: >-
+                The scrape job has no targets: the `backend` service name no longer resolves, so
+                no backend container is running. `docker compose ps backend` and
+                `docker compose logs backend` show why. See README, Operations.
+
+  # The process start time moves once: one restart in the last hour.
+  - interval: 1m
+    input_series:
+      - series: 'process_start_time_seconds{job="guide-engine-backend",instance="172.18.0.5:3000"}'
+        values: '1000 1000 1000 1500 1500 1500'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: BackendRestarted
+        exp_alerts: []
+      - eval_time: 4m
+        alertname: BackendRestarted
+        exp_alerts:
+          - exp_labels:
+              severity: warn
+              job: guide-engine-backend
+              instance: 172.18.0.5:3000
+            exp_annotations:
+              summary: "Backend 172.18.0.5:3000 restarted 1 time(s) in the last hour"
+              description: >-
+                One restart after a deploy is expected. More than one, or a restart you did not
+                cause, means the process crashed: look for the `error` log line before the restart
+                and the first line after it (`docker compose logs backend`). See README, Operations.
+
+  # Retention: a counter that never moves for two days fires; one that grows
+  # daily does not; a counter that was never reported fires with the job label.
+  - interval: 1h
+    input_series:
+      - series: 'retention_deleted_total{job="guide-engine-backend",instance="172.18.0.5:3000",table="guide_event"}'
+        values: '10x60'
+      - series: 'retention_deleted_total{job="guide-engine-backend",instance="172.18.0.5:3000",table="agent_rate_limit"}'
+        values: '40x60'
+    alert_rule_test:
+      - eval_time: 55h
+        alertname: RetentionNotRunning
+        exp_alerts:
+          - exp_labels:
+              severity: warn
+            exp_annotations:
+              summary: "The retention job has deleted nothing for 2 days"
+              description: >-
+                The daily retention job (events, agent errors, spent rate-limit windows) has not
+                reported a deletion in two days. Expected on an idle instance. Otherwise check for
+                a `retention failed:` log line, that EVENT_RETENTION_DAYS is not 0, and run it by
+                hand: `npm run retention --workspace=packages/backend -- --days 400`.
+                See README, Operations.
+
+  - interval: 1h
+    input_series:
+      - series: 'retention_deleted_total{job="guide-engine-backend",instance="172.18.0.5:3000",table="guide_event"}'
+        values: '0x60'
+      # Only the rate-limit sweep finds rows (a young instance with traffic): that is enough.
+      - series: 'retention_deleted_total{job="guide-engine-backend",instance="172.18.0.5:3000",table="agent_rate_limit"}'
+        values: '0x23 40x24 80x13'
+    alert_rule_test:
+      - eval_time: 55h
+        alertname: RetentionNotRunning
+        exp_alerts: []
+
+  - interval: 1h
+    input_series: []
+    alert_rule_test:
+      - eval_time: 55h
+        alertname: RetentionNotRunning
+        exp_alerts:
+          - exp_labels:
+              severity: warn
+              job: guide-engine-backend
+            exp_annotations:
+              summary: "The retention job has deleted nothing for 2 days"
+              description: >-
+                The daily retention job (events, agent errors, spent rate-limit windows) has not
+                reported a deletion in two days. Expected on an idle instance. Otherwise check for
+                a `retention failed:` log line, that EVENT_RETENTION_DAYS is not 0, and run it by
+                hand: `npm run retention --workspace=packages/backend -- --days 400`.
+                See README, Operations.

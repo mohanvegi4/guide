@@ -866,6 +866,9 @@ More than one backend replica: set `BACKEND_REPLICAS`. The rate limiter is alrea
 through Postgres (`RATE_LIMIT_STORE=postgres`); the app-key cache is per process with a 10 s
 TTL, which is the most a rotated key can linger.
 
+Monitoring is optional: set `METRICS_TOKEN` and `docker compose --profile monitoring up -d`
+adds Prometheus with the alert rules in `deploy/monitoring/` ([Observability](#observability)).
+
 ### Any other platform
 
 Use the two images with these guarantees in place:
@@ -1049,11 +1052,13 @@ endpoint is open when the token is unset; elsewhere it answers 404 until one is 
 | `process_*`, `nodejs_*` | — | The default Node.js metrics (CPU, memory, event-loop lag, GC, handles). |
 
 Labels come from bounded sets (route patterns, endpoint names, tables): never an app key, an
-app, an organization or a guide id. A Prometheus job for it:
+app, an organization or a guide id. A Prometheus job for it, scraping through the public API
+host (inside the `deploy/` stack, `deploy/monitoring/prometheus.yml` does the same over the
+compose network):
 
 ```yaml
 scrape_configs:
-  - job_name: guide-engine
+  - job_name: guide-engine-backend     # the name deploy/monitoring/alerts.yml matches on
     scheme: https
     authorization:
       type: Bearer
@@ -1073,23 +1078,23 @@ not help). `GET /ready` is readiness: it runs `SELECT 1` through the pool and an
 the instance out of rotation. The container image's `HEALTHCHECK` (and so `deploy/`'s compose
 stack) uses `/ready`.
 
-**What to alert on:**
+**Alerting:** the rules are shipped, not described: `deploy/monitoring/alerts.yml` is a
+Prometheus rules file (with `alerts.test.yml`, its `promtool test rules` suite). It pages on a
+backend that is down or restarting into failure, a 5xx rate above 1 %, and a saturated Postgres
+pool; it warns on agent calls failing on `guides`/`events` (each one is a page that silently
+showed nothing, since the agent fails closed), p95 latency above 250 ms on the guides route, a
+retention job that has deleted nothing for two days, and rate limiting biting more than 5 % of
+agent traffic. Every description says what to do and points back here. Thresholds are starting
+points: adjust them in the file.
 
-- 5xx rate: `sum(rate(http_requests_total{status=~"5.."}[5m])) / sum(rate(http_requests_total[5m]))`
-  above ~1% for 5 minutes.
-- Agent failures by endpoint: `sum by (endpoint) (rate(agent_requests_total{status=~"4..|5.."}[5m]))`
-  rising on `guides` or `events` means customers' pages are silently showing nothing (the agent
-  fails closed). A burst of `404` usually means a stale snippet; `403`, a website missing from an
-  app's list; `429`, a runaway page.
-- p95 latency: `histogram_quantile(0.95, sum by (le, route) (rate(http_request_duration_seconds_bucket[5m])))`
-  above 250 ms on `/v1/agent/:key/guides`.
-- `db_pool_waiting > 0` for more than a minute: the pool is saturated (slow queries or too few
-  connections for the replica count).
-- Retention job not running: `increase(retention_deleted_total{table="guide_event"}[2d]) == 0`
-  on a production instance with traffic, or no `retention:` log line in 25 hours.
-- Backend restarts: `changes(process_start_time_seconds[1h]) > 0`, or the orchestrator's own
-  restart counter. A restart loop at boot means a configuration or database-role check failed:
-  the reason is in the first log line.
+**Prometheus in the `deploy/` stack:** optional, behind a compose profile. Set `METRICS_TOKEN`
+in `.env`, then `docker compose --profile monitoring up -d`. It scrapes every backend replica
+over the compose network (`backend:3000`), evaluates the rules, and listens on the host's
+loopback only, `127.0.0.1:9090`: open it over an SSH tunnel (`ssh -L 9090:127.0.0.1:9090 <host>`,
+then `http://localhost:9090/alerts`). No Alertmanager is included; to be notified, uncomment the
+`alerting:` block in `deploy/monitoring/prometheus.yml` and point it at yours. If you already run
+Prometheus, skip the profile and take the two files: the scrape job in `prometheus.yml` and
+`alerts.yml`, which only assumes the job is named `guide-engine-backend`.
 
 ---
 

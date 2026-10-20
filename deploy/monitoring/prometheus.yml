@@ -1,0 +1,38 @@
+# Prometheus for the deploy/ stack (`docker compose --profile monitoring up -d`),
+# or a starting point for a Prometheus you already run: the one scrape job
+# below and alerts.yml are all that is Guide Engine specific.
+#
+# Check:  promtool check config prometheus.yml
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  - alerts.yml
+
+# No Alertmanager ships with the stack: firing alerts are listed at
+# http://127.0.0.1:9090/alerts. To be notified, point this at yours.
+# alerting:
+#   alertmanagers:
+#     - static_configs:
+#         - targets: ['alertmanager:9093']
+
+scrape_configs:
+  # The job name is what alerts.yml matches on.
+  - job_name: guide-engine-backend
+    metrics_path: /metrics
+    # GET /metrics requires `Authorization: Bearer <METRICS_TOKEN>`. The compose
+    # stack mounts the token from .env as a secret file; elsewhere, use
+    # `credentials:` or your own file.
+    authorization:
+      type: Bearer
+      credentials_file: /run/secrets/metrics_token
+    # Resolve the compose service name at every refresh: with BACKEND_REPLICAS > 1
+    # Docker's DNS returns one A record per replica and each is scraped on its
+    # own (a static `backend:3000` target would alternate between replicas and
+    # make every counter jump). Outside compose, replace this with static_configs.
+    dns_sd_configs:
+      - names: ['backend']
+        type: A
+        port: 3000

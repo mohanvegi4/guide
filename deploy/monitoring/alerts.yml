@@ -1,0 +1,172 @@
+# Prometheus alerting rules for the Guide Engine backend.
+#
+# Loaded by deploy/monitoring/prometheus.yml (the optional `monitoring` compose
+# profile), and usable as-is from any Prometheus whose scrape job is named
+# `guide-engine-backend` (change the job matcher below otherwise). Every alert's
+# description says what to do; the longer story is README.md, "Operations"
+# and "Observability".
+#
+# Severity: `page` means end users or the Studio are affected right now (or will
+# be within minutes); `warn` is a problem to look at today.
+#
+# Check:  promtool check rules alerts.yml
+# Test:   promtool test rules alerts.test.yml
+
+groups:
+  # Recording rules: the aggregates the alerts compare against, summed over all
+  # backend replicas. Also handy on a dashboard.
+  - name: guide-engine-backend.rules
+    interval: 15s
+    rules:
+      - record: job:http_requests_5xx:ratio_rate5m
+        expr: |
+          sum(rate(http_requests_total{job="guide-engine-backend",status=~"5.."}[5m]))
+            /
+          sum(rate(http_requests_total{job="guide-engine-backend"}[5m]))
+
+      - record: route:http_request_duration_seconds:p95_5m
+        expr: |
+          histogram_quantile(0.95,
+            sum by (le, route) (rate(http_request_duration_seconds_bucket{job="guide-engine-backend"}[5m])))
+
+      # Agent calls that were refused or failed, per endpoint, as a share of
+      # that endpoint's traffic. The agent fails closed, so each one is a page
+      # view that showed no guide.
+      - record: endpoint:agent_requests_failed:ratio_rate5m
+        expr: |
+          sum by (endpoint) (rate(agent_requests_total{job="guide-engine-backend",status=~"4..|5.."}[5m]))
+            /
+          sum by (endpoint) (rate(agent_requests_total{job="guide-engine-backend"}[5m]))
+
+      - record: job:agent_requests_429:ratio_rate5m
+        expr: |
+          sum(rate(agent_requests_total{job="guide-engine-backend",status="429"}[5m]))
+            /
+          sum(rate(agent_requests_total{job="guide-engine-backend"}[5m]))
+
+  - name: guide-engine-backend.alerts
+    rules:
+      - alert: BackendDown
+        expr: up{job="guide-engine-backend"} == 0
+        for: 2m
+        labels:
+          severity: page
+        annotations:
+          summary: "Backend {{ $labels.instance }} is not answering /metrics"
+          description: >-
+            Prometheus has failed to scrape {{ $labels.instance }} for 2 minutes. If it is
+            restarting in a loop, a configuration or database-role check failed: the reason is
+            in its first log line (`docker compose logs backend`). A 401 from /metrics means
+            METRICS_TOKEN differs between the backend and Prometheus. See README, Operations.
+
+      # Targets come from DNS (the `backend` service name), so a backend that
+      # is stopped or has no running container has no `up` series at all.
+      - alert: BackendNotDiscovered
+        expr: absent(up{job="guide-engine-backend"})
+        for: 2m
+        labels:
+          severity: page
+        annotations:
+          summary: "No backend target found for 2 minutes"
+          description: >-
+            The scrape job has no targets: the `backend` service name no longer resolves, so
+            no backend container is running. `docker compose ps backend` and
+            `docker compose logs backend` show why. See README, Operations.
+
+      - alert: BackendRestarted
+        expr: changes(process_start_time_seconds{job="guide-engine-backend"}[1h]) > 0
+        labels:
+          severity: warn
+        annotations:
+          summary: "Backend {{ $labels.instance }} restarted {{ $value }} time(s) in the last hour"
+          description: >-
+            One restart after a deploy is expected. More than one, or a restart you did not
+            cause, means the process crashed: look for the `error` log line before the restart
+            and the first line after it (`docker compose logs backend`). See README, Operations.
+
+      - alert: HighErrorRate
+        expr: job:http_requests_5xx:ratio_rate5m > 0.01
+        for: 5m
+        labels:
+          severity: page
+        annotations:
+          summary: "{{ $value | humanizePercentage }} of requests answer 5xx"
+          description: >-
+            More than 1% of all backend responses have been 5xx for 5 minutes. Each one is
+            logged at `error` with a stack trace and a request id (and sent to Sentry when
+            configured); `docker compose logs backend | grep '"level":"error"'` finds them.
+            A database that is down shows up here first. See README, Observability.
+
+      - alert: AgentEndpointFailing
+        expr: endpoint:agent_requests_failed:ratio_rate5m{endpoint=~"guides|events"} > 0.05
+        for: 10m
+        labels:
+          severity: warn
+        annotations:
+          summary: "{{ $value | humanizePercentage }} of agent `{{ $labels.endpoint }}` calls fail"
+          description: >-
+            Customers' pages are silently showing nothing (the agent fails closed). Break the
+            failures down by status: 404 is usually a stale snippet or rotated key, 403 a
+            website missing from the app's list, 401 an identity signature that no longer
+            verifies, 429 a runaway page, 5xx a backend fault. The request log carries the
+            key prefix (`keyPrefix`) to find the app. See README, Operations.
+
+      - alert: AgentGuidesLatencyHigh
+        expr: route:http_request_duration_seconds:p95_5m{route="/v1/agent/:key/guides"} > 0.25
+        for: 10m
+        labels:
+          severity: warn
+        annotations:
+          summary: "p95 latency on /v1/agent/:key/guides is {{ $value | humanizeDuration }}"
+          description: >-
+            Guide lookups should take tens of milliseconds; a p95 above 250 ms for 10 minutes
+            points at a slow or overloaded database (check db_pool_waiting and Postgres load)
+            or too few backend replicas for the traffic. See README, Operations.
+
+      - alert: DbPoolSaturated
+        expr: db_pool_waiting{job="guide-engine-backend"} > 0
+        for: 1m
+        labels:
+          severity: page
+        annotations:
+          summary: "{{ $value }} request(s) waiting for a Postgres connection on {{ $labels.instance }}"
+          description: >-
+            The pool on {{ $labels.instance }} has been saturated for a minute: slow queries or
+            too few connections for the replica count. Requests queue, then time out, and
+            /ready starts answering 503. Look for long-running queries in Postgres
+            (`pg_stat_activity`) before adding replicas. See README, Operations.
+
+      # Two days without a single deleted row, or no counter at all. The daily
+      # job also sweeps spent rate-limit windows, which any agent traffic
+      # creates, so on an instance with traffic this only means the job is not
+      # running. On an idle instance (nothing to delete) it fires too: treat
+      # it as "check the `retention:` log line", not as a fault.
+      - alert: RetentionNotRunning
+        expr: |
+          sum(increase(retention_deleted_total{job="guide-engine-backend"}[2d])) == 0
+            or
+          absent_over_time(retention_deleted_total{job="guide-engine-backend"}[2d])
+        for: 1h
+        labels:
+          severity: warn
+        annotations:
+          summary: "The retention job has deleted nothing for 2 days"
+          description: >-
+            The daily retention job (events, agent errors, spent rate-limit windows) has not
+            reported a deletion in two days. Expected on an idle instance. Otherwise check for
+            a `retention failed:` log line, that EVENT_RETENTION_DAYS is not 0, and run it by
+            hand: `npm run retention --workspace=packages/backend -- --days 400`.
+            See README, Operations.
+
+      - alert: AgentRateLimitSaturated
+        expr: job:agent_requests_429:ratio_rate5m > 0.05
+        for: 10m
+        labels:
+          severity: warn
+        annotations:
+          summary: "{{ $value | humanizePercentage }} of agent calls are rate limited (429)"
+          description: >-
+            The per-key-and-IP limiter (AGENT_RATE_LIMIT_PER_MIN) is refusing a sizeable share
+            of agent traffic for 10 minutes: usually one page calling the agent in a loop, or a
+            crawler. The request log's `keyPrefix` names the app; its "Recent agent errors"
+            in the Studio may show the page. See README, Operations.

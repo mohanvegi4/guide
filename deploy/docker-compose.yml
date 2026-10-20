@@ -8,6 +8,9 @@
 #
 # Three hostnames point at this host: STUDIO_HOST, API_HOST, AUTH_HOST.
 # Images come from CI (ghcr.io) or `docker compose build`.
+#
+# Optional: `docker compose --profile monitoring up -d` adds Prometheus
+# (monitoring/), scraping the backend's /metrics and evaluating the alert rules.
 name: guide-engine
 
 services:
@@ -102,6 +105,9 @@ services:
       RATE_LIMIT_STORE: postgres
       AGENT_RATE_LIMIT_PER_MIN: ${AGENT_RATE_LIMIT_PER_MIN:-600}
       EVENT_RETENTION_DAYS: ${EVENT_RETENTION_DAYS:-400}
+      # Unset: GET /metrics answers 404. Set: the `monitoring` profile (and any
+      # other Prometheus) scrapes it with this bearer token.
+      METRICS_TOKEN: ${METRICS_TOKEN:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -143,7 +149,34 @@ services:
       - backend
       - keycloak
 
+  # Optional (`--profile monitoring`): Prometheus with the scrape job and alert
+  # rules in ./monitoring, which also work in a Prometheus you run elsewhere.
+  # Listens on the host's loopback only: open it over an SSH tunnel
+  # (ssh -L 9090:127.0.0.1:9090 <host>, then http://localhost:9090/alerts).
+  # Needs METRICS_TOKEN in .env, shared with the backend above.
+  prometheus:
+    image: prom/prometheus:v3
+    profiles: ["monitoring"]
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prom_data:/prometheus
+    secrets:
+      - metrics_token
+    depends_on:
+      - backend
+
 volumes:
   pg_data:
   caddy_data:
   caddy_config:
+  prom_data:
+
+secrets:
+  # The token Prometheus presents to GET /metrics, read from .env so it is
+  # typed once. Mounted at /run/secrets/metrics_token (see monitoring/prometheus.yml).
+  metrics_token:
+    environment: METRICS_TOKEN
