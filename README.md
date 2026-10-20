@@ -1128,6 +1128,9 @@ Prometheus, skip the profile and take the two files: the scrape job in `promethe
 
 ## Known gaps and roadmap
 
+- **TODO: Keycloak's admin console (`https://<AUTH_HOST>/admin`) is reachable from the internet**,
+  protected by the admin password alone. Add an IP allowlist for `/admin*` in `deploy/Caddyfile`
+  (see the TODO there) or serve it on a non-public hostname (`KC_HOSTNAME_ADMIN`).
 - **The app-key cache is per process** (10 s TTL): a rotated key can keep working on another
   replica for up to 10 s.
 - **Signing secrets are encrypted with one key from the environment.** A KMS-held key, or

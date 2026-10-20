@@ -31,6 +31,12 @@
 }
 
 # Keycloak. Caddy sets X-Forwarded-* headers, which Keycloak trusts (KC_PROXY_HEADERS).
+# TODO: restrict the admin console to an IP allowlist. /admin* is reachable from
+# the internet, guarded by the admin password alone (the master realm's
+# brute-force protection is off by default). Something like:
+#   @admin path /admin*
+#   abort @admin   # unless `remote_ip <office-or-vpn CIDRs>`
+# or move it to a non-public hostname with KC_HOSTNAME_ADMIN.
 {$AUTH_HOST} {
 	import hsts
 	reverse_proxy keycloak:8080
