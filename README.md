@@ -464,7 +464,8 @@ packages they're `GuideService.openHelp()` (Angular), `useGuideEngine().openHelp
    visitor acts, such as a field that appears once a record is selected.
 6. **Rendering** happens in a Shadow DOM card, so your styles don't leak in. A targeted step
    puts the focus on its element: it's scrolled into view if off-screen, and **spotlighted**: a
-   ring around it with the rest of the page dimmed (the element stays clickable). The card and
+   ring around it with the rest of the page dimmed (the element stays clickable). Card and
+   spotlight follow the element when the page scrolls or the window resizes. The card and
    the ring follow the target as the page changes, including when your framework re-creates
    the element.
 7. **Events** are batched every 5 s or 20 events, sent as `text/plain` JSON (no CORS preflight),
@@ -789,7 +790,7 @@ npm test --workspace=apps/studio          # Studio components and services
 | Suite | Tests | Covers |
 |---|---|---|
 | **Backend** | 252 | self-serve orgs; apps and settings; the role matrix; invitations; members; saved pages; platform admins and support access (consent, read-only, logging, RLS); secrets at rest, the shared rate limiter, retention (events and agent errors), production boot checks; the agent script's ETag / 304 / cache headers and the version endpoint; the security headers (and that the agent surface keeps only nosniff); agent error reports (validation, the hourly cap, the Studio list, RLS isolation, platform counts); org/app isolation through the API **and directly in RLS** (including replaying the owner bootstrap and forging memberships); the agent API (origins, keys, identity modes, account targeting, kill switches, events and per-visitor state, preview); the guide lifecycle; sanitization; stable step ids; analytics; OIDC (a local JWKS server, algorithm confusion); migration 005's data conversion; and concurrent migration runs (the advisory lock) |
-| **Core** | 95 | includes the help widget (search, keyboard, safe rendering), help launches (same page, other page, arrival, shared links) and error reporting (sampling, the per-page cap, never throwing) |
+| **Core** | 96 | includes the help widget (search, keyboard, safe rendering), help launches (same page, other page, arrival, shared links) and error reporting (sampling, the per-page cap, never throwing) |
 | **Agent** | 8 | includes `openHelp` queued before load and the build-time version |
 | **Studio** | 45 | guide list and editor (saved pages), Pages, app settings (including the agent-error list), the Administration page |
 

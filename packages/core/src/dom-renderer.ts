@@ -23,6 +23,55 @@ export function createDomRenderer(engine: {
   const hosts = new Map<string, { host: HTMLElement; spotlight: HTMLElement }>();
   /** guideId -> step id last scrolled to, so re-renders (the target moving) don't scroll again. */
   const scrolledTo = new Map<string, string>();
+  /**
+   * Targeted steps on screen, so the card and spotlight can follow their
+   * element when the page scrolls or the window resizes. Both are
+   * position:fixed, placed from the element's rect at render time: without
+   * this, a scroll — including the smooth scrollIntoView that brings the
+   * element into view, which animates over several frames — leaves them
+   * where the element used to be, often off screen.
+   */
+  const tracked = new Map<string, { step: Step; target: Element }>();
+  let listening = false;
+  let repositionScheduled = false;
+
+  function reposition(): void {
+    for (const [guideId, { step, target }] of tracked) {
+      const entry = hosts.get(guideId);
+      if (!entry || !target.isConnected) continue;
+      spotlightTarget(entry.spotlight, target);
+      positionNear(entry.host, target, step.position);
+    }
+  }
+  function onViewportChange(): void {
+    if (repositionScheduled) return;
+    repositionScheduled = true;
+    requestAnimationFrame(() => {
+      repositionScheduled = false;
+      reposition();
+    });
+  }
+  function track(guideId: string, step: Step, target: Element | null): void {
+    if (target) tracked.set(guideId, { step, target });
+    else tracked.delete(guideId);
+    syncListeners();
+  }
+  function untrack(guideId: string): void {
+    tracked.delete(guideId);
+    syncListeners();
+  }
+  function syncListeners(): void {
+    if (tracked.size > 0 && !listening) {
+      // Capture: scroll events of inner scroll containers don't bubble.
+      window.addEventListener('scroll', onViewportChange, { capture: true, passive: true });
+      window.addEventListener('resize', onViewportChange, { passive: true });
+      listening = true;
+    } else if (tracked.size === 0 && listening) {
+      window.removeEventListener('scroll', onViewportChange, { capture: true });
+      window.removeEventListener('resize', onViewportChange);
+      listening = false;
+    }
+  }
 
   function ensureHost(guideId: string): { host: HTMLElement; spotlight: HTMLElement; shadow: ShadowRoot } {
     let entry = hosts.get(guideId);
@@ -121,6 +170,7 @@ export function createDomRenderer(engine: {
       if (targetEl) scrollToTarget(guide, step, targetEl);
       spotlightTarget(spotlight, targetEl);
       positionNear(host, targetEl, step.position);
+      track(guide.id, step, targetEl);
 
       // NOTE: step.content is expected to already be sanitized server-side
       // (see docx/authoring-studio sanitization requirement in the scope doc).
@@ -174,6 +224,7 @@ export function createDomRenderer(engine: {
       entry?.spotlight.remove();
       hosts.delete(guideId);
       scrolledTo.delete(guideId);
+      untrack(guideId);
     },
   };
 }

@@ -15,6 +15,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). How a rel
   visitor does something) now shows its card centered at once and moves onto the element when it
   appears, instead of waiting silently and dropping the guide after ~16 s. First steps keep the
   quiet wait, so a guide for a feature the visitor doesn't have still shows nothing.
+- **`@guide-engine/core`**: the card and spotlight follow their element when the page scrolls or the
+  window resizes. They are `position: fixed` and were placed once from the element's position at
+  render time, so any scroll — including the smooth `scrollIntoView` that brings the element on
+  screen — left them behind, often off screen.
 - **`@guide-engine/core`**: one guide at a time. When several guides match a page the engine
   used to show all of them at once (several cards and spotlights). Now walkthroughs (tours,
   multi-step guides) go first, then single-step tips in the server's order; the next one shows

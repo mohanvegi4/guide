@@ -468,6 +468,45 @@ describe('DOM renderer', () => {
   });
 });
 
+describe('DOM renderer follows its element', () => {
+  it('repositions the card and spotlight when the page scrolls or the window resizes', async () => {
+    const target = document.createElement('button');
+    target.setAttribute('data-guide-id', 'invite-button');
+    document.body.appendChild(target);
+    let rect = { top: 100, left: 20, right: 120, bottom: 130, width: 100, height: 30 };
+    target.getBoundingClientRect = () => rect as DOMRect;
+    const renderer = createDomRenderer({
+      advanceStep: () => {},
+      previousStep: () => {},
+      dismissGuide: () => {},
+    });
+    const guide = makeGuide({
+      steps: [makeStep({ id: 's1', targetSelector: '[data-guide-id="invite-button"]' })],
+    });
+    renderer.renderStep(guide, guide.steps[0], target);
+    const host = document.querySelector<HTMLElement>('[data-guide-host]:not([data-guide-spotlight])')!;
+    const spotlight = document.querySelector<HTMLElement>('[data-guide-spotlight]')!;
+    expect(host.style.top).toBe('138px'); // below the element
+
+    // The page scrolls (or smooth-scrolls the element into view): the element moved up 80px.
+    rect = { ...rect, top: 20, bottom: 50 };
+    window.dispatchEvent(new Event('scroll'));
+    await vi.waitFor(() => expect(host.style.top).toBe('58px'));
+    expect(spotlight.style.top).toBe('16px');
+
+    window.dispatchEvent(new Event('resize'));
+    rect = { ...rect, left: 200, right: 300 };
+    await vi.waitFor(() => expect(host.style.left).toBe('200px'));
+
+    // Cleared: nothing follows anymore (and no error from a stale listener).
+    renderer.clear(guide.id);
+    rect = { ...rect, top: 0, bottom: 30 };
+    window.dispatchEvent(new Event('scroll'));
+    await new Promise((r) => requestAnimationFrame(() => r(undefined)));
+    expect(document.querySelector('[data-guide-host]')).toBeNull();
+  });
+});
+
 describe('step change vs. target observer (regression)', () => {
   it("does not re-render the next, untargeted step next to the previous step's target", async () => {
     window.history.replaceState({}, '', '/dashboard');
