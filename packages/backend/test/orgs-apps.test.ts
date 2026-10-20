@@ -1,6 +1,7 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import request from 'supertest';
 import { addMember, adminPool, app, as, closePools, resetData, sampleVersion, signUp, SITE } from './helpers';
+import { withMaintenanceSession, withStudioSession } from '../src/db';
 
 afterAll(closePools);
 beforeEach(resetData);
@@ -182,6 +183,61 @@ describe('roles', () => {
     ).toBe(403);
     expect(await create('manager')).toBe(201);
     expect(await status('manager', 'post', `/v1/apps/${ctx.appId}/rotate-key`)).toBe(200);
+  });
+
+  it('the database enforces the split too, with no WHERE clause and no API in between', async () => {
+    // What an editor could do if a route forgot requireAppManager: nothing destructive.
+    const userId = async (sub: string) =>
+      (await request(app).get('/v1/me').set('Authorization', as(sub))).body.user.id as string;
+    await adminPool.query(
+      `INSERT INTO guide_event (app_id, guide_id, visitor_id, session_id, event_type)
+       VALUES ($1, $2, 'v-1', 's-1', 'guide_shown')`,
+      [ctx.appId, ctx.guideId],
+    );
+    await adminPool.query(
+      `INSERT INTO user_guide_state (app_id, visitor_id, guide_id, status) VALUES ($1, 'v-1', $2, 'completed')`,
+      [ctx.appId, ctx.guideId],
+    );
+
+    const editor = await userId('editor');
+    const asEditor = await withStudioSession(editor, async (c) => ({
+      renamed: (await c.query(`UPDATE application SET name = 'ok' WHERE id = $1`, [ctx.appId])).rowCount,
+      deletedApps: (await c.query(`DELETE FROM application WHERE id = $1`, [ctx.appId])).rowCount,
+      events: (await c.query(`DELETE FROM guide_event WHERE app_id = $1`, [ctx.appId])).rowCount,
+      state: (await c.query(`DELETE FROM user_guide_state WHERE app_id = $1`, [ctx.appId])).rowCount,
+    }));
+    expect(asEditor).toEqual({ renamed: 1, deletedApps: 0, events: 0, state: 0 });
+    await expect(
+      withStudioSession(editor, (c) =>
+        c.query(`UPDATE application SET public_key = 'ge_pk_forged' WHERE id = $1`, [ctx.appId]),
+      ),
+    ).rejects.toThrow(/only a manager/);
+    await expect(
+      withStudioSession(editor, (c) =>
+        c.query(`UPDATE application SET signing_secret = 'x' WHERE id = $1`, [ctx.appId]),
+      ),
+    ).rejects.toThrow(/only a manager/);
+
+    const manager = await userId('manager');
+    const asManager = await withStudioSession(manager, async (c) => ({
+      rotated: (
+        await c.query(`UPDATE application SET public_key = 'ge_pk_rotated' WHERE id = $1`, [ctx.appId])
+      ).rowCount,
+      events: (await c.query(`DELETE FROM guide_event WHERE app_id = $1`, [ctx.appId])).rowCount,
+      state: (await c.query(`DELETE FROM user_guide_state WHERE app_id = $1`, [ctx.appId])).rowCount,
+      deletedApps: (await c.query(`DELETE FROM application WHERE id = $1`, [ctx.appId])).rowCount,
+    }));
+    expect(asManager).toEqual({ rotated: 1, events: 1, state: 1, deletedApps: 1 });
+
+    // The operator's encrypt-secrets script rewrites signing secrets under the
+    // maintenance scope, which the key guard lets through.
+    const other = (await adminPool.query(`SELECT id FROM application WHERE org_id <> $1`, [ctx.orgId]))
+      .rows[0];
+    const rewritten = await withMaintenanceSession(
+      async (c) =>
+        (await c.query(`UPDATE application SET signing_secret = 'enc:x' WHERE id = $1`, [other.id])).rowCount,
+    );
+    expect(rewritten).toBe(1);
   });
 
   it('everyone in the organization sees every one of its sites', async () => {

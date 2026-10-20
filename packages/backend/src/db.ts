@@ -115,13 +115,19 @@ export async function resolveStudioContext(client: PoolClient, userId: string): 
     apps.set(a.id, { orgId: a.org_id, role: appRoleForOrgRole(orgs.get(a.org_id)!) });
 
   await setVar(client, 'app.app_ids', uuidArray(apps.keys()));
-  // Sites the user may change settings on: editors and up. Destructive site
-  // actions (delete, rotate keys, forget visitors) additionally require the
-  // manager role in the API.
+  // Sites the user may change settings on: editors and up.
   await setVar(
     client,
     'app.admin_app_ids',
     uuidArray([...apps].filter(([, a]) => a.role === 'app_admin').map(([id]) => id)),
+  );
+  // Sites where destructive actions (delete, rotate keys, forget visitors) are
+  // allowed: managers and owners. The API checks this (requireAppManager) and
+  // so do the policies and the key-guard trigger (migration 017).
+  await setVar(
+    client,
+    'app.manager_app_ids',
+    uuidArray([...apps].filter(([, a]) => adminOrgIds.includes(a.orgId)).map(([id]) => id)),
   );
 
   return { userId, orgs, apps };
@@ -207,6 +213,7 @@ export async function withSupportSession<T>(
     await setVar(client, 'app.owner_org_ids', uuidArray([]));
     await setVar(client, 'app.app_ids', uuidArray(apps.rows.map((a) => a.id)));
     await setVar(client, 'app.admin_app_ids', uuidArray([]));
+    await setVar(client, 'app.manager_app_ids', uuidArray([]));
     await client.query(`SET LOCAL transaction_read_only = on`);
     const ctx: StudioContext = {
       userId,

@@ -42,7 +42,8 @@ deliberately for this project's scale and constraints:
     every app of the org; there are no per-app grants (the `app_member` table is empty and unused).
     Internally the backend derives an `AppRole` (viewer | app_admin) from it for the existing
     per-app route checks; destructive app actions (delete, key rotation, forget visitor) are
-    gated by `requireAppManager` (manager+).
+    gated by `requireAppManager` (manager+) and, in the database, by `app.manager_app_ids`
+    (policies + the `application_guard_keys` trigger, migration 017).
   - HS256 dev tokens exist only in development/test.
 - **Above organizations, Pendo-style (migration 009).**
   - `studio_user.platform_admin` (granted by SQL, then from the Administration page) runs the
