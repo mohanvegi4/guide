@@ -109,6 +109,11 @@ services:
       # Unset: GET /metrics answers 404. Set: the `monitoring` profile (and any
       # other Prometheus) scrapes it with this bearer token.
       METRICS_TOKEN: ${METRICS_TOKEN:-}
+      # Optional: invitation emails and error tracking (empty = off; see .env.example).
+      SMTP_URL: ${SMTP_URL:-}
+      MAIL_FROM: ${MAIL_FROM:-}
+      STUDIO_URL: https://${STUDIO_HOST:?set STUDIO_HOST}
+      SENTRY_DSN: ${SENTRY_DSN:-}
     depends_on:
       postgres:
         condition: service_healthy

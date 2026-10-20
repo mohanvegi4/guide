@@ -846,17 +846,17 @@ section or variable that explains it; the `deploy/` stack is assumed, and
 3. **Keycloak.** `deploy/render-realm.sh` before the first `docker compose up` (no dev users,
    brute-force detection on, redirect URIs = `https://STUDIO_HOST`). After the stack is up:
    create the first user in the admin console, create a permanent admin in the **master** realm,
-   and decide how `https://AUTH_HOST/admin` is reached: an IP allowlist in `deploy/Caddyfile`
-   (the TODO there) or a non-public `KC_HOSTNAME_ADMIN` ([Known gaps](#known-gaps-and-roadmap)).
+   and put your office / VPN ranges in `ADMIN_ALLOW_CIDRS` — `https://AUTH_HOST/admin` answers
+   403 to everyone else, and to everyone while it's empty.
 4. **First platform admin.** After that person has signed in once:
    `UPDATE studio_user SET platform_admin = TRUE WHERE email = '…'`
    ([Guide Engine administration](#guide-engine-administration)).
-5. **Invitation emails.** Set `SMTP_URL`, `MAIL_FROM` and `STUDIO_URL` on the backend, or accept
-   that invitations are links the inviter copies. The compose file sets none of the three: add
-   them to the `backend` service's environment ([Configuration reference](#configuration-reference)).
-6. **Error tracking and metrics.** `SENTRY_DSN` on the backend (optional; compose doesn't set
-   it). `METRICS_TOKEN` in `deploy/.env`, then `docker compose --profile monitoring up -d`, and
-   point the `alerting:` block in `deploy/monitoring/prometheus.yml` at an Alertmanager, or no
+5. **Invitation emails.** `SMTP_URL` and `MAIL_FROM` in `deploy/.env` (compose derives
+   `STUDIO_URL` from `STUDIO_HOST`), or accept that invitations are links the inviter copies
+   ([Configuration reference](#configuration-reference)).
+6. **Error tracking, metrics and alerts.** `SENTRY_DSN` (optional), `METRICS_TOKEN` and
+   `ALERT_WEBHOOK_URL` in `deploy/.env`, then `docker compose --profile monitoring up -d`:
+   Prometheus scrapes the backend and Alertmanager posts to the webhook — without the URL, no
    one is paged ([Observability](#observability)).
 7. **Backups.** The `backup` service runs by itself; set `BACKUP_COPY_CMD` or a host cron job
    for an off-host copy, check `BACKUP_KEEP_DAYS` against what your privacy policy says, and
