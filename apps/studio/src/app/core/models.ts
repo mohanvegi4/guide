@@ -21,12 +21,26 @@ export type GuideStatus = 'draft' | 'published' | 'archived';
  */
 export type OrgRole = 'owner' | 'manager' | 'editor' | 'viewer';
 export const ORG_ROLES: ReadonlyArray<{ role: OrgRole; label: string; description: string }> = [
-  { role: 'owner', label: 'Owner', description: 'Everything, including ownership, support access and deleting the organization.' },
-  { role: 'manager', label: 'Manager', description: 'Runs the organization: creates sites, manages members and invitations.' },
-  { role: 'editor', label: 'Editor', description: 'Builds and publishes guides and pages, changes site settings; cannot create or delete sites.' },
+  {
+    role: 'owner',
+    label: 'Owner',
+    description: 'Everything, including ownership, support access and deleting the organization.',
+  },
+  {
+    role: 'manager',
+    label: 'Manager',
+    description: 'Runs the organization: creates sites, manages members and invitations.',
+  },
+  {
+    role: 'editor',
+    label: 'Editor',
+    description:
+      'Builds and publishes guides and pages, changes site settings; cannot create or delete sites.',
+  },
   { role: 'viewer', label: 'Viewer', description: 'Read-only: guides, pages and analytics.' },
 ];
-export const roleLabel = (role: OrgRole | string): string => ORG_ROLES.find((r) => r.role === role)?.label ?? role;
+export const roleLabel = (role: OrgRole | string): string =>
+  ORG_ROLES.find((r) => r.role === role)?.label ?? role;
 /** The role a Studio user effectively has inside one site (derived from the org role by the backend). */
 export type AppRole = 'viewer' | 'editor' | 'publisher' | 'app_admin';
 
@@ -189,6 +203,8 @@ export interface GuideSummary {
   enabled: boolean;
   current_version_id: string | null;
   current_version_number: number | null;
+  /** How the live version starts (null = nothing live). */
+  activation: GuideActivation | null;
   updated_at: string;
   /** The saved page the live version shows on (null = custom route / nothing live). */
   page_id: string | null;
@@ -231,6 +247,8 @@ export interface GuideVersion {
   account_ids: string[] | null;
   /** null = not listed in the help center */
   help: HelpListing | null;
+  /** How the guide starts; see GuideActivation. */
+  activation: GuideActivation;
   /** null = unpublished draft */
   published_at: string | null;
   created_at: string;
@@ -245,6 +263,15 @@ export interface GuideDetail {
   current_version_id: string | null;
   versions: GuideVersion[];
 }
+
+/**
+ * How a guide starts:
+ *   auto    when the visitor lands on its page, once per published version
+ *           (welcome tours, "what's new", announcements)
+ *   manual  only when picked from the help center or opened from a help link,
+ *           so it must be listed in the help center
+ */
+export type GuideActivation = 'auto' | 'manual';
 
 /** How a guide appears in the help center. startPath: where visitors are sent before it starts. */
 export interface HelpListing {
@@ -263,6 +290,7 @@ export interface PublishPayload {
   endAt?: string;
   accountIds?: string[] | null;
   help?: HelpListing | null;
+  activation?: GuideActivation;
 }
 
 export interface PublishedVersion {

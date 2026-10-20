@@ -26,6 +26,7 @@ const version = (over: Partial<GuideVersion>): GuideVersion => ({
   end_at: null,
   account_ids: null,
   help: null,
+  activation: 'auto',
   published_at: '2026-10-19T00:00:00Z',
   created_at: '2026-10-19T00:00:00Z',
   ...over,

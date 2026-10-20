@@ -219,7 +219,8 @@ function visitorFrom(req: Request, app: AgentApp): Visitor {
 // ------------------------------------------------------------
 // POST /v1/agent/:key/guides — one round trip: kill switches + every guide
 // this visitor should see right now (published, enabled, in its date window,
-// their account allowed, not already finished at this version or later).
+// their account allowed, not already finished at this version or later, and
+// starting automatically — on-demand guides only come through /help).
 // Route matching happens in the agent.
 // ------------------------------------------------------------
 agentApiRouter.post(
@@ -233,6 +234,7 @@ agentApiRouter.post(
         `SELECT a.id, a.app_id, a.name, a.type, a.version_id, a.steps, a.route_match
          FROM active_guide a
          WHERE a.app_id = $1
+           AND a.activation = 'auto'
            AND (a.account_ids IS NULL OR $3::text = ANY(a.account_ids))
            AND NOT EXISTS (
              SELECT 1 FROM user_guide_state s

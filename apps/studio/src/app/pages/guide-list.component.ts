@@ -104,6 +104,7 @@ interface OverviewRow {
             <th>Type</th>
             <th>Status</th>
             <th>Page</th>
+            <th>Starts</th>
             <th>Live version</th>
             <th>Updated</th>
             <th>Enabled</th>
@@ -120,6 +121,9 @@ interface OverviewRow {
                 <span class="badge" [class]="'badge ' + g.status">{{ g.status }}</span>
               </td>
               <td>{{ g.page_name ?? (g.current_version_id ? 'Custom route' : '—') }}</td>
+              <td>
+                {{ g.activation === 'manual' ? 'From help center' : g.activation ? 'Automatically' : '—' }}
+              </td>
               <td>{{ g.current_version_number ? 'v' + g.current_version_number : '—' }}</td>
               <td>{{ g.updated_at | date: 'short' }}</td>
               <td>

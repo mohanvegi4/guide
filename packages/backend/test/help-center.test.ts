@@ -57,6 +57,54 @@ describe('help center', () => {
     expect(res.body.guides[0].steps[0].content).toBe(sampleStep.content);
   });
 
+  it('an on-demand guide never pops up, but is listed in the help center', async () => {
+    const { key, appId } = await signUp('alice');
+    const onDemand = await liveGuide('alice', appId, {
+      ...sampleVersion,
+      routeMatch: { type: 'exact', value: '/team' },
+      help,
+      activation: 'manual',
+    });
+    const automatic = await liveGuide('alice', appId, {
+      ...sampleVersion,
+      routeMatch: { type: 'exact', value: '/dashboard' },
+      help,
+    });
+
+    const guides = await agent(key, '/guides', visitor());
+    expect(guides.body.guides.map((g: { id: string }) => g.id)).toEqual([automatic.guideId]);
+    const list = await agent(key, '/help', visitor());
+    expect(list.body.guides.map((g: { id: string }) => g.id).sort()).toEqual(
+      [automatic.guideId, onDemand.guideId].sort(),
+    );
+
+    // The Studio sees the choice on the version, defaulting to 'auto'.
+    const detail = await request(app)
+      .get(`/v1/apps/${appId}/guides/${onDemand.guideId}`)
+      .set('Authorization', as('alice'));
+    expect(detail.body.versions[0].activation).toBe('manual');
+    const auto = await request(app)
+      .get(`/v1/apps/${appId}/guides/${automatic.guideId}`)
+      .set('Authorization', as('alice'));
+    expect(auto.body.versions[0].activation).toBe('auto');
+  });
+
+  it('refuses an on-demand guide that is not in the help center (it would be unreachable)', async () => {
+    const { appId } = await signUp('alice');
+    const g = await request(app)
+      .post(`/v1/apps/${appId}/guides`)
+      .set('Authorization', as('alice'))
+      .send({ name: 'G', type: 'tooltip' });
+    const res = await request(app)
+      .put(`/v1/apps/${appId}/guides/${g.body.id}/draft`)
+      .set('Authorization', as('alice'))
+      .send({ ...sampleVersion, activation: 'manual', help: null });
+    expect(res.status).toBe(400);
+    expect(res.body.details.fieldErrors.activation).toEqual([
+      'an on-demand guide must be listed in the help center',
+    ]);
+  });
+
   it('keeps finished guides listed (help is on demand), unlike automatic guides', async () => {
     const { key, appId } = await signUp('alice');
     const g = await liveGuide('alice', appId, {

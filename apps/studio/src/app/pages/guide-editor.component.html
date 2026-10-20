@@ -122,6 +122,18 @@
             <input type="datetime-local" formControlName="endAt" />
           </label>
         </div>
+        <fieldset class="activation">
+          <legend>How it starts</legend>
+          <label class="switch"><input type="radio" formControlName="activation" value="auto" /> Automatically, when a visitor opens the page</label>
+          <label class="switch"><input type="radio" formControlName="activation" value="manual" /> Only from the help center</label>
+          <small class="muted">
+            @if (form.controls.activation.value === 'manual') {
+              Never pops up. Visitors find it in the help list (or open it from a shared help link).
+            } @else {
+              Shows once per published version: publish again to show it to everyone once more.
+            }
+          </small>
+        </fieldset>
         <fieldset class="audience">
           <legend>Audience</legend>
           <label class="switch"><input type="radio" formControlName="audience" value="all" /> All accounts</label>
@@ -141,9 +153,13 @@
       <section class="card">
         <div class="section-head">
           <h2>Help center</h2>
-          <label class="switch"><input type="checkbox" formControlName="helpListed" /> List in the help center</label>
+          @if (form.controls.activation.value === 'manual') {
+            <span class="muted small">Listed: it starts only from here.</span>
+          } @else {
+            <label class="switch"><input type="checkbox" formControlName="helpListed" /> List in the help center</label>
+          }
         </div>
-        @if (form.controls.helpListed.value) {
+        @if (helpListed()) {
           <p class="muted small">
             Visitors can search for this guide in the help button's list and start it on demand — even if they've done it
             before. If they're on another page, they're taken to the start page first.

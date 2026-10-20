@@ -16,7 +16,9 @@ import { ApiService, describeError } from '../core/api.service';
 import { runRequest } from '../core/request';
 import {
   AppPage,
+  appRoleAtLeast,
   GUIDE_TYPES,
+  GuideActivation,
   GuideDetail,
   GuideType,
   GuideVersion,
@@ -28,7 +30,6 @@ import {
   StepActionType,
   StepPayload,
   StepPosition,
-  appRoleAtLeast,
 } from '../core/models';
 import { VersionHistoryComponent } from '../components/version-history.component';
 import { AnalyticsComponent } from '../components/analytics.component';
@@ -111,6 +112,8 @@ export class GuideEditorComponent {
     // Audience: everyone, or only the listed account ids (one per line / comma separated).
     audience: this.fb.control<'all' | 'accounts'>('all'),
     accountIds: this.fb.control(''),
+    // How the guide starts: automatically on its page, or only from the help center.
+    activation: this.fb.control<GuideActivation>('auto'),
     // Help center listing (on-demand, searchable).
     helpListed: this.fb.control(false),
     helpTitle: this.fb.control('', Validators.maxLength(120)),
@@ -241,6 +244,7 @@ export class GuideEditorComponent {
       routeValue: version.route_match.value,
       audience: version.account_ids?.length ? 'accounts' : 'all',
       accountIds: (version.account_ids ?? []).join('\n'),
+      activation: version.activation ?? 'auto',
       helpListed: version.help !== null && version.help !== undefined,
       helpTitle: version.help?.title ?? '',
       helpDescription: version.help?.description ?? '',
@@ -327,7 +331,9 @@ export class GuideEditorComponent {
         ? { pageId: v.pageId }
         : { routeMatch: { type: v.routeType, value: v.routeValue.trim() } }),
       accountIds: v.audience === 'accounts' ? parseAccountIds(v.accountIds) : null,
-      help: v.helpListed
+      activation: v.activation,
+      // An on-demand guide is only reachable from the help center, so it's always listed.
+      help: this.helpListed()
         ? {
             title: v.helpTitle.trim() || this.guide()?.name || 'Untitled',
             description: v.helpDescription.trim(),
@@ -356,11 +362,17 @@ export class GuideEditorComponent {
     };
   }
 
+  /** Listed in the help center: ticked, or implied by "only from the help center". */
+  protected helpListed(): boolean {
+    const v = this.form.getRawValue();
+    return v.helpListed || v.activation === 'manual';
+  }
+
   /** A wildcard route has no single page to send help-center visitors to. */
   protected helpNeedsStartPage(): boolean {
     const v = this.form.getRawValue();
     // Saved pattern pages always carry their own start page.
-    return v.helpListed && v.where === 'custom' && v.routeType === 'pattern' && !v.helpStartPath.trim();
+    return this.helpListed() && v.where === 'custom' && v.routeType === 'pattern' && !v.helpStartPath.trim();
   }
 
   /** Placeholder for the help start page: what's used when it's left empty. */

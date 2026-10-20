@@ -104,6 +104,14 @@ const versionBodySchema = z
       .nullable()
       .optional(),
     help: helpSchema.nullable().optional(),
+    // How the guide starts. 'auto' (default): when the visitor lands on its
+    // page, once per published version. 'manual': only from the help center
+    // or a help link — so it needs a help listing to be reachable at all.
+    activation: z.enum(['auto', 'manual']).default('auto'),
+  })
+  .refine((v) => v.activation === 'auto' || Boolean(v.help), {
+    message: 'an on-demand guide must be listed in the help center',
+    path: ['activation'],
   })
   .refine((v) => Boolean(v.pageId) !== Boolean(v.routeMatch), {
     message: 'choose a saved page (pageId) or a custom route (routeMatch)',
@@ -138,6 +146,7 @@ interface PreparedVersion {
   endAt: string | null;
   accountIds: string[] | null;
   help: { title: string; description: string; keywords: string[]; startPath?: string } | null;
+  activation: 'auto' | 'manual';
 }
 
 /**
@@ -179,6 +188,7 @@ function parseVersionBody(body: unknown): PreparedVersion {
           ...(parsed.help.startPath ? { startPath: parsed.help.startPath } : {}),
         }
       : null,
+    activation: parsed.activation,
   };
 }
 
@@ -196,7 +206,7 @@ async function lockGuide(client: PoolClient, appId: string, guideId: string): Pr
 }
 
 const VERSION_COLUMNS =
-  'id, version_number, steps, route_match, page_id, start_at, end_at, account_ids, help, published_at';
+  'id, version_number, steps, route_match, page_id, start_at, end_at, account_ids, help, activation, published_at';
 
 /**
  * Creates or overwrites the guide's single working draft (published_at NULL).
@@ -219,10 +229,11 @@ async function upsertDraft(client: PoolClient, appId: string, guideId: string, v
     v.endAt,
     v.accountIds,
     v.help ? JSON.stringify(v.help) : null,
+    v.activation,
   ];
   const updated = await client.query(
     `UPDATE guide_version SET steps = $2, route_match = $3, page_id = $4, start_at = $5, end_at = $6,
-                              account_ids = $7, help = $8
+                              account_ids = $7, help = $8, activation = $9
      WHERE guide_id = $1 AND published_at IS NULL
      RETURNING ${VERSION_COLUMNS}`,
     [guideId, ...values],
@@ -231,8 +242,9 @@ async function upsertDraft(client: PoolClient, appId: string, guideId: string, v
 
   const inserted = await client.query(
     `INSERT INTO guide_version
-       (guide_id, version_number, steps, route_match, page_id, start_at, end_at, account_ids, help, published_at)
-     SELECT $1, COALESCE(MAX(version_number), 0) + 1, $2, $3, $4, $5, $6, $7, $8, NULL
+       (guide_id, version_number, steps, route_match, page_id, start_at, end_at, account_ids, help, activation,
+        published_at)
+     SELECT $1, COALESCE(MAX(version_number), 0) + 1, $2, $3, $4, $5, $6, $7, $8, $9, NULL
      FROM guide_version WHERE guide_id = $1
      RETURNING ${VERSION_COLUMNS}`,
     [guideId, ...values],
@@ -251,6 +263,7 @@ function toVersionResponse(row: Record<string, unknown>) {
     endAt: row.end_at,
     accountIds: row.account_ids,
     help: row.help,
+    activation: row.activation,
     publishedAt: row.published_at,
   };
 }
@@ -266,7 +279,7 @@ guidesRouter.get(
       requireAppRole(ctx, appId, 'viewer');
       const result = await client.query(
         `SELECT g.id, g.name, g.type, g.status, g.enabled, g.current_version_id,
-                gv.version_number AS current_version_number, g.created_at, g.updated_at,
+                gv.version_number AS current_version_number, gv.activation, g.created_at, g.updated_at,
                 p.id AS page_id, p.name AS page_name
          FROM guide g
          LEFT JOIN guide_version gv ON gv.id = g.current_version_id

@@ -14,6 +14,7 @@ const guide: GuideSummary = {
   enabled: false,
   current_version_id: 'v1',
   current_version_number: 1,
+  activation: 'auto',
   updated_at: '2026-10-07T00:00:00Z',
   page_id: 'p1',
   page_name: 'Team settings',

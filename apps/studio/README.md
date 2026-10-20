@@ -157,6 +157,11 @@ for that id).
      route can be saved as a page in place (**Save as page**), so other guides can reuse it.
      Guides on a saved page follow it when its URL changes, even live ones.
    - **Dates:** optional start and end.
+   - **How it starts:** *Automatically, when a visitor opens the page* (once per published
+     version: publish again to show it to everyone once more — welcome tours, "what's new"), or
+     *Only from the help center* (never pops up; visitors pick it from the help list or open a
+     help link, so it's always listed there). When several automatic guides match a page, the
+     agent shows them one at a time, walkthroughs first.
    - **Audience:** *All accounts*, or *Only these accounts*, one id per line. Use the account ids
      your site passes to `guideEngine.initialize({ account: { id } })`.
 3. **Steps:** add, reorder (↑ / ↓) and remove them. Each has:
