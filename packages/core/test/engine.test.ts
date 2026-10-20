@@ -538,6 +538,39 @@ describe('DOM renderer brings a freshly rendered anchor back when the page scrol
   });
 });
 
+describe('DOM renderer keeps the card’s DOM across re-renders of the same step', () => {
+  it('only moves the card when the same step is rendered again, so its buttons survive a click', () => {
+    const target = document.createElement('button');
+    target.setAttribute('data-guide-id', 'stable-anchor');
+    document.body.appendChild(target);
+    let rect = { top: 100, left: 20, right: 120, bottom: 130, width: 100, height: 30 };
+    target.getBoundingClientRect = () => rect as DOMRect;
+    const advanceStep = vi.fn();
+    const renderer = createDomRenderer({ advanceStep, previousStep: () => {}, dismissGuide: () => {} });
+    const guide = makeGuide({
+      steps: [
+        makeStep({ id: 's1', targetSelector: '[data-guide-id="stable-anchor"]' }),
+        makeStep({ id: 's2', targetSelector: '[data-guide-id="stable-anchor"]' }),
+      ],
+    });
+    renderer.renderStep(guide, guide.steps[0], target);
+    const host = document.querySelector<HTMLElement>('[data-guide-host]:not([data-guide-spotlight])')!;
+    const nextBefore = host.shadowRoot!.querySelector<HTMLButtonElement>('.actions button')!;
+
+    // The page mutated and the element moved: the engine renders the step again.
+    rect = { ...rect, top: 300, bottom: 330 };
+    renderer.renderStep(guide, guide.steps[0], target);
+    expect(host.style.top).toBe('338px'); // followed the element…
+    expect(host.shadowRoot!.querySelector('.actions button')).toBe(nextBefore); // …without rebuilding
+    nextBefore.click();
+    expect(advanceStep).toHaveBeenCalledWith('guide-1');
+
+    // A different step does rebuild the card.
+    renderer.renderStep(guide, guide.steps[1], target);
+    expect(host.shadowRoot!.querySelector('.actions button')).not.toBe(nextBefore);
+  });
+});
+
 describe('DOM renderer: a way out on every step', () => {
   it('shows a close control that dismisses the guide, whatever buttons the author chose', () => {
     const dismissGuide = vi.fn();

@@ -200,6 +200,9 @@ export function createDomRenderer(engine: {
     if (dy) host.style.top = `${parseFloat(host.style.top) + dy}px`;
   }
 
+  /** guideId -> the step whose card is currently built in the shadow root. */
+  const builtStep = new Map<string, string>();
+
   return {
     renderStep(guide: Guide, step: Step, targetEl: Element | null) {
       const { host, spotlight, shadow } = ensureHost(guide.id);
@@ -207,6 +210,15 @@ export function createDomRenderer(engine: {
       spotlightTarget(spotlight, targetEl);
       positionNear(host, targetEl, step.position);
       track(guide.id, step, targetEl);
+
+      // The engine re-renders a step whenever the host page's DOM changes, so
+      // the card can follow an element that moved or was re-mounted. That must
+      // only move the card: rebuilding it would replace its buttons under the
+      // visitor's cursor, and a page that mutates constantly (ripples, timers,
+      // live regions) would make a real click — mousedown, then mouseup on
+      // what is by then a different button — never register.
+      if (builtStep.get(guide.id) === step.id) return;
+      builtStep.set(guide.id, step.id);
 
       // NOTE: step.content is expected to already be sanitized server-side
       // (see docx/authoring-studio sanitization requirement in the scope doc).
@@ -279,6 +291,7 @@ export function createDomRenderer(engine: {
       entry?.spotlight.remove();
       hosts.delete(guideId);
       scrolledTo.delete(guideId);
+      builtStep.delete(guideId);
       untrack(guideId);
     },
   };
