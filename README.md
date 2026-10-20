@@ -747,6 +747,10 @@ an `organization` (or one `application`) removes everything beneath it in one st
 Referential actions bypass Row-Level Security, which is what lets a deletion take published
 versions and events with it without any session being allowed to delete those directly.
 
+Migration runs are serialized with a Postgres advisory lock (held for the whole run, released
+when it ends), so replicas that all run `migrate.js` at start can boot together: one applies the
+pending files and the others wait, then find nothing to do.
+
 | Migration | What it does |
 |---|---|
 | `001`–`004` | The original OCLC-era tenant schema and its RLS hardening, drafts and platform admins (kept, never edited). |
@@ -778,7 +782,7 @@ npm test --workspace=apps/studio          # Studio components and services
 
 | Suite | Tests | Covers |
 |---|---|---|
-| **Backend** | 247 | self-serve orgs; apps and settings; the role matrix; invitations; members; saved pages; platform admins and support access (consent, read-only, logging, RLS); secrets at rest, the shared rate limiter, retention (events and agent errors), production boot checks; the agent script's ETag / 304 / cache headers and the version endpoint; the security headers (and that the agent surface keeps only nosniff); agent error reports (validation, the hourly cap, the Studio list, RLS isolation, platform counts); org/app isolation through the API **and directly in RLS** (including replaying the owner bootstrap and forging memberships); the agent API (origins, keys, identity modes, account targeting, kill switches, events and per-visitor state, preview); the guide lifecycle; sanitization; stable step ids; analytics; OIDC (a local JWKS server, algorithm confusion); and migration 005's data conversion |
+| **Backend** | 251 | self-serve orgs; apps and settings; the role matrix; invitations; members; saved pages; platform admins and support access (consent, read-only, logging, RLS); secrets at rest, the shared rate limiter, retention (events and agent errors), production boot checks; the agent script's ETag / 304 / cache headers and the version endpoint; the security headers (and that the agent surface keeps only nosniff); agent error reports (validation, the hourly cap, the Studio list, RLS isolation, platform counts); org/app isolation through the API **and directly in RLS** (including replaying the owner bootstrap and forging memberships); the agent API (origins, keys, identity modes, account targeting, kill switches, events and per-visitor state, preview); the guide lifecycle; sanitization; stable step ids; analytics; OIDC (a local JWKS server, algorithm confusion); migration 005's data conversion; and concurrent migration runs (the advisory lock) |
 | **Core** | 94 | includes the help widget (search, keyboard, safe rendering), help launches (same page, other page, arrival, shared links) and error reporting (sampling, the per-page cap, never throwing) |
 | **Agent** | 8 | includes `openHelp` queued before load and the build-time version |
 | **Studio** | 43 | guide list and editor (saved pages), Pages, app settings (including the agent-error list), the Administration page |
