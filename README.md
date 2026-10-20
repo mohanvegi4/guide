@@ -316,7 +316,7 @@ Full guide: [`apps/studio/README.md`](apps/studio/README.md).
 
     | App role | Can |
     |---|---|
-    | viewer | read guides, pages, versions and analytics |
+    | viewer | read guides, pages, versions and analytics; see the install snippet |
     | editor | + create guides, save drafts, make preview links; create pages, and edit or delete pages no live guide uses |
     | publisher | + publish, enable / disable, roll back; change the URL of a page live guides use |
     | app admin | + app settings: snippet, websites, signed identity, key rotation, app on / off |

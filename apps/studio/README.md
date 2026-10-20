@@ -59,7 +59,7 @@ staff) also see **Administration**; see below.
 | Role | What you can do |
 |---|---|
 | org **owner** / **admin** | everything in every app of the org; create apps; manage members and invitations. Only owners can grant or remove ownership, and an org always keeps one owner. |
-| app **viewer** | read guides, versions and analytics |
+| app **viewer** | read guides, pages, versions and analytics; the **Install** page (snippet and anchor instructions, read-only) |
 | app **editor** | + create guides, save drafts, make preview links |
 | app **publisher** | + publish, enable / disable, roll back |
 | app **app_admin** | + Install & settings: snippet, websites, signed identity, key rotation, app on / off, help center |

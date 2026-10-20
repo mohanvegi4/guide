@@ -64,7 +64,8 @@ export const routes: Routes = [
       {
         path: 'apps/:appId/settings',
         component: AppSettingsComponent,
-        canActivate: [appRole('app_admin')],
+        // Every member may read the install instructions; the settings themselves render for app admins only.
+        canActivate: [appRole('viewer')],
         title: 'App settings · Guide Studio',
       },
       { path: '', pathMatch: 'full', redirectTo: 'apps' },

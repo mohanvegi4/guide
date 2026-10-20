@@ -38,11 +38,9 @@
           @if (currentAppId(); as appId) {
             <a [routerLink]="['/o', orgId(), 'apps', appId, 'guides']" routerLinkActive="active">Guides</a>
             <a [routerLink]="['/o', orgId(), 'apps', appId, 'pages']" routerLinkActive="active">Pages</a>
-            @if (appRole() === 'app_admin') {
-              <a [routerLink]="['/o', orgId(), 'apps', appId, 'settings']" routerLinkActive="active"
-                >Install &amp; settings</a
-              >
-            }
+            <a [routerLink]="['/o', orgId(), 'apps', appId, 'settings']" routerLinkActive="active">{{
+              appRole() === 'app_admin' ? 'Install & settings' : 'Install'
+            }}</a>
           }
           <a
             [routerLink]="['/o', orgId(), 'apps']"

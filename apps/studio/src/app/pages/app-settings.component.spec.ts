@@ -3,7 +3,8 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { Router, provideRouter } from '@angular/router';
 import { AppSettingsComponent } from './app-settings.component';
-import { AgentError, App, HelpAnalytics } from '../core/models';
+import { AuthService } from '../core/auth.service';
+import { AgentError, App, AppRole, HelpAnalytics } from '../core/models';
 
 const app: App = {
   id: 'a1',
@@ -43,12 +44,25 @@ describe('AppSettingsComponent', () => {
     overrides: Partial<App> = {},
     errors: AgentError[] = [],
     stats: HelpAnalytics = analytics,
+    role: AppRole = 'app_admin',
   ) {
     TestBed.configureTestingModule({
       imports: [AppSettingsComponent],
       providers: [provideHttpClient(), provideHttpClientTesting(), provideRouter([])],
     });
     http = TestBed.inject(HttpTestingController);
+    TestBed.inject(AuthService).me.set({
+      user: { id: 'u', email: null, name: null, platformAdmin: false },
+      orgs: [
+        {
+          id: 'o1',
+          name: 'Acme',
+          role: 'member',
+          suspendedAt: null,
+          apps: [{ id: 'a1', name: 'Web app', role }],
+        },
+      ],
+    });
     const fixture = TestBed.createComponent(AppSettingsComponent);
     fixture.componentRef.setInput('appId', 'a1');
     fixture.detectChanges();
@@ -62,6 +76,16 @@ describe('AppSettingsComponent', () => {
   }
 
   afterEach(() => http.verify());
+
+  it('shows editors the install card only, read-only', async () => {
+    const el = await render({}, [], analytics, 'editor');
+    expect(el.querySelector('h1')?.textContent).toContain('install');
+    expect(el.textContent).toContain('Copy snippet');
+    expect(el.textContent).toContain("managed by this app's admins");
+    expect(el.textContent).not.toContain('2. Websites');
+    expect(el.querySelector('section.danger-zone')).toBeNull();
+    expect(el.querySelector<HTMLInputElement>('.page-header input[type=checkbox]')!.disabled).toBe(true);
+  });
 
   it('shows the install snippet with the app key, and the websites', async () => {
     const el = await render();
@@ -211,6 +235,8 @@ describe('AppSettingsComponent', () => {
 
   it('says so when the help center has not been used', async () => {
     const el = await render({}, [], { days: 30, opens: 0, searches: 0, guidesStarted: 0, topQueries: [] });
-    expect(el.querySelector('.help-analytics')!.textContent).toContain('No help-center opens or searches recorded yet.');
+    expect(el.querySelector('.help-analytics')!.textContent).toContain(
+      'No help-center opens or searches recorded yet.',
+    );
   });
 });
