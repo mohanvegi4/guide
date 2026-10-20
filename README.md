@@ -515,7 +515,7 @@ packages they're `GuideService.openHelp()` (Angular), `useGuideEngine().openHelp
     request needs them.
   - **Delete** (type the organization's name to confirm) removes the organization with its apps,
     guides and versions, pages, events, visitor state, agent errors, memberships, invitations and
-    the support access log, in one transaction. App admins can delete a single app the same way
+    the support access log, in one transaction. Managers can delete a single app the same way
     (`DELETE /v1/apps/:appId`). What is kept: nothing but the Studio user accounts, which may
     belong to other organizations. Platform admins can perform the deletion on a customer's
     request (`DELETE /v1/platform/orgs/:orgId`, logged).
@@ -741,8 +741,8 @@ versions and events with it without any session being allowed to delete those di
 | `010_production.sql` | `agent_rate_limit` (the shared agent-API budget), the `app_retention()` function and the retention policies on `guide_event`, an index on `occurred_at`. |
 | `011_agent_delivery.sql` | `agent_error` with its RLS: agent insert/select for its own app (the hourly cap counts in the same session), Studio and platform select, retention select/delete. |
 | `012_engine_gaps.sql` | Adds `application.route_mode` (CHECK-limited to `path` / `hash`), the `help_opened` / `help_searched` event types, and makes `guide_event.guide_id` nullable for those two types only (a CHECK constraint; the foreign keys stay). |
-| `014_forget_visitor.sql` | App admins may delete one visitor's `guide_event` rows and read/delete their `user_guide_state` rows ("forget this visitor"). |
 | `013_data_lifecycle.sql` | Deletion policies: `app_owner_org_ids()` (a new session variable, owners only) with `organization_owner_delete`, `organization_platform_delete`, and `application_app_admin_delete`. Nothing new is readable. |
+| `014_forget_visitor.sql` | "Forget this visitor": policies to delete one visitor's `guide_event` rows and read/delete their `user_guide_state` rows (scoped to app admins here; narrowed to managers in 017). |
 | `015_org_roles_enum.sql` / `016_org_roles_convert.sql` | One organization-wide role per person: adds `manager` / `editor` / `viewer` to `org_role`, converts `admin` → manager and `member` → editor (anyone with an editing grant on any app) or viewer, empties `app_member`, adds CHECK constraints, and lets every member see every app of their org (`application_select` on `app_org_ids()`). |
 | `017_manager_rls.sql` | The editor / manager split in the database: `app_manager_app_ids()` (apps of the orgs where the user is a manager or owner) replaces `app_admin_app_ids()` in the forget-visitor policies, the per-app delete policy from 013 is dropped (`application_delete` on `app_admin_org_ids()` already covers managers), and the `application_guard_keys` trigger refuses a change to `public_key` / `signing_secret` from anyone but a manager (or the maintenance scope used by `encrypt-secrets`). |
 

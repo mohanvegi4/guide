@@ -78,7 +78,7 @@ mail configured the invitation is also emailed. Pending invitations can be revok
 **Members** ends with a **Guide Engine support access** card. Guide Engine's own staff can't see
 an organization unless an **owner** opens a window here (1, 7, 30 or 90 days). While it's open,
 platform admins can view the organization's guides, pages, analytics and members **read-only**,
-and every page they open is listed in the card's access log, which admins can also see. **Close
+and every page they open is listed in the card's access log, which managers can also see. **Close
 now** ends it early; otherwise it closes by itself.
 
 ## Your data (org owners)

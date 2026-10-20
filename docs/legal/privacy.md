@@ -53,9 +53,9 @@ session is stored on our servers.
   provider marked it verified) and name, created on first sign-in and updated from the provider
   on later sign-ins, with the time of your last sign-in; and, for our own staff, a platform-admin
   flag.
-- Your **memberships**: which organizations you belong to, your organization role (owner, admin
-  or member) and your role in each application (viewer, editor, publisher or app admin).
-- **Invitations** you create or receive: the organization and roles, the invitee's email address
+- Your **memberships**: which organizations you belong to and your role in each (owner, manager,
+  editor or viewer), which applies to every application of that organization.
+- **Invitations** you create or receive: the organization and role, the invitee's email address
   if one was entered, an expiry (7 days) and the invitation token stored **hashed**. If the
   operator has email configured, the invitation is emailed to that address through the email
   provider listed in our [subprocessors](subprocessors.md).

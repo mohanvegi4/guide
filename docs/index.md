@@ -10,7 +10,8 @@ In-app guides for any web application: a lightweight alternative to Pendo or Wal
 Add one snippet to your site, author tooltips, modals, banners and tours in the **Studio**, point
 them at elements tagged `data-guide-id`, publish, and measure what visitors did. A floating
 **Help** button gives visitors a searchable list of guides. One Studio serves many applications:
-an **organization** owns any number of **applications**, and teammates get a role per app.
+an **organization** owns any number of **applications**, and everyone in it has one role
+(viewer, editor, manager or owner) for all of them.
 
 ## Who this site is for
 

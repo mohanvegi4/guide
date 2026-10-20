@@ -41,9 +41,10 @@ reductions in functionality are announced as described in section 12.
    Service. The Customer is responsible for the security of the identity provider accounts its
    people use.
 2. **Organizations and roles.** The person who creates an organization becomes its **owner**.
-   Owners and admins manage the organization's applications and members; members get a role
-   per application (viewer, editor, publisher or app admin). The Customer is responsible for who
-   it invites, for the roles it grants, and for everything done under its members' sessions.
+   Every member has one role for the whole organization: owners and managers manage its
+   applications and members, editors build and publish guides, viewers only look. The Customer
+   is responsible for who it invites, for the roles it grants, and for everything done under its
+   members' sessions.
    Invitation links are valid for 7 days and work once; keep them private.
 3. **Applications and keys.** Each application has a **public key**, embedded in the install
    snippet, and a list of **websites** (origins) where guides may load. The public key is not a
@@ -147,7 +148,7 @@ incident.
 
 ## 11. Data on termination and deletion
 
-1. **Self-service.** In the Studio, owners and admins can remove members, revoke invitations,
+1. **Self-service.** In the Studio, owners and managers can remove members, revoke invitations,
    close support access, disable guides, delete saved pages no guide uses, rotate public keys
    and switch applications off.
    Guide analytics are visible in the Studio for the retention period described in the
