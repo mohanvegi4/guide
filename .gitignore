@@ -17,3 +17,6 @@ site/
 _site/
 # prepack copies the root LICENSE into each public package; the root file is the source
 packages/*/LICENSE
+
+# render-realm.sh output (the realm Keycloak imports on first start; rendered per deployment)
+deploy/keycloak-import/

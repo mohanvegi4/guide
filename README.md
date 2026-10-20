@@ -829,15 +829,34 @@ Everything needed to run Guide Engine for real is in the repo:
 2. `cd deploy && cp .env.example .env` and fill it in: the hostnames, Postgres passwords, the
    Keycloak admin password, and two secrets from `openssl rand -hex 32`
    (`PREVIEW_TOKEN_SECRET`, `SECRETS_KEY`).
-3. `./render-realm.sh` writes the Keycloak realm with your Studio URL in the client's redirect
-   URIs. The realm carries three **test users** (`olivia`, `eddie`, `root`, password = username)
-   for staging; delete them in the admin console on a real deployment and create your own.
+3. `./render-realm.sh` (needs `jq`) writes `keycloak-import/guide-engine-realm.json` from the
+   development realm, made safe for a real deployment: **no users** (the development realm's
+   `olivia` / `eddie` / `root` are stripped), brute-force detection on (temporary lockouts:
+   5 failures lock a user for 1 min, growing to 15 min), and the Studio client's redirect
+   URIs and web origins set to exactly `https://STUDIO_HOST`. It prints what it changed and
+   the token/session lifetimes it kept (15 min access tokens, 8 h idle / 10 h max sessions).
+   Keycloak imports the file on its first start only; later changes are made in the admin
+   console.
 4. `docker compose up -d --wait`. Postgres creates the two application roles on first start
    (`init.sh`); Keycloak imports the realm; the backend migrates; Caddy fetches certificates;
    the `backup` service starts its daily dumps into `./backups`
    ([Backups and restore](#backups-and-restore)).
-5. Sign in to the Studio, then grant yourself the platform-admin flag (see
-   [Guide Engine administration](#guide-engine-administration)).
+5. **Create the first user.** Nobody can sign in yet: the realm has no users and
+   self-registration is off. Open the Keycloak admin console at `https://AUTH_HOST/admin`
+   with `KEYCLOAK_ADMIN_USER` / `KEYCLOAK_ADMIN_PASSWORD` from `.env`, switch to the
+   **guide-engine** realm, and under **Users → Add user** enter the person's username and
+   email, tick **Email verified**, create the user, then set a password on its
+   **Credentials** tab. (Keycloak 26 treats that bootstrap admin as temporary and says so in
+   the console: create a permanent admin in the **master** realm while you are there.)
+   Repeat for each further person, or set up an identity provider under **Identity providers**
+   so they sign in with their company account.
+6. The person signs in to the Studio with that user. The Studio's **Welcome** page creates
+   their organization (and its first application); they invite colleagues from **Members**.
+7. **The first platform admin.** To administer Guide Engine itself (all organizations, the kill
+   switch, support access), set the flag by SQL on a user who has signed in once:
+   `UPDATE studio_user SET platform_admin = TRUE WHERE email = '…'`, as described in
+   [Guide Engine administration](#guide-engine-administration). From then on platform admins
+   are managed on the Studio's **Administration** page.
 
 More than one backend replica: set `BACKEND_REPLICAS`. The rate limiter is already shared
 through Postgres (`RATE_LIMIT_STORE=postgres`); the app-key cache is per process with a 10 s

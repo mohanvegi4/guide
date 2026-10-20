@@ -2,8 +2,9 @@
 # Studio and Caddy (automatic HTTPS) on one machine.
 #
 #   cp .env.example .env            # fill in domains, passwords, secrets
-#   ./render-realm.sh               # Keycloak realm with your Studio URL
+#   ./render-realm.sh               # Keycloak realm: your Studio URL, no users, brute force on (needs jq)
 #   docker compose up -d --wait
+#   then create the first user in the Keycloak admin console (README, Deploying)
 #
 # Three hostnames point at this host: STUDIO_HOST, API_HOST, AUTH_HOST.
 # Images come from CI (ghcr.io) or `docker compose build`.
