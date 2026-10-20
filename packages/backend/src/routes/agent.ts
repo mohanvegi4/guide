@@ -219,8 +219,9 @@ function visitorFrom(req: Request, app: AgentApp): Visitor {
 // ------------------------------------------------------------
 // POST /v1/agent/:key/guides — one round trip: kill switches + every guide
 // this visitor should see right now (published, enabled, in its date window,
-// their account allowed, not already finished at this version or later, and
-// starting automatically — on-demand guides only come through /help).
+// their account allowed, not already shown or finished at this version or
+// later, and starting automatically — on-demand guides only come through
+// /help).
 // Route matching happens in the agent.
 // ------------------------------------------------------------
 agentApiRouter.post(
@@ -239,7 +240,7 @@ agentApiRouter.post(
            AND NOT EXISTS (
              SELECT 1 FROM user_guide_state s
              WHERE s.app_id = $1 AND s.visitor_id = $2 AND s.guide_id = a.id
-               AND s.status IN ('dismissed', 'completed')
+               AND s.status IN ('shown', 'dismissed', 'completed')
                AND s.last_seen_version >= a.version_number
            )`,
         [scoped.id, visitor.visitorId, visitor.accountId],
@@ -374,7 +375,16 @@ function isGuideEvent(e: AgentEvent): e is GuideEvent {
   return 'guideId' in e;
 }
 
-const TERMINAL_STATUS: Partial<Record<GuideEvent['eventType'], 'dismissed' | 'completed'>> = {
+/**
+ * Events that change what /guides serves this visitor. 'shown' is recorded as
+ * soon as a guide starts, so a reload mid-guide doesn't start it over: an
+ * automatic guide shows once per published version, like Pendo's default.
+ * Dismissed / completed are kept over a later 'shown' at the same version
+ * (a help-center replay) so the stronger state is never lost.
+ */
+type VisitorGuideStatus = 'shown' | 'dismissed' | 'completed';
+const STATUS_FOR_EVENT: Partial<Record<GuideEvent['eventType'], VisitorGuideStatus>> = {
+  guide_shown: 'shown',
   guide_dismissed: 'dismissed',
   guide_completed: 'completed',
 };
@@ -428,9 +438,10 @@ agentApiRouter.post(
 );
 
 /**
- * Persists per-visitor dismissal/completion so /guides stops serving a guide
- * the visitor already finished — until a NEWER version is published (GREATEST
- * means rolling back to an older version never brings it back).
+ * Persists per-visitor shown/dismissed/completed state so /guides stops
+ * serving a guide the visitor already saw or finished — until a NEWER version
+ * is published (GREATEST means rolling back to an older version never brings
+ * it back).
  */
 async function recordFinishedGuides(
   client: PoolClient,
@@ -438,10 +449,10 @@ async function recordFinishedGuides(
   visitorId: string,
   events: GuideEvent[],
 ) {
-  // Last terminal event per guide wins; ON CONFLICT can't touch a row twice.
-  const latest = new Map<string, { versionId: string; status: 'dismissed' | 'completed' }>();
+  // Last state-changing event per guide wins; ON CONFLICT can't touch a row twice.
+  const latest = new Map<string, { versionId: string; status: VisitorGuideStatus }>();
   for (const e of [...events].sort((a, b) => a.occurredAt.localeCompare(b.occurredAt))) {
-    const status = TERMINAL_STATUS[e.eventType];
+    const status = STATUS_FOR_EVENT[e.eventType];
     if (status) latest.set(e.guideId, { versionId: e.guideVersionId, status });
   }
   if (latest.size === 0) return;
@@ -453,7 +464,12 @@ async function recordFinishedGuides(
      FROM UNNEST($3::uuid[], $4::uuid[], $5::text[]) AS e(guide_id, version_id, status)
      JOIN guide_version gv ON gv.id = e.version_id AND gv.guide_id = e.guide_id
      ON CONFLICT (app_id, visitor_id, guide_id) DO UPDATE
-       SET status = EXCLUDED.status,
+       SET status = CASE
+             WHEN EXCLUDED.status = 'shown'
+                  AND user_guide_state.status IN ('dismissed', 'completed')
+                  AND user_guide_state.last_seen_version >= EXCLUDED.last_seen_version
+             THEN user_guide_state.status
+             ELSE EXCLUDED.status END,
            last_seen_version = GREATEST(user_guide_state.last_seen_version, EXCLUDED.last_seen_version),
            updated_at = now()`,
     [

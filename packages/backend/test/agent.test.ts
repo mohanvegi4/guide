@@ -244,6 +244,30 @@ describe('events and per-visitor state', () => {
     expect(res.body.accepted).toBe(0);
   });
 
+  it('shows an automatic guide once: after guide_shown it is not served again until a newer version', async () => {
+    const { key, appId, guideId, ev } = await setup();
+    await agent(key, '/events', { ...visitor('v1'), events: [ev('guide_shown')] });
+    // A reload mid-guide: nothing to start over.
+    expect(ids(await agent(key, '/guides', visitor('v1')))).toEqual([]);
+    expect(ids(await agent(key, '/guides', visitor('v2')))).toEqual([guideId]);
+    // The help center still lists it (on demand, replayable).
+    expect(ids(await agent(key, '/help', visitor('v1')))).toEqual([]); // not listed: no help entry
+    // Finishing it later keeps the stronger state; a help replay's guide_shown doesn't downgrade it.
+    await agent(key, '/events', { ...visitor('v1'), events: [ev('guide_completed')] });
+    await agent(key, '/events', { ...visitor('v1'), events: [ev('guide_shown')] });
+    const state = await adminPool.query(
+      `SELECT status::text FROM user_guide_state WHERE visitor_id = 'v1' AND guide_id = $1`,
+      [guideId],
+    );
+    expect(state.rows[0].status).toBe('completed');
+
+    await request(app)
+      .post(`/v1/apps/${appId}/guides/${guideId}/publish`)
+      .set('Authorization', as('alice'))
+      .send({ ...sampleVersion, steps: [{ ...sampleStep, content: '<p>v2</p>' }] });
+    expect(ids(await agent(key, '/guides', visitor('v1')))).toEqual([guideId]);
+  });
+
   it('hides a dismissed guide from that visitor until a newer version is published', async () => {
     const { key, appId, guideId, ev } = await setup();
     await agent(key, '/events', { ...visitor('v1'), events: [ev('guide_dismissed')] });

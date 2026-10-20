@@ -87,8 +87,10 @@ hosted service (terms, privacy policy, DPA, subprocessors) are in [`docs/legal/`
    current one completes; a dismissal ("Maybe later") ends the pop-ups for that page view, and
    the rest return on the next navigation. A guide the visitor opens from the help center takes
    over, and the automatic one comes back afterwards.
-6. **Record.** Events are batched to the backend. A dismiss or complete is remembered per
-   visitor, so they don't see it again until a **newer version** is published.
+6. **Record.** Events are batched to the backend. An automatic guide shows **once per visitor**:
+   being shown, dismissed or completed is remembered, so a reload never starts it over and they
+   don't see it again until a **newer version** is published. The help center ignores that state,
+   so any listed guide can be replayed on demand.
 
 ---
 
@@ -445,7 +447,8 @@ packages they're `GuideService.openHelp()` (Angular), `useGuideEngine().openHelp
    - the global kill switch and the app's own switch;
    - published, enabled and in the date window;
    - the account allowlist;
-   - that this visitor hasn't already dismissed or completed this version or a newer one.
+   - that this visitor hasn't already seen, dismissed or completed this version or a newer one
+     (automatic guides show once; the help center lets them be replayed).
 
    `enabled: false` stops the agent for the rest of the page's life. Any other failure shows
    nothing for that navigation (fail closed).
@@ -745,7 +748,7 @@ A `VersionBody` is:
 | `guide` / `guide_version` | Guides per app. Numbered versions hold steps (JSONB), `page_id` (a saved page) and/or `route_match` (a custom route, or the page's route snapshot), dates, `account_ids`, `help` (the help-center listing) and `activation` (`auto`: pops up on its page; `manual`: help center only). `published_at IS NULL` means the draft, at most one per guide. Published rows are immutable. |
 | `guide_event` | Analytics: app, guide, version, step, `visitor_id`, `account_id`. Help-center events (`help_opened`, `help_searched`) have no guide; a CHECK ties a NULL `guide_id` to exactly those two types. |
 | `agent_error` | Exceptions the agent reported from an app's pages: `message`, `stack`, `agent_version`, `url`, `occurred_at`. Written by the agent, read by the app's members and platform admins, deleted by retention. Free text: only ever rendered as text. |
-| `user_guide_state` | Per (app, visitor, guide): dismissed or completed, plus `last_seen_version`. |
+| `user_guide_state` | Per (app, visitor, guide): shown, dismissed or completed, plus `last_seen_version`. A later `shown` never downgrades dismissed / completed at the same version. |
 | `system_config` | The global kill switch (`guide_engine_enabled`). |
 | `active_guide` (view) | Published, enabled guides inside their date window, with `route_match` resolved through the saved page when there is one (`security_invoker`). |
 
@@ -772,6 +775,7 @@ pending files and the others wait, then find nothing to do.
 | `013_data_lifecycle.sql` | Deletion policies: `app_owner_org_ids()` (a new session variable, owners only) with `organization_owner_delete`, `organization_platform_delete`, and `application_app_admin_delete`. Nothing new is readable. |
 | `014_forget_visitor.sql` | "Forget this visitor": policies to delete one visitor's `guide_event` rows and read/delete their `user_guide_state` rows (scoped to app admins here; narrowed to managers in 017). |
 | `015_org_roles_enum.sql` / `016_org_roles_convert.sql` | One organization-wide role per person: adds `manager` / `editor` / `viewer` to `org_role`, converts `admin` → manager and `member` → editor (anyone with an editing grant on any app) or viewer, empties `app_member`, adds CHECK constraints, and lets every member see every app of their org (`application_select` on `app_org_ids()`). |
+| `019_shown_state.sql` | Adds `shown` to `user_guide_status`: an automatic guide shows once per visitor; `/guides` skips guides the visitor has already seen, like finished ones, until a newer version. |
 | `017_manager_rls.sql` | The editor / manager split in the database: `app_manager_app_ids()` (apps of the orgs where the user is a manager or owner) replaces `app_admin_app_ids()` in the forget-visitor policies, the per-app delete policy from 013 is dropped (`application_delete` on `app_admin_org_ids()` already covers managers), and the `application_guard_keys` trigger refuses a change to `public_key` / `signing_secret` from anyone but a manager (or the maintenance scope used by `encrypt-secrets`). |
 | `018_guide_activation.sql` | `guide_version.activation` (`auto` / `manual`, CHECK-limited; `manual` requires a help listing) on the version and the `active_guide` view. The agent's `/guides` serves only `auto` versions. |
 
@@ -789,7 +793,7 @@ npm test --workspace=apps/studio          # Studio components and services
 
 | Suite | Tests | Covers |
 |---|---|---|
-| **Backend** | 252 | self-serve orgs; apps and settings; the role matrix; invitations; members; saved pages; platform admins and support access (consent, read-only, logging, RLS); secrets at rest, the shared rate limiter, retention (events and agent errors), production boot checks; the agent script's ETag / 304 / cache headers and the version endpoint; the security headers (and that the agent surface keeps only nosniff); agent error reports (validation, the hourly cap, the Studio list, RLS isolation, platform counts); org/app isolation through the API **and directly in RLS** (including replaying the owner bootstrap and forging memberships); the agent API (origins, keys, identity modes, account targeting, kill switches, events and per-visitor state, preview); the guide lifecycle; sanitization; stable step ids; analytics; OIDC (a local JWKS server, algorithm confusion); migration 005's data conversion; and concurrent migration runs (the advisory lock) |
+| **Backend** | 253 | self-serve orgs; apps and settings; the role matrix; invitations; members; saved pages; platform admins and support access (consent, read-only, logging, RLS); secrets at rest, the shared rate limiter, retention (events and agent errors), production boot checks; the agent script's ETag / 304 / cache headers and the version endpoint; the security headers (and that the agent surface keeps only nosniff); agent error reports (validation, the hourly cap, the Studio list, RLS isolation, platform counts); org/app isolation through the API **and directly in RLS** (including replaying the owner bootstrap and forging memberships); the agent API (origins, keys, identity modes, account targeting, kill switches, events and per-visitor state, preview); the guide lifecycle; sanitization; stable step ids; analytics; OIDC (a local JWKS server, algorithm confusion); migration 005's data conversion; and concurrent migration runs (the advisory lock) |
 | **Core** | 100 | includes the help widget (search, keyboard, safe rendering), help launches (same page, other page, arrival, shared links) and error reporting (sampling, the per-page cap, never throwing) |
 | **Agent** | 8 | includes `openHelp` queued before load and the build-time version |
 | **Studio** | 45 | guide list and editor (saved pages), Pages, app settings (including the agent-error list), the Administration page |
@@ -1126,7 +1130,7 @@ Prometheus, skip the profile and take the two files: the scrape job in `promethe
 2. Does the **route** match the URL path?
 3. Is now inside the start and end dates?
 4. Is the visitor's **account** in the audience, if one is set?
-5. Has this visitor already dismissed or completed this version? Publish a newer one, or reset
+5. Has this visitor already seen, dismissed or completed this version? Publish a newer one, or reset
    their state.
 6. Is the element on the page with exactly that `data-guide-id`? A missing one shows up as
    `guide_error` in Analytics after about 16 s.
