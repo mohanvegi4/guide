@@ -111,9 +111,7 @@ const SITE_PATH = /^(\/(?!\/).*)?$/;
                   />
                 </td>
                 <td class="small">
-                  @if (urlLocked(p)) {
-                    <span class="muted">Live guides use this page — you need the editor role to change its URL.</span>
-                  } @else if (p.usage?.live) {
+                  @if (p.usage?.live) {
                     <span class="notice"
                       >Changing the URL moves {{ p.usage!.live }} live guide{{
                         p.usage!.live === 1 ? '' : 's'
@@ -208,9 +206,6 @@ export class PagesComponent {
   readonly orgId = input.required<string>();
   readonly appId = input.required<string>();
   protected readonly canEdit = computed(() => appRoleAtLeast(this.auth.appRole(this.appId()), 'editor'));
-  protected readonly canPublish = computed(() =>
-    appRoleAtLeast(this.auth.appRole(this.appId()), 'publisher'),
-  );
 
   protected readonly pages = signal<AppPage[]>([]);
   protected readonly loading = signal(true);
@@ -253,11 +248,6 @@ export class PagesComponent {
     });
   }
 
-  /** Editors can rename pages live guides use, but not move them. */
-  protected urlLocked(page: AppPage): boolean {
-    return !!page.usage?.live && !this.canPublish();
-  }
-
   /** The form as an API body, or a message saying what to fix. */
   private payload(): PagePayload | string {
     this.form.markAllAsTouched();
@@ -287,11 +277,6 @@ export class PagesComponent {
       value: page.routeMatch.value,
       startPath: page.startPath ?? '',
     });
-    // Editors may rename a page live guides use, but not move it.
-    for (const c of [this.form.controls.type, this.form.controls.value, this.form.controls.startPath]) {
-      if (this.urlLocked(page)) c.disable();
-      else c.enable();
-    }
   }
 
   cancelEdit(): void {

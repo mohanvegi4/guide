@@ -56,7 +56,7 @@ describe('PagesComponent', () => {
   afterEach(() => http.verify());
 
   it('lists pages with their URL, default start page and usage', async () => {
-    setup('editor');
+    setup('app_admin');
     const text = ((await render()).nativeElement as HTMLElement).textContent ?? '';
     expect(text).toContain('Team settings');
     expect(text).toContain('/settings/team');
@@ -65,7 +65,7 @@ describe('PagesComponent', () => {
   });
 
   it('creates a page from the form', async () => {
-    setup('editor');
+    setup('app_admin');
     const fixture = await render([]);
     const el = fixture.nativeElement as HTMLElement;
     const [name, url] = [...el.querySelectorAll<HTMLInputElement>('.page-form input')];
@@ -86,26 +86,9 @@ describe('PagesComponent', () => {
     http.expectOne('/api/v1/apps/a1/pages').flush([]);
   });
 
-  it('editors can rename a page live guides use, but its URL is locked for them', async () => {
-    setup('editor');
-    const fixture = await render();
-    const el = fixture.nativeElement as HTMLElement;
-    buttons(el, 'Edit')[0].click();
-    await fixture.whenStable();
-    const [name, url] = [...el.querySelectorAll<HTMLInputElement>('tr.editing input')];
-    expect(url.disabled).toBe(true);
-    expect(name.disabled).toBe(false);
-    expect(el.textContent).toContain('only publishers can change its URL');
-  });
-
-  it('disables Delete for editors while guides use the page', async () => {
-    setup('editor');
-    const el = (await render()).nativeElement as HTMLElement;
-    expect(buttons(el, 'Delete')[0].disabled).toBe(true);
-  });
-
-  it('publishers can move a page; delete is disabled while guides use it', async () => {
-    setup('publisher');
+  // Roles are organization-wide: the backend gives editors and up "app_admin" on every app.
+  it('editors can move a page; delete is disabled while guides use it', async () => {
+    setup('app_admin');
     const fixture = await render();
     const el = fixture.nativeElement as HTMLElement;
     expect(buttons(el, 'Delete')[0].disabled).toBe(true);

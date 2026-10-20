@@ -64,7 +64,7 @@ describe('GuideListComponent', () => {
   afterEach(() => http.verify());
 
   it("lists the app's guides with their live version", async () => {
-    setup('publisher');
+    setup('app_admin');
     const text = ((await render()).nativeElement as HTMLElement).textContent ?? '';
     expect(text).toContain('Welcome');
     expect(text).toContain('v1');
@@ -72,7 +72,7 @@ describe('GuideListComponent', () => {
   });
 
   it('toggles enabled optimistically and reverts when the backend rejects it', async () => {
-    setup('publisher');
+    setup('app_admin');
     const fixture = await render();
     const checkbox = (fixture.nativeElement as HTMLElement).querySelector<HTMLInputElement>(
       'input[type=checkbox]',
