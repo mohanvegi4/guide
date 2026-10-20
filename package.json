@@ -4,11 +4,13 @@
   "version": "0.1.0",
   "workspaces": [
     "packages/*",
-    "apps/*"
+    "apps/*",
+    "e2e"
   ],
   "scripts": {
     "build": "npm run build --workspace=packages/core && npm run build --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
+    "e2e": "npm run e2e --workspace=e2e",
     "dev:backend": "npm run dev --workspace=packages/backend",
     "db:up": "docker compose up -d --wait",
     "db:down": "docker compose down",

@@ -106,6 +106,7 @@ packages/
 apps/
   studio/            Guide Studio (Angular 21) — see apps/studio/README.md
   demo/              a plain host page that installs Guide Engine via the snippet (no SDK import)
+e2e/                 Playwright smoke test: Keycloak sign-in → org, app, guide → the snippet on a page
 docker/              init.sql (non-superuser app role), keycloak/ (the realm Keycloak imports)
 docker-compose.yml   Postgres 16 (:5433); Keycloak (:8081, profile "sso")
 deploy/              single-host staging/production: compose, Caddyfile, Keycloak realm rendering
@@ -784,6 +785,26 @@ npm test --workspace=apps/studio          # Studio components and services
 
 Type-checking is part of every `test` script, with strict TypeScript throughout.
 
+**End-to-end smoke test** (`e2e/`, Playwright, Chromium). One browser flow proves the whole
+product works together: sign in to the Studio through Keycloak (`olivia` / `olivia`), create an
+organization with a first app, read the public key from the install snippet, create, publish
+and enable a guide, then open a page that installs the snippet with that key and see the guide.
+The page is served from a Playwright route at `http://e2e.localhost` (the origin the app's
+websites list gets), so no extra server is needed; the agent script and API are the real
+backend's. It runs against an already-running stack: Postgres (`npm run db:up`), Keycloak
+(`npm run idp:up`, with `OIDC_ISSUER` set in `packages/backend/.env`), the backend on :3000 and
+the Studio on :4300. Then:
+
+```bash
+npx playwright install chromium          # once
+npm run e2e                              # STUDIO_URL / API_URL / KEYCLOAK_USER / KEYCLOAK_PASSWORD override the defaults
+```
+
+Each run creates a new organization (`E2E <timestamp>`) for `olivia`, so it can be repeated
+against the same database. On failure, `e2e/playwright-report/` holds the report with a trace
+(`npx playwright show-trace e2e/test-results/<run>/trace.zip`). CI runs it in the `e2e` job
+after the unit tests, starting the same services from `docker-compose.yml`.
+
 ---
 
 ## Deploying
@@ -791,7 +812,8 @@ Type-checking is part of every `test` script, with strict TypeScript throughout.
 Everything needed to run Guide Engine for real is in the repo:
 
 - **CI** (`.github/workflows/ci.yml`): on every push and pull request, installs, builds every
-  package, migrates a throwaway Postgres, runs all four test suites, and builds both images.
+  package, migrates a throwaway Postgres, runs all four test suites, runs the browser smoke test
+  against Keycloak, the backend and the Studio (job `e2e`), and builds both images.
   On `main` the images are pushed to GitHub Container Registry as
   `ghcr.io/<owner>/<repo>/backend` and `/studio`, tagged with the commit and `latest`.
 - **Images:** `packages/backend/Dockerfile` (the API plus the agent script; runs pending

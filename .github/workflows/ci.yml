@@ -1,6 +1,7 @@
 # Every push and pull request: install, build everything, migrate a throwaway
-# Postgres, run all four test suites, and prove both images build. On main the
-# images are also pushed to GitHub Container Registry, tagged with the commit.
+# Postgres, run all four test suites, run the browser smoke test against the
+# real stack (Keycloak, backend, Studio), and prove both images build. On main
+# the images are also pushed to GitHub Container Registry, tagged with the commit.
 name: CI
 
 on:
@@ -53,6 +54,86 @@ jobs:
         run: npm test
         env:
           CI: "true"
+
+  # The whole product once, through a browser (e2e/): sign in to the Studio
+  # through Keycloak, create an organization and an app, publish a guide, and
+  # see it on a page that installs the snippet. The stack is the one developers
+  # run locally: docker-compose.yml for Postgres and Keycloak (with the dev
+  # realm), the built backend, and ng serve proxying /api to it.
+  e2e:
+    name: End-to-end (Playwright)
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      DATABASE_URL: postgres://guide_engine:guide_engine@localhost:5433/guide_engine
+      NG_CLI_ANALYTICS: "false"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install
+        run: npm ci --no-audit --no-fund
+      - name: Start Postgres and Keycloak (docker-compose.yml; they boot while we build)
+        run: docker compose --profile sso up -d
+      - name: Build
+        run: npm run build
+      - name: Install Playwright's Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Wait for Postgres and Keycloak
+        run: docker compose --profile sso up -d --wait
+      - name: Migrate
+        run: node packages/backend/dist/migrate.js
+      - name: Start the backend (the built one, like the Docker image)
+        run: nohup node packages/backend/dist/index.js > backend.log 2>&1 &
+        env:
+          NODE_ENV: development
+          PORT: "3000"
+          PUBLIC_API_URL: http://localhost:3000
+          OIDC_ISSUER: http://localhost:8081/realms/guide-engine
+          OIDC_AUDIENCE: guide-engine-api
+          OIDC_STUDIO_CLIENT_ID: guide-studio
+          OIDC_STUDIO_SCOPE: openid profile email
+          RATE_LIMIT_STORE: memory
+      - name: Start the Studio (ng serve, proxying /api to the backend)
+        run: nohup npm run start --workspace=apps/studio -- --port 4300 > studio.log 2>&1 &
+      - name: Wait for the backend, Keycloak and the Studio
+        run: |
+          wait_for() {
+            for _ in $(seq 1 90); do
+              curl -fsS -o /dev/null "$1" && return 0
+              sleep 2
+            done
+            echo "Timed out waiting for $1"
+            return 1
+          }
+          wait_for http://localhost:3000/ready
+          wait_for http://localhost:8081/realms/guide-engine/.well-known/openid-configuration
+          wait_for http://localhost:4300/
+      - name: End-to-end test
+        run: npm run e2e
+        env:
+          CI: "true"
+          STUDIO_URL: http://localhost:4300
+          API_URL: http://localhost:3000
+      - name: Service logs
+        if: failure()
+        run: |
+          echo "::group::backend.log"; tail -n 200 backend.log; echo "::endgroup::"
+          echo "::group::studio.log"; tail -n 200 studio.log; echo "::endgroup::"
+          echo "::group::keycloak"; docker compose --profile sso logs --tail 100 keycloak; echo "::endgroup::"
+      - name: Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            e2e/playwright-report
+            e2e/test-results
+          retention-days: 7
+          if-no-files-found: ignore
 
   images:
     name: Docker images
