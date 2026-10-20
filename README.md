@@ -804,8 +804,9 @@ npx playwright install chromium          # once
 npm run e2e                              # STUDIO_URL / API_URL / KEYCLOAK_USER / KEYCLOAK_PASSWORD override the defaults
 ```
 
-Each run creates a new organization (`E2E <timestamp>`) for `olivia`, so it can be repeated
-against the same database. On failure, `e2e/playwright-report/` holds the report with a trace
+Each run creates a new organization (`E2E <timestamp>`) for `olivia` and deletes it at the end
+through the Studio's danger zone, even when an earlier step failed, so it can be repeated against
+the same database without leaving anything behind. On failure, `e2e/playwright-report/` holds the report with a trace
 (`npx playwright show-trace e2e/test-results/<run>/trace.zip`). CI runs it in the `e2e` job
 after the unit tests, starting the same services from `docker-compose.yml`.
 
