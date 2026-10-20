@@ -36,6 +36,8 @@ an **organization** owns any number of **applications**, and everyone in it has 
 
 - [Deploying](reference/README.md#deploying): CI, images, the single-host stack, any other
   platform, and the agent script's caching and rollback contract.
+- [Signed identity](integration/signed-identity.md): the contract for the backend that signs
+  visitor identities — claims, algorithm, the endpoint the page calls, rotation and acceptance.
 - [Identity, roles and security](reference/README.md#identity-roles-and-security), including
   [Guide Engine administration](reference/README.md#guide-engine-administration) (platform
   admins, suspension, support access).

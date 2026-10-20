@@ -253,6 +253,10 @@ fine for showing tips, but not if visitor identity matters to you.
 4. Switch on **Require signed identity**. From then on, unsigned or invalid identities get no
    guides.
 
+The full contract for your backend team — claims, algorithm, the endpoint pattern, a Java
+example, rotation and acceptance checks — is in
+[docs/integration/signed-identity.md](docs/integration/signed-identity.md).
+
 ### Alternative: npm packages
 
 For bundled apps that prefer a dependency over a script tag, three packages are published to
