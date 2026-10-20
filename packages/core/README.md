@@ -66,6 +66,15 @@ help center takes the screen until it's done, then the automatic one returns.
 Mark the elements guides point at with `data-guide-id="…"`; a step targets them with
 `[data-guide-id="invite-button"]`.
 
+**Cards** are Shadow DOM, so host styles don't leak in. A targeted step scrolls its element into
+view and spotlights it; card and spotlight follow the element on scroll, resize and re-mounts, the
+card's DOM is built once per step (re-renders only move it), cards stay inside the viewport, and an
+anchor the page scrolls away right after the step appears is brought back once. Every card has a ×
+and closes on Escape. A later step whose anchor isn't on the page yet (it appears after the visitor
+acts) shows centered and moves onto the element when it appears; a first step without its anchor
+waits quietly and gives up. Automatic guides show once per visitor (the server remembers shown,
+dismissed and completed per published version); the help center can replay any listed guide.
+
 ## Notes
 
 - Built as CommonJS plus `.d.ts` files. Angular CLI may ask you to list `@guide-engine/core`

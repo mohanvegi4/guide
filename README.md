@@ -388,7 +388,8 @@ A floating **Help** button (bottom right by default; the corner is an app settin
   clicking outside closes it.
 
 **Starting a guide**
-- **On the guide's own page:** it starts right away.
+- **On the guide's own page** — or when its start page is the page the visitor is on — it
+  starts right away.
 - **Anywhere else:** the list says so ("Opens on `/team`"), and choosing the topic first asks
   **"Go to another page?"** with *Take me there* / *Stay here*, since leaving is a page load that
   can drop unsaved work. *Stay here* (or Esc) returns to the list. On *Take me there* the visitor
@@ -468,9 +469,12 @@ packages they're `GuideService.openHelp()` (Angular), `useGuideEngine().openHelp
 6. **Rendering** happens in a Shadow DOM card, so your styles don't leak in. A targeted step
    puts the focus on its element: it's scrolled into view if off-screen, and **spotlighted**: a
    ring around it with the rest of the page dimmed (the element stays clickable). Card and
-   spotlight follow the element when the page scrolls or the window resizes. The card and
-   the ring follow the target as the page changes, including when your framework re-creates
-   the element.
+   spotlight follow the element when the page scrolls, the window resizes or your framework
+   re-creates the element; the card's DOM is built once per step (re-renders only move it, so
+   a click never lands on a replaced button). Cards are kept inside the viewport, and if your
+   page scrolls the anchor away within moments of the step appearing (restoring a scroll
+   position, bringing a table into view) it's scrolled back once — later scrolling is the
+   visitor's. Every card has a **×** and closes on **Escape**, whatever buttons the author chose.
 7. **Events** are batched every 5 s or 20 events, sent as `text/plain` JSON (no CORS preflight),
    and flushed on `pagehide`. Dismiss and complete are sent immediately.
 8. **Errors.** Fail silent also means the agent reports what it swallowed: an exception in

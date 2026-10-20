@@ -11,6 +11,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). How a rel
 
 ### Changed
 
+- **`@guide-engine/core`**: a help-center guide whose start page is the page the visitor is on
+  starts right away, instead of asking "Go to another page?" and reloading that same page.
 - **`@guide-engine/core`**: a later step whose anchor isn't on the page yet (it appears after the
   visitor does something) now shows its card centered at once and moves onto the element when it
   appears, instead of waiting silently and dropping the guide after ~16 s. First steps keep the

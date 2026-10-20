@@ -158,7 +158,8 @@ for that id).
      Guides on a saved page follow it when its URL changes, even live ones.
    - **Dates:** optional start and end.
    - **How it starts:** *Automatically, when a visitor opens the page* (once per published
-     version: publish again to show it to everyone once more — welcome tours, "what's new"), or
+     version — being shown counts, so a reload never restarts it; publish again to show it to
+     everyone once more — welcome tours, "what's new"), or
      *Only from the help center* (never pops up; visitors pick it from the help list or open a
      help link, so it's always listed there). When several automatic guides match a page, the
      agent shows them one at a time, walkthroughs first.
@@ -168,8 +169,10 @@ for that id).
    - **Anchor:** the element's `data-guide-id`. Leave it blank for a centered card.
    - **Position.**
    - **Content:** HTML. Scripts, styles, event handlers and unsafe URLs are removed on save.
-   - **Buttons:** `next`, `complete`, `dismiss`. `back` is accepted but not handled by the
-     renderer yet.
+   - **Buttons:** `next`, `back`, `complete`, `dismiss`. Whatever you choose, every card also
+     gets a **×** and closes on Escape, so nobody is ever stuck. A step whose anchor only
+     appears after the visitor does something (a field shown once a record is selected) still
+     works: the card shows centered and moves onto the element when it appears.
 4. **Help center** (optional): tick **List in the help center**, then give a title (it defaults
    to the guide name), a short description, search keywords and a **start page**: where people
    are sent if they pick it on another page. The start page defaults to the saved page's start
