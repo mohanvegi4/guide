@@ -604,6 +604,11 @@ The Studio has no runtime config. It calls `/api/*` on its own origin: the dev s
 that to `localhost:3000` (`apps/studio/proxy.conf.json`), and in production a reverse proxy
 must do the same.
 
+The `deploy/` stack reads `deploy/.env` instead (`deploy/.env.example` lists everything): the
+three hostnames, the Postgres and Keycloak passwords, the two backend secrets above, and the
+backup settings `BACKUP_AT` (daily run time, `03:00` UTC), `BACKUP_KEEP_DAYS` (`14`) and
+`BACKUP_COPY_CMD` (off-host copy, unset) — see [Backups and restore](#backups-and-restore).
+
 ---
 
 ## API reference
@@ -806,7 +811,9 @@ Everything needed to run Guide Engine for real is in the repo:
    URIs. The realm carries three **test users** (`olivia`, `eddie`, `root`, password = username)
    for staging; delete them in the admin console on a real deployment and create your own.
 4. `docker compose up -d --wait`. Postgres creates the two application roles on first start
-   (`init.sh`); Keycloak imports the realm; the backend migrates; Caddy fetches certificates.
+   (`init.sh`); Keycloak imports the realm; the backend migrates; Caddy fetches certificates;
+   the `backup` service starts its daily dumps into `./backups`
+   ([Backups and restore](#backups-and-restore)).
 5. Sign in to the Studio, then grant yourself the platform-admin flag (see
    [Guide Engine administration](#guide-engine-administration)).
 
@@ -922,8 +929,7 @@ backend, and sign in as `olivia` / `olivia` (see [Studio login details](#studio-
 - **Turning on `SECRETS_KEY` on an existing database:** set it, restart, then run
   `npm run encrypt-secrets --workspace=packages/backend` once. Losing the key means every app
   must generate a new signing secret (visitor identities signed with the old one stop verifying).
-- **Backups:** `deploy/` mounts `./backups`; `docker compose exec postgres pg_dump -U postgres guide_engine > backups/$(date +%F).sql`
-  works for a single host, and a managed Postgres should have point-in-time recovery on.
+- **Backups:** see [Backups and restore](#backups-and-restore) below.
 - **Reset a visitor's dismissal**, as a database operator:
   ```sql
   DELETE FROM user_guide_state WHERE app_id = '<app>' AND visitor_id = '<visitor>' AND guide_id = '<guide>';
@@ -936,6 +942,32 @@ backend, and sign in as `olivia` / `olivia` (see [Studio login details](#studio-
   | `npm run seed` | Dev org + app, `apps/demo/.env.local`, and a Studio token. |
   | `npm run mint-token -- --sub <id> [--email <e>] [--name <n>] [--ttl 8h]` | A dev Studio sign-in token. |
   | `npm run sign-identity -- --secret <ge_sk_…> --visitor <id> [--account <id>]` | Sign a visitor identity, as a customer's server would. |
+
+### Backups and restore
+
+The `backup` service in `deploy/` (the same `postgres:16` image, running `deploy/backup.sh`)
+dumps **both** databases — `guide_engine` (guides, pages, members, events) and `keycloak` (the
+users and realm that sign them in; either one is useless without the other) — with `pg_dump -Fc`
+every day at `BACKUP_AT` (03:00 UTC) into `deploy/backups/`, named `<database>-<timestamp>.dump`,
+and deletes dumps older than `BACKUP_KEEP_DAYS` (14). Each run logs one line per database
+(`docker compose logs backup`); a failed dump exits the container non-zero, which
+`docker compose ps` shows as a restart. Deleted customer data lives on in dumps until they
+rotate; say so in your privacy notice (`docs/legal/`).
+
+- **Take one now**, before a migration or an upgrade: `docker compose run --rm backup now`.
+- **Off-host copy:** a disk that dies takes `backups/` with it. Either sync the directory from the
+  host (`rclone sync deploy/backups remote:bucket` from cron), or set `BACKUP_COPY_CMD` to a
+  command the container runs after every dump with the dump's path as `$1`. The image carries no
+  rclone or aws, so that route means mounting the binary and its config in a compose override.
+- **Restore:** `./restore.sh guide_engine backups/guide_engine-<stamp>.dump --yes` (or
+  `keycloak`). It stops the backend and the Studio (Keycloak too for its database), dumps the
+  current state to `backups/<db>-pre-restore-<stamp>.dump` so the restore itself can be undone,
+  drops and recreates the database, runs `pg_restore` in one transaction, starts the services and
+  prints the backend's `/ready`. Without `--yes` it only prints that plan. A dump older than the
+  running release is fine: the backend migrates it forward at start.
+- **Rehearse it once** on a scratch host (`docker compose up` with a copy of `.env`, then
+  `restore.sh` with one dump): a backup that was never restored is a hope, not a backup. A managed
+  Postgres elsewhere should have point-in-time recovery on instead.
 
 ### Observability
 

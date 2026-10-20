@@ -7,6 +7,8 @@ coverage/
 dist/
 .env.local
 .claude/worktrees/
+# database dumps the deploy/ backup service writes (customer data; never commit)
+deploy/backups/
 # docs site assembly output (scripts/build-docs.mjs)
 site/
 _site/
