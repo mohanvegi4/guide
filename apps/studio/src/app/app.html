@@ -19,15 +19,15 @@
           @if (o.apps.length) {
             <span class="sep">/</span>
             <select
-              [value]="appId() ?? ''"
+              [value]="currentAppId() ?? ''"
               (change)="switchApp($any($event.target).value)"
               aria-label="Application"
             >
-              @if (!appId()) {
+              @if (!currentAppId()) {
                 <option value="" disabled>Choose app</option>
               }
               @for (a of o.apps; track a.id) {
-                <option [value]="a.id" [selected]="a.id === appId()">{{ a.name }}</option>
+                <option [value]="a.id" [selected]="a.id === currentAppId()">{{ a.name }}</option>
               }
             </select>
           }
@@ -35,11 +35,11 @@
       </nav>
       @if (orgId()) {
         <nav class="tabs">
-          @if (appId()) {
-            <a [routerLink]="['/o', orgId(), 'apps', appId(), 'guides']" routerLinkActive="active">Guides</a>
-            <a [routerLink]="['/o', orgId(), 'apps', appId(), 'pages']" routerLinkActive="active">Pages</a>
+          @if (currentAppId(); as appId) {
+            <a [routerLink]="['/o', orgId(), 'apps', appId, 'guides']" routerLinkActive="active">Guides</a>
+            <a [routerLink]="['/o', orgId(), 'apps', appId, 'pages']" routerLinkActive="active">Pages</a>
             @if (appRole() === 'app_admin') {
-              <a [routerLink]="['/o', orgId(), 'apps', appId(), 'settings']" routerLinkActive="active"
+              <a [routerLink]="['/o', orgId(), 'apps', appId, 'settings']" routerLinkActive="active"
                 >Install &amp; settings</a
               >
             }

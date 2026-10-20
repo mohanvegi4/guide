@@ -1,5 +1,5 @@
 import { DatePipe } from '@angular/common';
-import { Component, computed, inject } from '@angular/core';
+import { Component, computed, effect, inject, signal } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { NavigationEnd, Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { filter, map } from 'rxjs';
@@ -28,7 +28,33 @@ export class App {
   protected readonly appId = computed(() => this.url().match(/^\/o\/[^/]+\/apps\/([^/?#]+)/)?.[1] ?? null);
   protected readonly org = computed(() => this.auth.org(this.orgId()));
   protected readonly orgAdmin = computed(() => isOrgAdmin(this.org()?.role));
-  protected readonly appRole = computed(() => this.auth.appRole(this.appId()));
+
+  /** The app last visited per organization, so org-level pages keep that app's tabs. */
+  private readonly lastApp = signal<Record<string, string>>({});
+  /**
+   * The app the tabs and switcher refer to: the one in the URL, else the one
+   * last visited in this organization, else the organization's first app.
+   * Org-level pages (Apps, Members) have no app in their URL; without this
+   * the Guides and Pages tabs vanished there.
+   */
+  protected readonly currentAppId = computed(() => {
+    const org = this.org();
+    if (!org) return null;
+    const has = (id: string | null | undefined) => !!id && org.apps.some((a) => a.id === id);
+    const fromUrl = this.appId();
+    if (has(fromUrl)) return fromUrl;
+    const remembered = this.lastApp()[org.id];
+    return has(remembered) ? remembered : (org.apps[0]?.id ?? null);
+  });
+  protected readonly appRole = computed(() => this.auth.appRole(this.currentAppId()));
+
+  constructor() {
+    effect(() => {
+      const orgId = this.orgId();
+      const appId = this.appId();
+      if (orgId && appId) this.lastApp.update((m) => (m[orgId] === appId ? m : { ...m, [orgId]: appId }));
+    });
+  }
 
   switchOrg(orgId: string): void {
     const org = this.auth.org(orgId);
