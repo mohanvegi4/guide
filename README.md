@@ -82,6 +82,11 @@ hosted service (terms, privacy policy, DPA, subprocessors) are in [`docs/legal/`
 4. **Publish.** The draft becomes an immutable, numbered version. **Enable** turns it on.
 5. **Show.** On the website, the agent asks for the visitor's active guides, matches the URL
    path, finds the `data-guide-id` element and renders the step in a Shadow DOM card.
+   **One guide at a time:** when several match a page, walkthroughs (tours, multi-step guides)
+   go first, then single-step tips in the order they were created. The next one shows when the
+   current one completes; a dismissal ("Maybe later") ends the pop-ups for that page view, and
+   the rest return on the next navigation. A guide the visitor opens from the help center takes
+   over, and the automatic one comes back afterwards.
 6. **Record.** Events are batched to the backend. A dismiss or complete is remembered per
    visitor, so they don't see it again until a **newer version** is published.
 
@@ -761,7 +766,7 @@ npm test --workspace=apps/studio          # Studio components and services
 | Suite | Tests | Covers |
 |---|---|---|
 | **Backend** | 238 | self-serve orgs; apps and settings; the role matrix; invitations; members; saved pages; platform admins and support access (consent, read-only, logging, RLS); secrets at rest, the shared rate limiter, retention (events and agent errors), production boot checks; the agent script's ETag / 304 / cache headers and the version endpoint; agent error reports (validation, the hourly cap, the Studio list, RLS isolation, platform counts); org/app isolation through the API **and directly in RLS** (including replaying the owner bootstrap and forging memberships); the agent API (origins, keys, identity modes, account targeting, kill switches, events and per-visitor state, preview); the guide lifecycle; sanitization; stable step ids; analytics; OIDC (a local JWKS server, algorithm confusion); and migration 005's data conversion |
-| **Core** | 89 | includes the help widget (search, keyboard, safe rendering), help launches (same page, other page, arrival, shared links) and error reporting (sampling, the per-page cap, never throwing) |
+| **Core** | 94 | includes the help widget (search, keyboard, safe rendering), help launches (same page, other page, arrival, shared links) and error reporting (sampling, the per-page cap, never throwing) |
 | **Agent** | 8 | includes `openHelp` queued before load and the build-time version |
 | **Studio** | 43 | guide list and editor (saved pages), Pages, app settings (including the agent-error list), the Administration page |
 

@@ -9,6 +9,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). How a rel
 
 ## [Unreleased]
 
+### Changed
+
+- **`@guide-engine/core`**: one guide at a time. When several guides match a page the engine
+  used to show all of them at once (several cards and spotlights). Now walkthroughs (tours,
+  multi-step guides) go first, then single-step tips in the server's order; the next one shows
+  when the current one completes or fails to find its target, a dismissal ends the pop-ups for
+  that page view (the rest return on the next navigation), and a guide launched from the help
+  center takes the screen, with the automatic one returning once it's done. The agent bundle
+  picks this up on its next build.
+
 ## [0.2.0] - 2026-10-19
 
 First release on npm. The engine was previously consumed only through the install snippet or

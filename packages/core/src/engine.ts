@@ -377,6 +377,11 @@ function readPreviewToken(): string | null {
   }
 }
 
+/** Automatic display order on a page: walkthroughs first, then single-step guides. */
+function autoShowRank(guide: Guide): number {
+  return guide.type === 'tour' || (guide.steps?.length ?? 0) > 1 ? 0 : 1;
+}
+
 /** Route matching is on the path only — query strings and hashes vary freely. */
 function stripQueryAndHash(path: string): string {
   return path.split(/[?#]/)[0] || '/';
@@ -408,6 +413,11 @@ export class GuideEngine {
   private eventQueue: EventQueue | null = null;
   private sessionId: string = uuid();
   private activeGuides = new Map<string, GuideRuntimeState>();
+  /**
+   * Guides that match the current page but are waiting their turn: only one
+   * guide shows at a time (see evaluateGuidesForRoute / showNextQueued).
+   */
+  private queued: Guide[] = [];
   /** Set once the server says the engine is off (kill switch / app disabled) or init failed. */
   private disabled = false;
   private renderer: GuideRenderer | null = null;
@@ -581,9 +591,17 @@ export class GuideEngine {
     }
   }
 
-  /** (Re)starts a guide on request, regardless of whether the visitor already finished it. */
+  /**
+   * (Re)starts a guide on request, regardless of whether the visitor already
+   * finished it. An explicit launch takes the screen: whatever was showing
+   * automatically goes back to the front of the queue (not finished, so it
+   * returns once the requested guide completes or on the next navigation).
+   */
   private startOnDemand(guide: Guide, source: 'help' | 'link'): void {
-    if (this.activeGuides.has(guide.id)) this.teardownGuide(guide.id);
+    for (const [id, state] of [...this.activeGuides]) {
+      this.teardownGuide(id);
+      if (id !== guide.id && !state.source) this.queued.unshift(state.guide);
+    }
     this.finished.delete(finishedKey(guide));
     this.startGuide(guide, source);
   }
@@ -666,6 +684,7 @@ export class GuideEngine {
       this.options = { ...this.options, ...identity };
       this.identity = toWireIdentity(this.options);
       for (const id of [...this.activeGuides.keys()]) this.teardownGuide(id);
+      this.queued = [];
       this.finished.clear();
       if (!this.disabled && !this.previewMode) {
         await this.evaluateGuidesForRoute();
@@ -732,12 +751,33 @@ export class GuideEngine {
     }
 
     const here = path ?? this.currentPath();
-    const matched = guides.filter((g) => g?.routeMatch && matchesRoute(g.routeMatch, here));
+    // One guide at a time, like Pendo's throttling: two cards and two
+    // spotlights on one page just compete for attention. Everything that
+    // matches goes into a queue, walkthroughs (tours, multi-step guides)
+    // ahead of single-step tips and otherwise in the server's order, and the
+    // first one shows now; showNextQueued says when the others get a turn.
+    // A guide still showing from the previous page (a tour that spans pages)
+    // keeps the screen until it's done.
+    this.queued = guides
+      .filter((g) => g?.routeMatch && matchesRoute(g.routeMatch, here))
+      .filter((g) => !this.activeGuides.has(g.id) && !this.finished.has(finishedKey(g)))
+      .sort((a, b) => autoShowRank(a) - autoShowRank(b));
+    this.showNextQueued();
+  }
 
-    for (const guide of matched) {
-      if (this.activeGuides.has(guide.id)) continue; // already showing/tracked
-      if (this.finished.has(finishedKey(guide))) continue; // visitor already dismissed/completed it
-      this.startGuide(guide);
+  /**
+   * Shows the next waiting guide if nothing is on screen. Reached when the
+   * current guide completes or fails (target never appeared, renderer threw),
+   * never when the visitor dismisses it: "Maybe later" means no more pop-ups
+   * on this page view, so dismissGuide empties the queue instead. The queued
+   * guides come back on the next navigation.
+   */
+  private showNextQueued(): void {
+    while (this.activeGuides.size === 0) {
+      const next = this.queued.shift();
+      if (!next) return;
+      if (this.finished.has(finishedKey(next))) continue; // finished on demand meanwhile
+      this.startGuide(next);
     }
   }
 
@@ -790,6 +830,7 @@ export class GuideEngine {
       state.status = 'error';
       this.teardownGuide(state.guide.id);
       this.reportError(err, 'render');
+      this.showNextQueued();
       return;
     }
     this.emitEvent(
@@ -814,6 +855,7 @@ export class GuideEngine {
       state.status = 'error';
       this.emitEvent(state, step.id, 'guide_error', { reason: 'target_not_found' });
       this.activeGuides.delete(state.guide.id);
+      this.showNextQueued();
       return;
     }
     setTimeout(
@@ -907,6 +949,7 @@ export class GuideEngine {
       this.emitEvent(state, step?.id, 'guide_dismissed');
       this.finished.add(finishedKey(state.guide));
       this.teardownGuide(guideId);
+      this.queued = []; // nothing else pops up on this page view
     } catch (err) {
       this.reportError(err, 'dismiss');
     }
@@ -917,6 +960,7 @@ export class GuideEngine {
     this.emitEvent(state, undefined, 'guide_completed');
     this.finished.add(finishedKey(state.guide));
     this.teardownGuide(state.guide.id);
+    this.showNextQueued();
   }
 
   private teardownGuide(guideId: string): void {

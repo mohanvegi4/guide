@@ -57,6 +57,12 @@ await engine.identify({ visitor: { id }, account: { id } });
 The engine **fails closed and fails silent**: when anything can't be verified it shows nothing,
 and it never throws into the host page.
 
+It shows **one guide at a time**. When several guides match a page, walkthroughs (tours and
+multi-step guides) go before single-step tips, otherwise in the server's order; the next one
+shows when the current one completes or fails to find its target. A dismissal ends the pop-ups
+for that page view (the rest come back on the next navigation), and a guide launched from the
+help center takes the screen until it's done, then the automatic one returns.
+
 Mark the elements guides point at with `data-guide-id="…"`; a step targets them with
 `[data-guide-id="invite-button"]`.
 
