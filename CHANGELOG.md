@@ -17,6 +17,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). How a rel
   quiet wait, so a guide for a feature the visitor doesn't have still shows nothing.
 - **`@guide-engine/core`**: every step card has a close control (×) and dismisses on Escape, whatever
   buttons the author chose, so a visitor is never stuck in a guide.
+- **`@guide-engine/core`**: when the host page scrolls a step's anchor out of view within moments of
+  the step appearing (restoring a scroll position, bringing a table into view), the anchor is
+  scrolled back once; later scrolls are the visitor's and are left alone.
 - **`@guide-engine/core`**: cards are kept inside the viewport: an anchor at the edge of the window,
   or one the host page scrolled out of view, no longer takes the card (and its buttons) off screen.
 - **`@guide-engine/core`**: the card and spotlight follow their element when the page scrolls or the

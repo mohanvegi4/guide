@@ -471,7 +471,7 @@ describe('DOM renderer', () => {
 describe('DOM renderer keeps the card on screen', () => {
   it('nudges a card back inside the viewport when its anchor is near an edge or scrolled away', async () => {
     const target = document.createElement('button');
-    target.setAttribute('data-guide-id', 'invite-button');
+    target.setAttribute('data-guide-id', 'own-anchor');
     document.body.appendChild(target);
     let rect = { top: 100, left: 20, right: 120, bottom: 130, width: 100, height: 30 };
     target.getBoundingClientRect = () => rect as DOMRect;
@@ -481,7 +481,7 @@ describe('DOM renderer keeps the card on screen', () => {
       dismissGuide: () => {},
     });
     const guide = makeGuide({
-      steps: [makeStep({ id: 's1', targetSelector: '[data-guide-id="invite-button"]' })],
+      steps: [makeStep({ id: 's1', targetSelector: '[data-guide-id="own-anchor"]' })],
     });
     renderer.renderStep(guide, guide.steps[0], target);
     const host = document.querySelector<HTMLElement>('[data-guide-host]:not([data-guide-spotlight])')!;
@@ -503,6 +503,38 @@ describe('DOM renderer keeps the card on screen', () => {
     rect = { ...rect, top: 100, bottom: 130, left: 700, right: 780 };
     window.dispatchEvent(new Event('scroll'));
     await vi.waitFor(() => expect(host.style.left).toBe(`${800 - 8 - 300}px`));
+  });
+});
+
+describe('DOM renderer brings a freshly rendered anchor back when the page scrolls it away', () => {
+  it('scrolls the anchor into view once if it leaves the viewport right after rendering', async () => {
+    const target = document.createElement('button');
+    target.setAttribute('data-guide-id', 'settle-anchor');
+    document.body.appendChild(target);
+    let rect = { top: 100, left: 20, right: 120, bottom: 130, width: 100, height: 30 };
+    target.getBoundingClientRect = () => rect as DOMRect;
+    const scrollIntoView = vi.fn();
+    target.scrollIntoView = scrollIntoView;
+    const renderer = createDomRenderer({
+      advanceStep: () => {},
+      previousStep: () => {},
+      dismissGuide: () => {},
+    });
+    const guide = makeGuide({
+      steps: [makeStep({ id: 's1', targetSelector: '[data-guide-id="settle-anchor"]' })],
+    });
+    renderer.renderStep(guide, guide.steps[0], target);
+    expect(scrollIntoView).not.toHaveBeenCalled(); // visible at render time
+
+    // The host page scrolls its container right after render: the anchor leaves the viewport.
+    rect = { ...rect, top: -200, bottom: -170 };
+    window.dispatchEvent(new Event('scroll'));
+    await vi.waitFor(() => expect(scrollIntoView).toHaveBeenCalledTimes(1));
+
+    // Still off screen on a later scroll (the visitor's own): left alone.
+    window.dispatchEvent(new Event('scroll'));
+    await new Promise((r) => requestAnimationFrame(() => r(undefined)));
+    expect(scrollIntoView).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -536,7 +568,7 @@ describe('DOM renderer: a way out on every step', () => {
 describe('DOM renderer follows its element', () => {
   it('repositions the card and spotlight when the page scrolls or the window resizes', async () => {
     const target = document.createElement('button');
-    target.setAttribute('data-guide-id', 'invite-button');
+    target.setAttribute('data-guide-id', 'own-anchor');
     document.body.appendChild(target);
     let rect = { top: 100, left: 20, right: 120, bottom: 130, width: 100, height: 30 };
     target.getBoundingClientRect = () => rect as DOMRect;
@@ -546,7 +578,7 @@ describe('DOM renderer follows its element', () => {
       dismissGuide: () => {},
     });
     const guide = makeGuide({
-      steps: [makeStep({ id: 's1', targetSelector: '[data-guide-id="invite-button"]' })],
+      steps: [makeStep({ id: 's1', targetSelector: '[data-guide-id="own-anchor"]' })],
     });
     renderer.renderStep(guide, guide.steps[0], target);
     const host = document.querySelector<HTMLElement>('[data-guide-host]:not([data-guide-spotlight])')!;

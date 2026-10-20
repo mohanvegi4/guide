@@ -31,17 +31,32 @@ export function createDomRenderer(engine: {
    * element into view, which animates over several frames — leaves them
    * where the element used to be, often off screen.
    */
-  const tracked = new Map<string, { step: Step; target: Element }>();
+  const tracked = new Map<string, { step: Step; target: Element; renderedAt: number; rescrolled: boolean }>();
   let listening = false;
   let repositionScheduled = false;
+  /** How long after rendering a step the page's own scrolling may still move the anchor away (ms). */
+  const SETTLE_MS = 2000;
 
   function reposition(): void {
-    for (const [guideId, { step, target }] of tracked) {
-      const entry = hosts.get(guideId);
-      if (!entry || !target.isConnected) continue;
-      spotlightTarget(entry.spotlight, target);
-      positionNear(entry.host, target, step.position);
+    for (const [guideId, entry] of tracked) {
+      const hostEntry = hosts.get(guideId);
+      const { step, target } = entry;
+      if (!hostEntry || !target.isConnected) continue;
+      spotlightTarget(hostEntry.spotlight, target);
+      positionNear(hostEntry.host, target, step.position);
+      // Host pages often scroll right after a page renders (restoring a
+      // position, bringing a results table into view). If that takes the
+      // anchor off screen within moments of the step appearing, bring it back
+      // — once, so we never fight the visitor's own scrolling.
+      if (!entry.rescrolled && Date.now() - entry.renderedAt < SETTLE_MS && !inViewport(target)) {
+        entry.rescrolled = true;
+        target.scrollIntoView?.({ block: 'center', inline: 'nearest' });
+      }
     }
+  }
+  function inViewport(el: Element): boolean {
+    const r = el.getBoundingClientRect();
+    return r.top >= 0 && r.left >= 0 && r.bottom <= window.innerHeight && r.right <= window.innerWidth;
   }
   function onViewportChange(): void {
     if (repositionScheduled) return;
@@ -52,8 +67,11 @@ export function createDomRenderer(engine: {
     });
   }
   function track(guideId: string, step: Step, target: Element | null): void {
-    if (target) tracked.set(guideId, { step, target });
-    else tracked.delete(guideId);
+    const previous = tracked.get(guideId);
+    if (!target) tracked.delete(guideId);
+    else if (previous && previous.step === step && previous.target === target)
+      return; // a re-render, not a new step
+    else tracked.set(guideId, { step, target, renderedAt: Date.now(), rescrolled: false });
     syncListeners();
   }
   function untrack(guideId: string): void {
