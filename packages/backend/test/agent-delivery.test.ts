@@ -169,7 +169,7 @@ describe('POST /v1/agent/:key/errors', () => {
 describe('GET /v1/apps/:appId/errors (Studio)', () => {
   it('lists an app’s recent errors, newest first, to any member of the app', async () => {
     const { orgId, appId, key } = await signUp('alice');
-    await addMember('alice', orgId, 'vic', 'member', { [appId]: 'viewer' });
+    await addMember('alice', orgId, 'vic', 'viewer');
     await agent(key, '/errors', { message: 'first', url: 'https://app.acme.test/a' });
     await agent(key, '/errors', { message: 'second', agentVersion: '0.1.0' });
 

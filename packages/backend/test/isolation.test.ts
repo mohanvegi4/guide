@@ -58,11 +58,19 @@ describe('through the API', () => {
     expect(res.status).toBe(404);
   });
 
-  it('an org member without a grant on an app gets 404 for it', async () => {
-    await addMember('alice', a.orgId, 'bob', 'member');
+  it('a viewer sees every app of their org, read-only', async () => {
+    await addMember('alice', a.orgId, 'bob', 'viewer');
     expect(
       (await request(app).get(`/v1/apps/${a.appId}/guides`).set('Authorization', as('bob'))).status,
-    ).toBe(404);
+    ).toBe(200);
+    expect(
+      (
+        await request(app)
+          .post(`/v1/apps/${a.appId}/guides`)
+          .set('Authorization', as('bob'))
+          .send({ name: 'x', type: 'tooltip' })
+      ).status,
+    ).toBe(403);
   });
 });
 

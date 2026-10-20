@@ -131,16 +131,15 @@ describe('app settings', () => {
 });
 
 describe('roles', () => {
-  // Each person below is an org MEMBER with one role on the app, except the
-  // org admin, who manages every app in the org.
-  const people = ['viewer', 'editor', 'publisher', 'app_admin'] as const;
+  // One role per person for the whole organization: owner > manager > editor > viewer.
   let ctx: { orgId: string; appId: string; guideId: string };
 
   beforeEach(async () => {
     const { orgId, appId } = await signUp('owner');
-    for (const role of people) await addMember('owner', orgId, role, 'member', { [appId]: role });
-    await addMember('owner', orgId, 'orgadmin', 'admin');
-    await addMember('owner', orgId, 'outsider', 'member'); // in the org, no app grant
+    await addMember('owner', orgId, 'viewer', 'viewer');
+    await addMember('owner', orgId, 'editor', 'editor');
+    await addMember('owner', orgId, 'manager', 'manager');
+    await signUp('outsider'); // another organization entirely
     const g = await request(app)
       .post(`/v1/apps/${appId}/guides`)
       .set('Authorization', as('owner'))
@@ -152,12 +151,11 @@ describe('roles', () => {
     (await request(app)[method](path).set('Authorization', as(sub)).send(body)).status;
 
   it.each([
-    // [who,       read, draft, publish, settings]
+    // [who,     read, draft, publish, settings]
     ['viewer', 200, 403, 403, 403],
-    ['editor', 200, 200, 403, 403],
-    ['publisher', 200, 200, 201, 403],
-    ['app_admin', 200, 200, 201, 200],
-    ['orgadmin', 200, 200, 201, 200],
+    ['editor', 200, 200, 201, 200],
+    ['manager', 200, 200, 201, 200],
+    ['owner', 200, 200, 201, 200],
     ['outsider', 404, 404, 404, 404],
   ])('%s', async (who, read, draft, publish, settings) => {
     const base = `/v1/apps/${ctx.appId}/guides/${ctx.guideId}`;
@@ -167,34 +165,51 @@ describe('roles', () => {
     expect(await status(who, 'patch', `/v1/apps/${ctx.appId}`, { name: 'Renamed' })).toBe(settings);
   });
 
-  it('only org admins create apps and see every app', async () => {
-    expect(await status('app_admin', 'post', `/v1/orgs/${ctx.orgId}/apps`, { name: 'x', websites: [] })).toBe(
-      403,
-    );
-    const created = await request(app)
-      .post(`/v1/orgs/${ctx.orgId}/apps`)
-      .set('Authorization', as('orgadmin'))
-      .send({ name: 'Second', websites: [] });
-    expect(created.status).toBe(201);
-    // members only see apps they were granted
-    const viewerApps = await request(app)
-      .get(`/v1/orgs/${ctx.orgId}/apps`)
-      .set('Authorization', as('viewer'));
-    expect(viewerApps.body.map((a: { name: string }) => a.name)).toEqual(['owner org app']);
-    const adminApps = await request(app)
-      .get(`/v1/orgs/${ctx.orgId}/apps`)
-      .set('Authorization', as('orgadmin'));
-    expect(adminApps.body).toHaveLength(2);
+  it('editors run sites but do not create, delete or rotate them; managers do', async () => {
+    const create = (sub: string) =>
+      status(sub, 'post', `/v1/orgs/${ctx.orgId}/apps`, { name: 'x', websites: [] });
+    expect(await create('editor')).toBe(403);
+    expect(await create('viewer')).toBe(403);
+    expect(await status('editor', 'post', `/v1/apps/${ctx.appId}/rotate-key`)).toBe(403);
+    expect(await status('editor', 'post', `/v1/apps/${ctx.appId}/signing-secret`)).toBe(403);
+    expect(
+      (
+        await request(app)
+          .delete(`/v1/apps/${ctx.appId}`)
+          .set('Authorization', as('editor'))
+          .send({ confirmName: 'owner org app' })
+      ).status,
+    ).toBe(403);
+    expect(await create('manager')).toBe(201);
+    expect(await status('manager', 'post', `/v1/apps/${ctx.appId}/rotate-key`)).toBe(200);
   });
 
-  it('keeps raw rows consistent: one owner, grants per app', async () => {
+  it('everyone in the organization sees every one of its sites', async () => {
+    await request(app)
+      .post(`/v1/orgs/${ctx.orgId}/apps`)
+      .set('Authorization', as('manager'))
+      .send({ name: 'Second', websites: [] });
+    for (const who of ['viewer', 'editor', 'manager', 'owner']) {
+      const apps = await request(app).get(`/v1/orgs/${ctx.orgId}/apps`).set('Authorization', as(who));
+      expect(apps.body.map((a: { name: string }) => a.name).sort()).toEqual(['Second', 'owner org app']);
+    }
+    const me = await request(app).get('/v1/me').set('Authorization', as('viewer'));
+    expect(me.body.orgs[0].apps.map((a: { role: string }) => a.role)).toEqual(['viewer', 'viewer']);
+    const editor = await request(app).get('/v1/me').set('Authorization', as('editor'));
+    expect(editor.body.orgs[0].apps.map((a: { role: string }) => a.role)).toEqual(['app_admin', 'app_admin']);
+  });
+
+  it('keeps raw rows consistent: one role per member', async () => {
     const rows = await adminPool.query(
-      `SELECT role, count(*)::int AS n FROM org_member GROUP BY role ORDER BY role`,
+      `SELECT role, count(*)::int AS n FROM org_member WHERE org_id = $1 GROUP BY role ORDER BY role::text`,
+      [ctx.orgId],
     );
     expect(rows.rows).toEqual([
+      { role: 'editor', n: 1 },
+      { role: 'manager', n: 1 },
       { role: 'owner', n: 1 },
-      { role: 'admin', n: 1 },
-      { role: 'member', n: 5 },
+      { role: 'viewer', n: 1 },
     ]);
+    expect((await adminPool.query(`SELECT count(*)::int AS n FROM app_member`)).rows[0].n).toBe(0);
   });
 });

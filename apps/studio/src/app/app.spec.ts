@@ -28,7 +28,7 @@ describe('App shell navigation', () => {
         {
           id: 'o1',
           name: 'Acme',
-          role: 'member',
+          role: 'editor',
           suspendedAt: null,
           apps: [
             { id: 'a1', name: 'First app', role: 'editor' },

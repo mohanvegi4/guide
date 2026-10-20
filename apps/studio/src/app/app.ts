@@ -4,7 +4,7 @@ import { toSignal } from '@angular/core/rxjs-interop';
 import { NavigationEnd, Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { filter, map } from 'rxjs';
 import { AuthService } from './core/auth.service';
-import { isOrgAdmin } from './core/models';
+import { isOrgManager } from './core/models';
 
 @Component({
   selector: 'app-root',
@@ -27,7 +27,12 @@ export class App {
   protected readonly orgId = computed(() => this.url().match(/^\/o\/([^/?#]+)/)?.[1] ?? null);
   protected readonly appId = computed(() => this.url().match(/^\/o\/[^/]+\/apps\/([^/?#]+)/)?.[1] ?? null);
   protected readonly org = computed(() => this.auth.org(this.orgId()));
-  protected readonly orgAdmin = computed(() => isOrgAdmin(this.org()?.role));
+  protected readonly orgAdmin = computed(() => isOrgManager(this.org()?.role));
+  /** Only owners start new organizations (someone with none yet gets the Welcome page anyway). */
+  protected readonly canCreateOrg = computed(() => {
+    const orgs = this.auth.me()?.orgs ?? [];
+    return orgs.length === 0 || orgs.some((o) => o.role === 'owner');
+  });
 
   /** The app last visited per organization, so org-level pages keep that app's tabs. */
   private readonly lastApp = signal<Record<string, string>>({});

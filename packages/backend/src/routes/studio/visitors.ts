@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { asyncHandler } from '../../asyncHandler';
 import { HttpError } from '../../httpError';
 import { requestLogger } from '../../logging';
-import { idParam, requireAppRole, studio } from './context';
+import { idParam, requireAppManager, studio } from './context';
 
 /**
  * One end user's data in one app: /v1/apps/:appId/visitors/:visitorId
@@ -34,7 +34,7 @@ visitorsRouter.get(
     const appId = idParam(req, 'appId');
     const visitorId = visitorParam(req.params.visitorId);
     const data = await studio(req, async (client, ctx) => {
-      requireAppRole(ctx, appId, 'app_admin');
+      requireAppManager(ctx, appId);
       const events = await client.query(
         `SELECT guide_id, guide_version_id, step_id, account_id, session_id, event_type, occurred_at, metadata
          FROM guide_event WHERE app_id = $1 AND visitor_id = $2 ORDER BY occurred_at`,
@@ -84,7 +84,7 @@ visitorsRouter.delete(
     const appId = idParam(req, 'appId');
     const visitorId = visitorParam(req.params.visitorId);
     const counts = await studio(req, async (client, ctx) => {
-      requireAppRole(ctx, appId, 'app_admin');
+      requireAppManager(ctx, appId);
       const events = await client.query(`DELETE FROM guide_event WHERE app_id = $1 AND visitor_id = $2`, [
         appId,
         visitorId,

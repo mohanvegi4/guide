@@ -208,12 +208,12 @@ describe('support access (customer-granted, time-boxed, read-only, logged)', () 
     expect(until).toBeLessThan(Date.now() + 7.1 * 86_400_000);
 
     const { addMember } = await import('./helpers');
-    await addMember('alice', orgId, 'adam', 'admin');
-    await addMember('alice', orgId, 'mel', 'member');
+    await addMember('alice', orgId, 'adam', 'manager');
+    await addMember('alice', orgId, 'mel', 'viewer');
     expect(
       (await request(app).get(`/v1/orgs/${orgId}/support-access`).set('Authorization', as('adam'))).status,
     ).toBe(200);
-    expect((await grant('adam', 7)).status).toBe(403); // admins can look, only owners open the door
+    expect((await grant('adam', 7)).status).toBe(403); // managers can look, only owners open the door
     expect(
       (await request(app).get(`/v1/orgs/${orgId}/support-access`).set('Authorization', as('mel'))).status,
     ).toBe(403);
@@ -231,7 +231,7 @@ describe('support access (customer-granted, time-boxed, read-only, logged)', () 
     const context = await asSupport('root', orgId, 'get', '/support-context');
     expect(context.body).toMatchObject({
       id: orgId,
-      role: 'member',
+      role: 'viewer',
       apps: [{ id: appId, role: 'viewer' }],
       supportAccessUntil: expect.any(String),
     });

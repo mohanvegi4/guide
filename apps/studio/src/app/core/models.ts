@@ -12,15 +12,30 @@ export type StepActionType = (typeof STEP_ACTIONS)[number];
 
 export type GuideStatus = 'draft' | 'published' | 'archived';
 
-export type OrgRole = 'owner' | 'admin' | 'member';
-export const APP_ROLES = ['viewer', 'editor', 'publisher', 'app_admin'] as const;
-export type AppRole = (typeof APP_ROLES)[number];
+/**
+ * One role per person for the whole organization, applying to every site:
+ *   owner    everything, incl. ownership, support access, export / delete
+ *   manager  runs the organization: sites, members, invitations
+ *   editor   guides, pages, publishing and site settings on every site
+ *   viewer   read-only
+ */
+export type OrgRole = 'owner' | 'manager' | 'editor' | 'viewer';
+export const ORG_ROLES: ReadonlyArray<{ role: OrgRole; label: string; description: string }> = [
+  { role: 'owner', label: 'Owner', description: 'Everything, including ownership, support access and deleting the organization.' },
+  { role: 'manager', label: 'Manager', description: 'Runs the organization: creates sites, manages members and invitations.' },
+  { role: 'editor', label: 'Editor', description: 'Builds and publishes guides and pages, changes site settings; cannot create or delete sites.' },
+  { role: 'viewer', label: 'Viewer', description: 'Read-only: guides, pages and analytics.' },
+];
+export const roleLabel = (role: OrgRole | string): string => ORG_ROLES.find((r) => r.role === role)?.label ?? role;
+/** The role a Studio user effectively has inside one site (derived from the org role by the backend). */
+export type AppRole = 'viewer' | 'editor' | 'publisher' | 'app_admin';
 
 const APP_ROLE_RANK: Record<AppRole, number> = { viewer: 0, editor: 1, publisher: 2, app_admin: 3 };
 export function appRoleAtLeast(role: AppRole | undefined, min: AppRole): boolean {
   return role !== undefined && APP_ROLE_RANK[role] >= APP_ROLE_RANK[min];
 }
-export const isOrgAdmin = (role: OrgRole | undefined) => role === 'owner' || role === 'admin';
+/** Owners and managers run the organization. */
+export const isOrgManager = (role: OrgRole | undefined) => role === 'owner' || role === 'manager';
 
 /** GET /v1/me */
 export interface Me {
@@ -99,7 +114,7 @@ export interface SupportAccess {
 export interface SupportContext {
   id: string;
   name: string;
-  role: 'member';
+  role: 'viewer';
   apps: Array<{ id: string; name: string; role: 'viewer' }>;
   supportAccessUntil: string;
 }
@@ -146,14 +161,12 @@ export interface Member {
   email: string | null;
   name: string | null;
   orgRole: OrgRole;
-  appRoles: Record<string, AppRole>;
 }
 
 export interface Invitation {
   id: string;
   email: string | null;
   org_role: OrgRole;
-  app_roles: Record<string, AppRole>;
   expires_at: string;
   token?: string; // only right after creation
   emailSent?: boolean; // only right after creation: the invite was emailed to `email`
@@ -164,7 +177,6 @@ export interface InvitationPreview {
   orgName: string;
   email: string | null;
   orgRole: OrgRole;
-  apps: Array<{ id: string; name: string; role: AppRole }>;
   expired: boolean;
   accepted: boolean;
 }

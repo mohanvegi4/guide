@@ -3,7 +3,7 @@ import { Router } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 import { ApiService, describeError } from '../core/api.service';
 import { AuthService } from '../core/auth.service';
-import { InvitationPreview } from '../core/models';
+import { InvitationPreview, ORG_ROLES, roleLabel } from '../core/models';
 
 /** /invite/:token — shows what you're invited to and lets you accept. */
 @Component({
@@ -18,16 +18,8 @@ import { InvitationPreview } from '../core/models';
           <p class="notice">This invitation has expired. Ask for a new one.</p>
         } @else {
           <p>
-            You're invited as <strong>{{ inv.orgRole }}</strong>
-            @if (inv.orgRole === 'member' && inv.apps.length) {
-              with access to:
-            }
+            You're invited as <strong>{{ roleLabel(inv.orgRole) }}</strong>: {{ roleDescription(inv.orgRole) }}
           </p>
-          @if (inv.orgRole === 'member') {
-            <ul class="plain">
-              @for (a of inv.apps; track a.id) { <li>{{ a.name }} — {{ a.role }}</li> }
-            </ul>
-          }
           @if (inv.email) { <p class="muted small">For {{ inv.email }}.</p> }
           <button class="primary" (click)="accept()" [disabled]="busy()">Accept invitation</button>
         }
@@ -48,6 +40,10 @@ export class InviteComponent {
   protected readonly invitation = signal<InvitationPreview | null>(null);
   protected readonly error = signal<string | null>(null);
   protected readonly busy = signal(false);
+  protected readonly roleLabel = roleLabel;
+  protected roleDescription(role: string): string {
+    return ORG_ROLES.find((r) => r.role === role)?.description ?? '';
+  }
 
   constructor() {
     // untracked: the interceptor reads the auth token signal (see guide list).

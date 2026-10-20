@@ -51,7 +51,7 @@ describe('AuthService', () => {
     await pasteLogin(
       't2',
       me([
-        { id: 'o-empty', name: 'Empty', role: 'member', suspendedAt: null, apps: [] },
+        { id: 'o-empty', name: 'Empty', role: 'viewer', suspendedAt: null, apps: [] },
         {
           id: 'o1',
           name: 'Acme',
@@ -63,7 +63,7 @@ describe('AuthService', () => {
     );
     expect(auth.homePath()).toBe('/o/o1/apps/a1/guides');
     expect(auth.appRole('a1')).toBe('app_admin');
-    expect(auth.orgRole('o-empty')).toBe('member');
+    expect(auth.orgRole('o-empty')).toBe('viewer');
   });
 
   it('init() restores a stored token only if the backend still accepts it', async () => {

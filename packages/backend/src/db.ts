@@ -28,7 +28,19 @@ export const pool = new Pool({
 // studio_user / support_access_log through pool.query() directly.
 // ------------------------------------------------------------
 
-export type OrgRole = 'owner' | 'admin' | 'member';
+/**
+ * One role per person per organization, for every one of its sites:
+ *   owner > manager > editor > viewer  (migrations 015/016)
+ */
+export type OrgRole = 'owner' | 'manager' | 'editor' | 'viewer';
+const ORG_ROLE_RANK: Record<OrgRole, number> = { viewer: 0, editor: 1, manager: 2, owner: 3 };
+export function orgRoleAtLeast(role: OrgRole | undefined, min: OrgRole): boolean {
+  return role !== undefined && ORG_ROLE_RANK[role] >= ORG_ROLE_RANK[min];
+}
+/** What an organization role means inside each of its sites (the ladder route checks use). */
+export function appRoleForOrgRole(role: OrgRole): AppRole {
+  return role === 'viewer' ? 'viewer' : 'app_admin';
+}
 export type AppRole = 'viewer' | 'editor' | 'publisher' | 'app_admin';
 
 /** What a Studio user can reach, resolved from their memberships at the start of each request. */
@@ -84,51 +96,28 @@ export async function resolveStudioContext(client: PoolClient, userId: string): 
     [userId],
   );
   const orgs = new Map(orgRows.rows.map((r) => [r.org_id, r.role]));
-  const adminOrgIds = [...orgs].filter(([, role]) => role !== 'member').map(([id]) => id);
-  await setVar(client, 'app.org_ids', uuidArray(orgs.keys()));
+  const orgIds = [...orgs.keys()];
+  const adminOrgIds = orgIds.filter((id) => orgRoleAtLeast(orgs.get(id), 'manager'));
+  const ownerOrgIds = orgIds.filter((id) => orgs.get(id) === 'owner');
+  await setVar(client, 'app.org_ids', uuidArray(orgIds));
   await setVar(client, 'app.admin_org_ids', uuidArray(adminOrgIds));
-  // Owners only: deleting the organization (migration 013).
-  await setVar(
-    client,
-    'app.owner_org_ids',
-    uuidArray([...orgs].filter(([, role]) => role === 'owner').map(([id]) => id)),
-  );
+  // Owner-only actions (deleting the organization) are enforced in the DB too.
+  await setVar(client, 'app.owner_org_ids', uuidArray(ownerOrgIds));
 
-  const memberRows = await client.query<{ app_id: string; role: AppRole }>(
-    `SELECT app_id, role FROM app_member WHERE user_id = $1`,
-    [userId],
-  );
-  // Admin orgs' apps are visible via application_select (org_id = ANY(admin_org_ids)).
-  const adminApps = await client.query<{ id: string; org_id: string }>(
+  // Roles are organization-wide: every member sees every site of their orgs
+  // (application_select on app_org_ids), with the role derived from the org role.
+  const appRows = await client.query<{ id: string; org_id: string }>(
     `SELECT id, org_id FROM application WHERE org_id = ANY($1::uuid[])`,
-    [adminOrgIds],
+    [orgIds],
   );
-
   const apps = new Map<string, { orgId: string; role: AppRole }>();
-  for (const a of adminApps.rows) apps.set(a.id, { orgId: a.org_id, role: 'app_admin' });
+  for (const a of appRows.rows)
+    apps.set(a.id, { orgId: a.org_id, role: appRoleForOrgRole(orgs.get(a.org_id)!) });
 
-  // Per-app grants: publish them first so their application rows become visible.
-  await setVar(
-    client,
-    'app.app_ids',
-    uuidArray(new Set([...apps.keys(), ...memberRows.rows.map((r) => r.app_id)])),
-  );
-  if (memberRows.rows.length > 0) {
-    const memberApps = await client.query<{ id: string; org_id: string }>(
-      `SELECT id, org_id FROM application WHERE id = ANY($1::uuid[])`,
-      [memberRows.rows.map((r) => r.app_id)],
-    );
-    const orgOf = new Map(memberApps.rows.map((a) => [a.id, a.org_id]));
-    for (const m of memberRows.rows) {
-      const orgId = orgOf.get(m.app_id);
-      // An app grant only counts while the user is still a member of the org.
-      if (!orgId || !orgs.has(orgId) || apps.has(m.app_id)) continue;
-      apps.set(m.app_id, { orgId, role: m.role });
-    }
-  }
-
-  // Final, consistent sets (drops grants for orgs the user has left).
   await setVar(client, 'app.app_ids', uuidArray(apps.keys()));
+  // Sites the user may change settings on: editors and up. Destructive site
+  // actions (delete, rotate keys, forget visitors) additionally require the
+  // manager role in the API.
   await setVar(
     client,
     'app.admin_app_ids',
@@ -221,7 +210,7 @@ export async function withSupportSession<T>(
     await client.query(`SET LOCAL transaction_read_only = on`);
     const ctx: StudioContext = {
       userId,
-      orgs: new Map([[orgId, 'member']]),
+      orgs: new Map([[orgId, 'viewer']]),
       apps: new Map(apps.rows.map((a) => [a.id, { orgId, role: 'viewer' as AppRole }])),
       support: { orgId, until: access.until },
     };

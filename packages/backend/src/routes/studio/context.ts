@@ -6,6 +6,7 @@ import {
   OrgRole,
   StudioContext,
   appRoleAtLeast,
+  orgRoleAtLeast,
   withPlatformSession,
   withStudioSession,
   withSupportSession,
@@ -54,14 +55,22 @@ export async function platform<T>(
   return result;
 }
 
-const ORG_RANK: Record<OrgRole, number> = { member: 0, admin: 1, owner: 2 };
-
 /** Not a member -> 404 (no probing); member without the role -> 403. */
 export function requireOrgRole(ctx: StudioContext, orgId: string, min: OrgRole): OrgRole {
   const role = ctx.orgs.get(orgId);
   if (!role) throw notFound();
-  if (ORG_RANK[role] < ORG_RANK[min]) throw forbidden();
+  if (!orgRoleAtLeast(role, min)) throw forbidden();
   return role;
+}
+
+/**
+ * Destructive site actions (delete it, rotate its key, forget a visitor):
+ * editors run sites but can't do these — managers and owners can.
+ */
+export function requireAppManager(ctx: StudioContext, appId: string): { orgId: string; role: AppRole } {
+  const app = requireAppRole(ctx, appId, 'app_admin');
+  requireOrgRole(ctx, app.orgId, 'manager');
+  return app;
 }
 
 /** No access to the app -> 404; access without the role -> 403. */

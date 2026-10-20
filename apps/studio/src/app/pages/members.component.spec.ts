@@ -35,7 +35,6 @@ describe('MembersComponent danger zone', () => {
     fixture.detectChanges();
     await fixture.whenStable();
     http.expectOne('/api/v1/orgs/o1/members').flush([]);
-    http.expectOne('/api/v1/orgs/o1/apps').flush([]);
     http.expectOne('/api/v1/orgs/o1/invitations').flush([]);
     http
       .expectOne('/api/v1/orgs/o1/support-access')
@@ -52,7 +51,7 @@ describe('MembersComponent danger zone', () => {
   afterEach(() => http.verify());
 
   it('is shown to owners only', async () => {
-    expect(dangerZone((await render('admin')).nativeElement)).toBeNull();
+    expect(dangerZone((await render('manager')).nativeElement)).toBeNull();
     TestBed.resetTestingModule();
     expect(dangerZone((await render('owner')).nativeElement)).not.toBeNull();
   });

@@ -120,11 +120,11 @@ describe('forget this visitor', () => {
     ).toBe(400);
   });
 
-  it('is for app admins only, in the API and in the database', async () => {
+  it('is for managers and owners only, in the API and in the database', async () => {
     const { orgId, appId } = await seed();
-    await addMember('alice', orgId, 'eddie', 'member', { [appId]: 'editor' });
-    await addMember('alice', orgId, 'pat', 'member', { [appId]: 'publisher' });
-    await addMember('alice', orgId, 'andy', 'member', { [appId]: 'app_admin' });
+    await addMember('alice', orgId, 'eddie', 'editor');
+    await addMember('alice', orgId, 'pat', 'viewer');
+    await addMember('alice', orgId, 'andy', 'manager');
     await signUp('bob');
 
     for (const sub of ['eddie', 'pat']) {
@@ -137,7 +137,7 @@ describe('forget this visitor', () => {
       404,
     );
 
-    // Even raw SQL in a publisher's session deletes nothing and sees no state.
+    // Even raw SQL in a viewer's session deletes nothing and sees no state.
     const pat = (await adminPool.query(`SELECT id FROM studio_user WHERE oidc_sub = 'pat'`)).rows[0].id;
     const seen = await withStudioSession(pat, async (client) => ({
       deleted: (await client.query(`DELETE FROM guide_event WHERE visitor_id = 'v-1'`)).rowCount,
@@ -146,7 +146,7 @@ describe('forget this visitor', () => {
     expect(seen).toEqual({ deleted: 0, state: 0 });
     expect((await adminPool.query(`SELECT COUNT(*)::int AS n FROM guide_event`)).rows[0].n).toBe(4);
 
-    // A per-app app_admin can.
+    // A manager can.
     expect(
       (await request(app).delete(visitors(appId, 'v-1')).set('Authorization', as('andy'))).body.events,
     ).toBe(2);

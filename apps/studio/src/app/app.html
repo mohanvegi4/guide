@@ -59,7 +59,9 @@
     }
     <div class="who">
       <span class="muted small">{{ me.user.name ?? me.user.email }}</span>
-      <a routerLink="/welcome" class="small">New org</a>
+      @if (canCreateOrg()) {
+        <a routerLink="/welcome" class="small">New org</a>
+      }
       <button type="button" class="link" (click)="logout()">Sign out</button>
     </div>
   }

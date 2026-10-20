@@ -112,7 +112,7 @@ const SITE_PATH = /^(\/(?!\/).*)?$/;
                 </td>
                 <td class="small">
                   @if (urlLocked(p)) {
-                    <span class="muted">Live guides use this page — only publishers can change its URL.</span>
+                    <span class="muted">Live guides use this page — you need the editor role to change its URL.</span>
                   } @else if (p.usage?.live) {
                     <span class="notice"
                       >Changing the URL moves {{ p.usage!.live }} live guide{{

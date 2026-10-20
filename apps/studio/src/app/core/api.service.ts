@@ -127,11 +127,7 @@ export class ApiService {
     return this.http.get<Member[]>(`${this.base}/orgs/${orgId}/members`);
   }
 
-  updateMember(
-    orgId: string,
-    userId: string,
-    patch: { orgRole?: OrgRole; appRoles?: Record<string, AppRole | null> },
-  ) {
+  updateMember(orgId: string, userId: string, patch: { orgRole: OrgRole }) {
     return this.http.patch<void>(`${this.base}/orgs/${orgId}/members/${userId}`, patch);
   }
 
@@ -145,7 +141,7 @@ export class ApiService {
 
   createInvitation(
     orgId: string,
-    body: { email?: string; orgRole: 'admin' | 'member'; appRoles: Record<string, AppRole> },
+    body: { email?: string; orgRole: Exclude<OrgRole, 'owner'> },
   ) {
     return this.http.post<Invitation & { token: string }>(`${this.base}/orgs/${orgId}/invitations`, body);
   }

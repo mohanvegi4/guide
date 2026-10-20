@@ -158,7 +158,7 @@ describe('GET /apps/:appId/analytics', () => {
 
 describe('access', () => {
   it('viewers can read both; non-members get 404 for both', async () => {
-    await addMember('alice', orgId, 'viewer', 'member', { [appId]: 'viewer' });
+    await addMember('alice', orgId, 'viewer', 'viewer');
     expect((await get(`/v1/apps/${appId}/analytics`, 'viewer')).status).toBe(200);
     expect((await guideAnalytics('?by=account', 'viewer')).status).toBe(200);
 

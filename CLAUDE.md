@@ -38,8 +38,11 @@ deliberately for this project's scale and constraints:
   - Never trust an org, app or user id from request input.
 - **Studio identity comes from OIDC (identity only).**
   - Organizations, memberships and roles live in our database.
-  - Org roles: owner / admin / member.
-  - Per-app roles: viewer < editor < publisher < app_admin.
+  - One organization-wide role per person: viewer < editor < manager < owner. It applies to
+    every app of the org; there are no per-app grants (the `app_member` table is empty and unused).
+    Internally the backend derives an `AppRole` (viewer | app_admin) from it for the existing
+    per-app route checks; destructive app actions (delete, key rotation, forget visitor) are
+    gated by `requireAppManager` (manager+).
   - HS256 dev tokens exist only in development/test.
 - **Above organizations, Pendo-style (migration 009).**
   - `studio_user.platform_admin` (granted by SQL, then from the Administration page) runs the

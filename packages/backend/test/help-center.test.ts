@@ -376,7 +376,7 @@ describe('help-center analytics', () => {
     });
 
     // Viewers may read it; another org's app answers 404.
-    await addMember('alice', orgId, 'vic', 'member', { [appId]: 'viewer' });
+    await addMember('alice', orgId, 'vic', 'viewer');
     expect(
       (await request(app).get(`/v1/apps/${appId}/help-analytics`).set('Authorization', as('vic'))).status,
     ).toBe(200);

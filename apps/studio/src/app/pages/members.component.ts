@@ -2,25 +2,16 @@ import { DatePipe } from '@angular/common';
 import { Component, computed, effect, inject, input, signal, untracked } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
-import { Observable, forkJoin } from 'rxjs';
+import { Observable } from 'rxjs';
 import { ApiService, describeError } from '../core/api.service';
 import { AuthService } from '../core/auth.service';
 import { saveResponseAsFile } from '../core/download';
-import {
-  APP_ROLES,
-  App,
-  AppRole,
-  Invitation,
-  Member,
-  OrgRole,
-  SupportAccess,
-  isOrgAdmin,
-} from '../core/models';
+import { Invitation, Member, ORG_ROLES, OrgRole, SupportAccess, isOrgManager, roleLabel } from '../core/models';
 
 /**
- * People in an organization. Org admins/owners manage everyone; per-app roles:
- * viewer < editor (drafts, previews) < publisher (go live) < app admin (settings).
- * Org owners and admins can do everything in every app.
+ * People in an organization. One role per person, for every site:
+ * owner > manager > editor > viewer (see ORG_ROLES). Owners and managers
+ * manage members and invitations; only owners hand out or take away "owner".
  */
 @Component({
   selector: 'app-members',
@@ -29,7 +20,7 @@ import {
     <div class="page-header">
       <div>
         <h1>Members</h1>
-        <p class="muted small">Owners and admins manage every app. Members get a role per app.</p>
+        <p class="muted small">One role per person, for every site in the organization.</p>
       </div>
     </div>
     @if (error()) {
@@ -40,10 +31,8 @@ import {
       <thead>
         <tr>
           <th>Person</th>
-          <th>Organization role</th>
-          @for (a of apps(); track a.id) {
-            <th>{{ a.name }}</th>
-          }
+          <th>Role</th>
+          <th>What they can do</th>
           <th></th>
         </tr>
       </thead>
@@ -60,42 +49,23 @@ import {
               }
             </td>
             <td>
-              @if (admin()) {
+              @if (admin() && (m.orgRole !== 'owner' || owner())) {
                 <select
                   [ngModel]="m.orgRole"
                   (ngModelChange)="setOrgRole(m, $event)"
                   [attr.aria-label]="'Organization role for ' + (m.name ?? m.email)"
                 >
-                  @for (r of orgRoles(); track r) {
-                    <option [value]="r">{{ r }}</option>
+                  @for (r of orgRoles(); track r.role) {
+                    <option [value]="r.role">{{ r.label }}</option>
                   }
                 </select>
               } @else {
-                {{ m.orgRole }}
+                {{ roleLabel(m.orgRole) }}
               }
             </td>
-            @for (a of apps(); track a.id) {
-              <td>
-                @if (m.orgRole !== 'member') {
-                  <span class="muted small">all</span>
-                } @else if (admin()) {
-                  <select
-                    [ngModel]="m.appRoles[a.id] ?? ''"
-                    (ngModelChange)="setAppRole(m, a.id, $event)"
-                    [attr.aria-label]="a.name + ' role'"
-                  >
-                    <option value="">no access</option>
-                    @for (r of appRoles; track r) {
-                      <option [value]="r">{{ r }}</option>
-                    }
-                  </select>
-                } @else {
-                  {{ m.appRoles[a.id] ?? '—' }}
-                }
-              </td>
-            }
+            <td class="muted small">{{ roleDescription(m.orgRole) }}</td>
             <td>
-              @if (admin() || m.userId === myId()) {
+              @if (m.userId === myId() || (admin() && (m.orgRole !== 'owner' || owner()))) {
                 <button type="button" class="link" (click)="remove(m)">
                   {{ m.userId === myId() ? 'Leave' : 'Remove' }}
                 </button>
@@ -121,25 +91,14 @@ import {
         <form class="invite-form" (ngSubmit)="invite()">
           <label>Email (optional) <input name="email" type="email" [(ngModel)]="inviteEmail" /></label>
           <label
-            >Organization role
+            >Role
             <select name="orgRole" [(ngModel)]="inviteOrgRole">
-              <option value="member">member</option>
-              <option value="admin">admin</option>
+              @for (r of invitableRoles; track r.role) {
+                <option [value]="r.role">{{ r.label }}</option>
+              }
             </select>
           </label>
-          @if (inviteOrgRole === 'member') {
-            @for (a of apps(); track a.id) {
-              <label
-                >{{ a.name }}
-                <select [name]="'app-' + a.id" [(ngModel)]="inviteAppRoles[a.id]">
-                  <option [ngValue]="undefined">no access</option>
-                  @for (r of appRoles; track r) {
-                    <option [value]="r">{{ r }}</option>
-                  }
-                </select>
-              </label>
-            }
-          }
+          <span class="muted small">{{ roleDescription(inviteOrgRole) }}</span>
           <button class="primary" [disabled]="busy()">
             {{ mailEnabled() && inviteEmail.trim() ? 'Send invitation' : 'Create invite link' }}
           </button>
@@ -167,7 +126,7 @@ import {
           <ul class="plain">
             @for (i of invitations(); track i.id) {
               <li>
-                {{ i.email ?? 'anyone with the link' }} · {{ i.org_role }} · expires
+                {{ i.email ?? 'anyone with the link' }} · {{ roleLabel(i.org_role) }} · expires
                 {{ i.expires_at | date: 'mediumDate' }}
                 <button type="button" class="link" (click)="revoke(i)">revoke</button>
               </li>
@@ -285,9 +244,7 @@ export class MembersComponent {
   private readonly router = inject(Router);
   readonly orgId = input.required<string>();
 
-  protected readonly appRoles = APP_ROLES;
   protected readonly members = signal<Member[]>([]);
-  protected readonly apps = signal<App[]>([]);
   protected readonly invitations = signal<Invitation[]>([]);
   protected readonly error = signal<string | null>(null);
   protected readonly busy = signal(false);
@@ -297,11 +254,12 @@ export class MembersComponent {
   protected readonly copied = signal(false);
   protected readonly mailEnabled = computed(() => this.auth.config().mailEnabled);
   protected inviteEmail = '';
-  protected inviteOrgRole: 'admin' | 'member' = 'member';
-  protected inviteAppRoles: Record<string, AppRole | undefined> = {};
+  protected inviteOrgRole: Exclude<OrgRole, 'owner'> = 'viewer';
+  protected readonly roleLabel = roleLabel;
+  protected readonly invitableRoles = ORG_ROLES.filter((r) => r.role !== 'owner');
 
   protected readonly myId = computed(() => this.auth.me()?.user.id);
-  protected readonly admin = computed(() => isOrgAdmin(this.auth.orgRole(this.orgId())));
+  protected readonly admin = computed(() => isOrgManager(this.auth.orgRole(this.orgId())));
   protected readonly owner = computed(() => this.auth.orgRole(this.orgId()) === 'owner');
   protected readonly support = signal<SupportAccess | null>(null);
   protected supportDays = 7;
@@ -310,9 +268,12 @@ export class MembersComponent {
   protected readonly exported = signal<string | null>(null);
   protected confirmName = '';
   /** Only owners can hand out or take away "owner". */
-  protected readonly orgRoles = computed<OrgRole[]>(() =>
-    this.auth.orgRole(this.orgId()) === 'owner' ? ['owner', 'admin', 'member'] : ['admin', 'member'],
+  protected readonly orgRoles = computed(() =>
+    this.auth.orgRole(this.orgId()) === 'owner' ? ORG_ROLES : ORG_ROLES.filter((r) => r.role !== 'owner'),
   );
+  protected roleDescription(role: string): string {
+    return ORG_ROLES.find((r) => r.role === role)?.description ?? '';
+  }
 
   constructor() {
     // untracked: load() reads the auth signals (roles, token via the interceptor).
@@ -324,14 +285,13 @@ export class MembersComponent {
 
   private load(): void {
     const orgId = this.orgId();
-    forkJoin({ members: this.api.listMembers(orgId), apps: this.api.listApps(orgId) }).subscribe({
-      next: ({ members, apps }) => {
+    this.api.listMembers(orgId).subscribe({
+      next: (members) => {
         this.members.set(members);
-        this.apps.set(apps);
       },
       error: (err) => this.error.set(describeError(err)),
     });
-    if (isOrgAdmin(this.auth.orgRole(orgId))) {
+    if (isOrgManager(this.auth.orgRole(orgId))) {
       this.api.listInvitations(orgId).subscribe({ next: (i) => this.invitations.set(i) });
       this.api.getSupportAccess(orgId).subscribe({ next: (s) => this.support.set(s) });
     }
@@ -414,9 +374,6 @@ export class MembersComponent {
     this.run(this.api.updateMember(this.orgId(), m.userId, { orgRole: role }));
   }
 
-  setAppRole(m: Member, appId: string, role: AppRole | ''): void {
-    this.run(this.api.updateMember(this.orgId(), m.userId, { appRoles: { [appId]: role || null } }));
-  }
 
   remove(m: Member): void {
     const self = m.userId === this.myId();
@@ -427,14 +384,10 @@ export class MembersComponent {
   }
 
   invite(): void {
-    const appRoles = Object.fromEntries(
-      Object.entries(this.inviteAppRoles).filter((e): e is [string, AppRole] => Boolean(e[1])),
-    );
     this.run(
       this.api.createInvitation(this.orgId(), {
         email: this.inviteEmail.trim() || undefined,
         orgRole: this.inviteOrgRole,
-        appRoles: this.inviteOrgRole === 'member' ? appRoles : {},
       }),
       (inv) => {
         const created = inv as Invitation & { token: string };
@@ -444,7 +397,6 @@ export class MembersComponent {
         // to the transport; otherwise the inviter has to send the link.
         this.emailedTo.set(created.emailSent ? created.email : null);
         this.inviteEmail = '';
-        this.inviteAppRoles = {};
       },
     );
   }

@@ -11,9 +11,9 @@ async function invite(adminSub: string, orgId: string, body: object) {
 }
 
 describe('invitations', () => {
-  it('invites with an org role and app roles; accepting grants exactly those', async () => {
+  it('invites with one organization role; accepting grants exactly that, on every site', async () => {
     const { orgId, appId } = await signUp('alice');
-    const inv = await invite('alice', orgId, { orgRole: 'member', appRoles: { [appId]: 'editor' } });
+    const inv = await invite('alice', orgId, { orgRole: 'editor' });
     expect(inv.status).toBe(201);
     expect(inv.body.token.length).toBeGreaterThan(20);
 
@@ -22,8 +22,7 @@ describe('invitations', () => {
       .set('Authorization', as('bob'));
     expect(preview.body).toMatchObject({
       orgName: 'alice org',
-      orgRole: 'member',
-      apps: [{ id: appId, name: 'alice org app', role: 'editor' }],
+      orgRole: 'editor',
       expired: false,
       accepted: false,
     });
@@ -37,9 +36,9 @@ describe('invitations', () => {
       {
         id: orgId,
         name: 'alice org',
-        role: 'member',
+        role: 'editor',
         suspendedAt: null,
-        apps: [{ id: appId, name: 'alice org app', role: 'editor' }],
+        apps: [{ id: appId, name: 'alice org app', role: 'app_admin' }],
       },
     ]);
   });
@@ -111,19 +110,17 @@ describe('invitations', () => {
     ).toBe(404);
   });
 
-  it('only org admins can invite, and nobody can invite an owner', async () => {
+  it('only managers and owners invite; an invitation never grants ownership or an unknown role', async () => {
     const { orgId } = await signUp('alice');
-    await addMember('alice', orgId, 'bob', 'member');
+    await addMember('alice', orgId, 'bob', 'editor');
+    await addMember('alice', orgId, 'meg', 'manager');
     expect((await invite('bob', orgId, {})).status).toBe(403);
+    expect((await invite('meg', orgId, { orgRole: 'viewer' })).status).toBe(201);
     expect((await invite('alice', orgId, { orgRole: 'owner' })).status).toBe(400);
-  });
-
-  it("can't grant roles on another org's app", async () => {
-    const a = await signUp('alice');
-    const b = await signUp('zed');
-    const res = await invite('alice', a.orgId, { appRoles: { [b.appId]: 'app_admin' } });
-    expect(res.status).toBe(400);
-    expect(res.body.error).toBe('unknown_app');
+    expect((await invite('alice', orgId, { orgRole: 'publisher' })).status).toBe(400);
+    // The default is the least privilege.
+    const inv = await invite('alice', orgId, {});
+    expect(inv.body.org_role).toBe('viewer');
   });
 });
 
@@ -201,40 +198,57 @@ describe('invitation emails', () => {
 });
 
 describe('managing members', () => {
-  it('changes app roles and removes app grants with the membership', async () => {
+  it("changes a member's role, and removing them closes every site", async () => {
     const { orgId, appId } = await signUp('alice');
-    await addMember('alice', orgId, 'bob', 'member', { [appId]: 'viewer' });
+    await addMember('alice', orgId, 'bob', 'viewer');
     const me = await request(app).get('/v1/me').set('Authorization', as('bob'));
     const bobId = me.body.user.id;
+    expect(me.body.orgs[0].apps[0].role).toBe('viewer');
 
-    await request(app)
-      .patch(`/v1/orgs/${orgId}/members/${bobId}`)
-      .set('Authorization', as('alice'))
-      .send({ appRoles: { [appId]: 'publisher' } });
+    expect(
+      (
+        await request(app)
+          .patch(`/v1/orgs/${orgId}/members/${bobId}`)
+          .set('Authorization', as('alice'))
+          .send({ orgRole: 'editor' })
+      ).status,
+    ).toBe(204);
     const members = await request(app).get(`/v1/orgs/${orgId}/members`).set('Authorization', as('alice'));
     expect(members.body.find((m: { userId: string }) => m.userId === bobId)).toMatchObject({
-      orgRole: 'member',
-      appRoles: { [appId]: 'publisher' },
+      orgRole: 'editor',
     });
+    expect(members.body[0]).not.toHaveProperty('appRoles');
+    expect((await request(app).get('/v1/me').set('Authorization', as('bob'))).body.orgs[0].apps[0].role).toBe(
+      'app_admin',
+    );
+    // A manager can change roles too, but not touch owners.
+    await addMember('alice', orgId, 'meg', 'manager');
+    expect(
+      (
+        await request(app)
+          .patch(`/v1/orgs/${orgId}/members/${bobId}`)
+          .set('Authorization', as('meg'))
+          .send({ orgRole: 'viewer' })
+      ).status,
+    ).toBe(204);
 
     await request(app).delete(`/v1/orgs/${orgId}/members/${bobId}`).set('Authorization', as('alice'));
-    expect((await adminPool.query(`SELECT count(*)::int AS n FROM app_member`)).rows[0].n).toBe(0);
     expect((await request(app).get(`/v1/apps/${appId}`).set('Authorization', as('bob'))).status).toBe(404);
   });
 
   it('protects owners: only owners change owners, and the last owner stays', async () => {
     const { orgId } = await signUp('alice');
-    await addMember('alice', orgId, 'bob', 'admin');
+    await addMember('alice', orgId, 'bob', 'manager');
     const aliceId = (await request(app).get('/v1/me').set('Authorization', as('alice'))).body.user.id;
     const bobId = (await request(app).get('/v1/me').set('Authorization', as('bob'))).body.user.id;
 
-    // admin can't demote or remove the owner, or make themselves owner
+    // a manager can't demote or remove the owner, or make themselves owner
     expect(
       (
         await request(app)
           .patch(`/v1/orgs/${orgId}/members/${aliceId}`)
           .set('Authorization', as('bob'))
-          .send({ orgRole: 'member' })
+          .send({ orgRole: 'viewer' })
       ).status,
     ).toBe(403);
     expect(
@@ -264,14 +278,14 @@ describe('managing members', () => {
         await request(app)
           .patch(`/v1/orgs/${orgId}/members/${aliceId}`)
           .set('Authorization', as('alice'))
-          .send({ orgRole: 'member' })
+          .send({ orgRole: 'viewer' })
       ).status,
     ).toBe(204);
   });
 
   it('lets a member leave', async () => {
     const { orgId } = await signUp('alice');
-    await addMember('alice', orgId, 'bob', 'member');
+    await addMember('alice', orgId, 'bob', 'viewer');
     const bobId = (await request(app).get('/v1/me').set('Authorization', as('bob'))).body.user.id;
     expect(
       (await request(app).delete(`/v1/orgs/${orgId}/members/${bobId}`).set('Authorization', as('bob')))

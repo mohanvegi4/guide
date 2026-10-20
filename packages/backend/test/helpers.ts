@@ -52,18 +52,17 @@ export async function signUp(sub: string, name = `${sub} org`, websites = [SITE]
   return { orgId: res.body.org.id, appId: res.body.app.id, key: res.body.app.public_key };
 }
 
-/** Invites `sub` to the org with roles, and accepts as them. */
+/** Invites `sub` to the org with a role (manager / editor / viewer), and accepts as them. */
 export async function addMember(
   adminSub: string,
   orgId: string,
   sub: string,
-  orgRole: 'admin' | 'member',
-  appRoles: Record<string, string> = {},
+  orgRole: 'manager' | 'editor' | 'viewer',
 ): Promise<void> {
   const inv = await request(app)
     .post(`/v1/orgs/${orgId}/invitations`)
     .set('Authorization', as(adminSub))
-    .send({ orgRole, appRoles });
+    .send({ orgRole });
   if (inv.status !== 201) throw new Error(`invite failed: ${inv.status} ${JSON.stringify(inv.body)}`);
   const acc = await request(app)
     .post(`/v1/invitations/${inv.body.token}/accept`)

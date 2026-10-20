@@ -12,8 +12,7 @@ In-app guides for any web application: a lightweight alternative to Pendo or Wal
    guides. Users pick a task and are taken to the right page, where the guide starts.
 
 **One Studio, many apps.** An **organization** owns any number of **applications**.
-- Org owners and admins manage all of them.
-- Teammates get a role per app: viewer, editor, publisher or app admin.
+- Everyone in the organization has one role, for all of its apps: viewer, editor, manager or owner.
 
 Guides work in any framework (Angular, React, Vue, server-rendered pages…) with no code changes
 beyond the snippet. Single-page-app navigation is detected automatically.
@@ -306,22 +305,23 @@ bumps them together. See [RELEASING.md](RELEASING.md).
 
 Full guide: [`apps/studio/README.md`](apps/studio/README.md).
 
-- **Organizations and apps.** Use the org switcher, then the app switcher, in the top bar. Org
-  admins create apps (name + websites) on **Apps**.
+- **Organizations and apps.** Use the org switcher, then the app switcher, in the top bar.
+  Managers and owners create apps (name + websites) on **Apps**.
 - **Members.**
   - Invite people with a link (7 days, single use). If you enter an email, only that verified
     email can accept, and when the backend has mail configured (`SMTP_URL`, `MAIL_FROM`,
     `STUDIO_URL`) the invitation is emailed to them; the link is still shown as a fallback.
-  - Owners and admins manage every app. Members get a per-app role:
+  - One role per person, for every app of the organization:
 
-    | App role | Can |
+    | Role | Can |
     |---|---|
-    | viewer | read guides, pages, versions and analytics; see the install snippet |
-    | editor | + create guides, save drafts, make preview links; create pages, and edit or delete pages no live guide uses |
-    | publisher | + publish, enable / disable, roll back; change the URL of a page live guides use |
-    | app admin | + app settings: snippet, websites, signed identity, key rotation, app on / off |
+    | viewer | read guides, pages, versions and analytics on every app; see the install snippet |
+    | editor | + create, publish, enable / disable and roll back guides; create, edit and move pages; app settings (websites, signed identity, help center, app on / off) |
+    | manager | + create apps; rotate keys, delete apps, forget visitors; manage members and invitations |
+    | owner | + grant or remove ownership; support access; export or delete the organization |
 
-  - Only owners can grant or remove ownership, and every org keeps at least one owner.
+  - Managers and owners manage members; only owners can grant or remove ownership, and every org
+    keeps at least one owner. Only owners create new organizations.
   - Owners can open time-boxed, read-only **support access** for Guide Engine staff; see
     [Guide Engine administration](#guide-engine-administration).
 - **Guides.**
@@ -352,8 +352,7 @@ Name the parts of your app once and reuse them in every guide, like Pendo's tagg
   **A custom route** for one-off rules, and save that route as a page from there.
 - **Guides follow their page.** Change a page's URL and every guide on it, live ones included,
   matches the new URL on the next page load. You don't need to republish. Because that changes
-  what's live, only publishers can change the URL of a page that live guides use. Editors can
-  still rename it.
+  what's live, the Studio asks for a confirmation before moving a page that live guides use.
 - **Each version stores the page reference plus a snapshot of the page's route.** A page can't be
   deleted while a guide's live version or draft uses it; the Studio lists which guides do.
   After a page is deleted, older versions fall back to their snapshot, for example if you roll
@@ -471,7 +470,7 @@ packages they're `GuideService.openHelp()` (Angular), `useGuideEngine().openHelp
 
 | Who | Authenticates with | Gets access to |
 |---|---|---|
-| **Studio users** | an OIDC access token from your identity provider (identity only: `sub`, `email`, `name`), verified against its JWKS. Dev/test only: HS256 tokens from `mint-token`. | what their **memberships in our DB** allow: org role + per-app roles |
+| **Studio users** | an OIDC access token from your identity provider (identity only: `sub`, `email`, `name`), verified against its JWKS. Dev/test only: HS256 tokens from `mint-token`. | what their **memberships in our DB** allow: one organization role, applying to every app |
 | **End users (visitors)** | the app's **public key** + the visitor/account ids the page passes in; optionally a **JWT signed with the app's secret** (required when the app enables it) | that app's active guides; writing their own events |
 | **Platform admins** (you, running Guide Engine) | a Studio sign-in whose `studio_user` row carries `platform_admin` | service administration across all customers, never their guide content; a customer's organization read-only, only while that customer has granted **support access** |
 
@@ -635,7 +634,7 @@ Bodies may be `text/plain` or `application/json`. Each one carries an identity:
 | Method & path | Who | Notes |
 |---|---|---|
 | `GET /me` | anyone signed in | `{ user: { id, email, name, platformAdmin }, orgs: [{ id, name, role, suspendedAt, apps: [{ id, name, role }] }] }`. Creates the user on first sign-in. |
-| `GET` / `PUT` / `DELETE /orgs/:orgId/support-access` | admin / owner / owner | `PUT` takes `{ days }` (1–90) → `{ active, until, grantedBy, maxDays, log[] }`. |
+| `GET` / `PUT` / `DELETE /orgs/:orgId/support-access` | manager / owner / owner | `PUT` takes `{ days }` (1–90) → `{ active, until, grantedBy, maxDays, log[] }`. |
 | `GET /support-context` | platform admin, with `X-Support-Org: <orgId>` | The organization as a viewer sees it, if support access is open; otherwise 404. Any `/v1` org/app read works the same way under that header (read-only, logged). |
 | `GET /platform/orgs`, `GET /platform/orgs/:orgId` | platform admin | Organizations with owners and usage; one with its apps (each with `usage: { guides, events30d, errors24h }`). 403 for everyone else. |
 | `PUT /platform/orgs/:orgId/suspension` | platform admin | `{ suspended }` |
@@ -644,34 +643,34 @@ Bodies may be `text/plain` or `application/json`. Each one carries an identity:
 | `GET` / `PUT /platform/kill-switch` | platform admin | `{ enabled }` |
 | `GET` / `PUT /platform/admins` | platform admin | `PUT` takes `{ email, platformAdmin }`; `400 unknown_user` / `cannot_revoke_self`. |
 | `POST /orgs` | anyone | `{ name, app: { name, websites[] } }` → you become owner. |
-| `GET` / `PATCH /orgs/:orgId` | member / admin | `PATCH` takes `{ name }`. |
+| `GET` / `PATCH /orgs/:orgId` | viewer / manager | `PATCH` takes `{ name }`. |
 | `GET /orgs/:orgId/export` | owner | The organization's data as a JSON download (`Content-Disposition: attachment; filename="guide-engine-<org-slug>-<date>.json"`): `{ format, formatVersion, exportedAt, organization, members[], invitations[], apps: [{ …, pages[], guides: [{ …, analytics: { shown, completed, dismissed }, versions[] }] }], notes[] }`. Never signing secrets, invitation tokens or raw events. |
 | `DELETE /orgs/:orgId` | owner | `{ confirmName }` must equal the organization's name (`400 confirmation_mismatch`). Deletes the organization and everything in it; `204`. |
-| `GET` / `POST /orgs/:orgId/apps` | member / admin | members see only the apps they can access. |
-| `GET` / `PATCH /apps/:appId` | viewer / app_admin | `GET` includes `snippet`. `PATCH` takes `{ name?, websites?, identityMode?, enabled?, helpEnabled?, helpButtonLabel?, helpButtonColor?, helpPosition?, routeMode? }`; the color must be hex, the position one of `bottom-right`, `bottom-left`, `top-right`, `top-left`, `center`, the route mode `path` or `hash` (returned as `route_mode`). |
+| `GET` / `POST /orgs/:orgId/apps` | viewer / manager | Every member sees every app of the organization. |
+| `GET` / `PATCH /apps/:appId` | viewer / editor | `GET` includes `snippet`. `PATCH` takes `{ name?, websites?, identityMode?, enabled?, helpEnabled?, helpButtonLabel?, helpButtonColor?, helpPosition?, routeMode? }`; the color must be hex, the position one of `bottom-right`, `bottom-left`, `top-right`, `top-left`, `center`, the route mode `path` or `hash` (returned as `route_mode`). |
 | `GET /apps/:appId/help-analytics` | viewer | Help-center usage over the last 30 days: `{ days, opens, searches, guidesStarted, topQueries: [{ query, count, avgResults }] }` (top 20 queries, normalized to lower case). |
-| `POST /apps/:appId/rotate-key` | app_admin | New public key; old snippets stop working. |
-| `GET` / `DELETE /apps/:appId/visitors/:visitorId` | app_admin | Data-subject requests for one end user: `GET` downloads their events and guide state as JSON; `DELETE` ("forget this visitor") removes them → `{ visitorId, events, guideState }`. |
-| `DELETE /apps/:appId` | app_admin | `{ confirmName }` must equal the app's name. Deletes the app with its guides, pages, events, visitor state, agent errors and grants; `204`. |
-| `POST /apps/:appId/signing-secret` | app_admin | `{ secret }`, shown once. |
+| `POST /apps/:appId/rotate-key` | manager | New public key; old snippets stop working. |
+| `GET` / `DELETE /apps/:appId/visitors/:visitorId` | manager | Data-subject requests for one end user: `GET` downloads their events and guide state as JSON; `DELETE` ("forget this visitor") removes them → `{ visitorId, events, guideState }`. |
+| `DELETE /apps/:appId` | manager | `{ confirmName }` must equal the app's name. Deletes the app with its guides, pages, events, visitor state, agent errors and grants; `204`. |
+| `POST /apps/:appId/signing-secret` | manager | `{ secret }`, shown once. |
 | `GET /apps/:appId/errors?limit=50` | viewer | The newest agent errors (1–200): `[{ id, message, stack, agentVersion, url, occurredAt }]`. |
-| `GET /orgs/:orgId/members` | member | `[{ userId, email, name, orgRole, appRoles }]` |
-| `PATCH` / `DELETE /orgs/:orgId/members/:userId` | admin (or yourself, to leave) | `PATCH` takes `{ orgRole?, appRoles?: { appId: role \| null } }`. |
-| `GET` / `POST /orgs/:orgId/invitations` | admin | `POST` takes `{ email?, orgRole: admin\|member, appRoles }` → `{ …, token, emailSent }`. With an `email` and mail configured, the link is emailed; `emailSent` is false when it wasn't (no mail set up, or sending failed — the request still succeeds). |
-| `DELETE /orgs/:orgId/invitations/:id` | admin | revoke |
+| `GET /orgs/:orgId/members` | viewer | `[{ userId, email, name, orgRole }]`, owners first. |
+| `PATCH` / `DELETE /orgs/:orgId/members/:userId` | manager (or yourself, to leave) | `PATCH` takes `{ orgRole }`. Only owners give or take `owner`; the last owner can't be demoted or removed (`409 last_owner`). |
+| `GET` / `POST /orgs/:orgId/invitations` | manager | `POST` takes `{ email?, orgRole: manager\|editor\|viewer }` (default viewer; owners are promoted, never invited) → `{ …, token, emailSent }`. With an `email` and mail configured, the link is emailed; `emailSent` is false when it wasn't (no mail set up, or sending failed — the request still succeeds). |
+| `DELETE /orgs/:orgId/invitations/:id` | manager | revoke |
 | `GET /invitations/:token`, `POST /invitations/:token/accept` | the link holder | |
 | `GET` / `POST /apps/:appId/guides` | viewer / editor | |
 | `GET /apps/:appId/guides/:id` | viewer | Guide + `versions[]`. The version with `published_at: null` is the draft. |
 | `PUT /apps/:appId/guides/:id/draft` | editor | `VersionBody` |
-| `POST /apps/:appId/guides/:id/publish` | publisher | `VersionBody`, or empty to publish the draft as-is. |
-| `PATCH /apps/:appId/guides/:id/flag` | publisher | `{ enabled }` |
-| `POST /apps/:appId/guides/:id/rollback/:n` | publisher | Published versions only. |
+| `POST /apps/:appId/guides/:id/publish` | editor | `VersionBody`, or empty to publish the draft as-is. |
+| `PATCH /apps/:appId/guides/:id/flag` | editor | `{ enabled }` |
+| `POST /apps/:appId/guides/:id/rollback/:n` | editor | Published versions only. |
 | `POST /apps/:appId/guides/:id/preview-token` | editor | `{ versionId }` → `{ token, url, expiresAt }` |
 | `GET /apps/:appId/guides/:id/analytics` | viewer | `{ counts[], steps[], startedFromHelp, accounts? }`. `?from=` / `?to=` (ISO date or timestamp; `from` inclusive, a date `to` covers that whole day, a timestamp `to` is exclusive; `400` when `to` isn't after `from`). `?by=account` adds `accounts: [{ accountId \| null, shown, completed, dismissed, visitors }]`: the 50 accounts shown the guide most, most first. |
 | `GET /apps/:appId/analytics` | viewer | `{ guides: [{ guideId, name, shown, completed, dismissed, completionRate }], visitors, accounts, windowDays }`. Lifetime totals per guide (`completionRate` is `completed / shown`, 0–1), ordered by `shown`; `visitors` / `accounts` are distinct over the last `windowDays` (30). |
 | `GET` / `POST /apps/:appId/pages` | viewer / editor | List (by name, with `usage: { guides, live }`) or create `{ name, routeMatch: { type, value }, startPath? }`. A pattern needs `startPath`. Names are unique per app, ignoring case. |
 | `GET /apps/:appId/pages/:pageId` | viewer | The page + `guides: [{ id, name, live, draft }]` (live versions and drafts on it). |
-| `PUT /apps/:appId/pages/:pageId` | editor; publisher if it moves live guides | Same body as `POST`. Guides on the page follow at once. |
+| `PUT /apps/:appId/pages/:pageId` | editor | Same body as `POST`. Guides on the page follow at once. |
 | `DELETE /apps/:appId/pages/:pageId` | editor | `409 page_in_use` (with `details.guides`) while a live version or draft uses it. |
 
 A `VersionBody` is:
@@ -759,7 +758,7 @@ npm test --workspace=apps/studio          # Studio components and services
 
 | Suite | Tests | Covers |
 |---|---|---|
-| **Backend** | 238 | self-serve orgs; apps and settings; the role matrix; invitations; members; saved pages; platform admins and support access (consent, read-only, logging, RLS); secrets at rest, the shared rate limiter, retention (events and agent errors), production boot checks; the agent script's ETag / 304 / cache headers and the version endpoint; agent error reports (validation, the hourly cap, the Studio list, RLS isolation, platform counts); org/app isolation through the API **and directly in RLS** (including replaying the owner bootstrap and forging memberships); the agent API (origins, keys, identity modes, account targeting, kill switches, events and per-visitor state, preview); the guide lifecycle; sanitization; stable step ids; analytics; OIDC (a local JWKS server, algorithm confusion); and migration 005's data conversion |
+| **Backend** | 237 | self-serve orgs; apps and settings; the role matrix; invitations; members; saved pages; platform admins and support access (consent, read-only, logging, RLS); secrets at rest, the shared rate limiter, retention (events and agent errors), production boot checks; the agent script's ETag / 304 / cache headers and the version endpoint; agent error reports (validation, the hourly cap, the Studio list, RLS isolation, platform counts); org/app isolation through the API **and directly in RLS** (including replaying the owner bootstrap and forging memberships); the agent API (origins, keys, identity modes, account targeting, kill switches, events and per-visitor state, preview); the guide lifecycle; sanitization; stable step ids; analytics; OIDC (a local JWKS server, algorithm confusion); and migration 005's data conversion |
 | **Core** | 89 | includes the help widget (search, keyboard, safe rendering), help launches (same page, other page, arrival, shared links) and error reporting (sampling, the per-page cap, never throwing) |
 | **Agent** | 8 | includes `openHelp` queued before load and the build-time version |
 | **Studio** | 41 | guide list and editor (saved pages), Pages, app settings (including the agent-error list), the Administration page |

@@ -4,7 +4,7 @@ import { Router, RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 import { ApiService, describeError } from '../core/api.service';
 import { AuthService } from '../core/auth.service';
-import { App, isOrgAdmin } from '../core/models';
+import { App, isOrgManager } from '../core/models';
 import { parseWebsites } from './websites';
 
 /** An organization's applications. Org admins create apps; everyone sees the apps they can access. */
@@ -74,7 +74,7 @@ export class AppsComponent {
   });
 
   protected canCreate(): boolean {
-    return isOrgAdmin(this.auth.orgRole(this.orgId()));
+    return isOrgManager(this.auth.orgRole(this.orgId()));
   }
 
   constructor() {

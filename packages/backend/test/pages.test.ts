@@ -269,11 +269,10 @@ describe('saved pages', () => {
     });
   });
 
-  it('roles: viewers read, editors manage pages, only publishers move pages live guides use', async () => {
+  it('roles: viewers read; editors manage pages, including moving pages live guides use', async () => {
     const { orgId, appId } = await signUp('alice');
-    await addMember('alice', orgId, 'vic', 'member', { [appId]: 'viewer' });
-    await addMember('alice', orgId, 'eddie', 'member', { [appId]: 'editor' });
-    await addMember('alice', orgId, 'pat', 'member', { [appId]: 'publisher' });
+    await addMember('alice', orgId, 'vic', 'viewer');
+    await addMember('alice', orgId, 'eddie', 'editor');
 
     expect((await request(app).get(`/v1/apps/${appId}/pages`).set('Authorization', as('vic'))).status).toBe(
       200,
@@ -296,40 +295,12 @@ describe('saved pages', () => {
       ).status,
     ).toBe(200);
 
-    // A page only a draft uses isn't live: editors may still move it.
-    const drafted = await createPage('eddie', appId, {
-      name: 'Drafted',
-      routeMatch: { type: 'exact', value: '/d' },
-    });
-    const g = await request(app)
-      .post(`/v1/apps/${appId}/guides`)
-      .set('Authorization', as('eddie'))
-      .send({ name: 'Draft only', type: 'tooltip' });
-    await request(app)
-      .put(`/v1/apps/${appId}/guides/${g.body.id}/draft`)
-      .set('Authorization', as('eddie'))
-      .send(onPage(drafted.id));
-    expect(
-      (
-        await updatePage('eddie', appId, drafted.id, {
-          name: 'Drafted',
-          routeMatch: { type: 'exact', value: '/d2' },
-        })
-      ).status,
-    ).toBe(200);
-
+    // Editors run the site: they may move a page even while live guides use it.
     const used = await createPage('eddie', appId);
     await liveGuide('alice', appId, onPage(used.id));
     const moved = { ...teamPage, routeMatch: { type: 'exact', value: '/team' } };
-    expect((await updatePage('eddie', appId, used.id, moved)).status).toBe(403);
-    // Changing only the start page also changes where the help center sends people.
-    expect(
-      (await updatePage('eddie', appId, used.id, { ...teamPage, startPath: '/settings/team?tab=members' }))
-        .status,
-    ).toBe(403);
-    // Renaming doesn't change what's live.
-    expect((await updatePage('eddie', appId, used.id, { ...teamPage, name: 'Team' })).status).toBe(200);
-    expect((await updatePage('pat', appId, used.id, moved)).status).toBe(200);
+    expect((await updatePage('eddie', appId, used.id, moved)).status).toBe(200);
+    expect((await updatePage('vic', appId, used.id, moved)).status).toBe(403);
     expect(
       (await request(app).delete(`/v1/apps/${appId}/pages/${unused.id}`).set('Authorization', as('vic')))
         .status,

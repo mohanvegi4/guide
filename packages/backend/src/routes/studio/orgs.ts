@@ -23,7 +23,15 @@ import {
   createOrgWithApp,
   installSnippet,
 } from '../../services/orgs';
-import { idParam, parseBody, requireAppRole, requireOrgRole, studio, websitesSchema } from './context';
+import {
+  idParam,
+  parseBody,
+  requireAppManager,
+  requireAppRole,
+  requireOrgRole,
+  studio,
+  websitesSchema,
+} from './context';
 
 export const orgsRouter = Router();
 
@@ -90,7 +98,7 @@ orgsRouter.get(
   asyncHandler(async (req, res) => {
     const orgId = idParam(req, 'orgId');
     const org = await studio(req, async (client, ctx) => {
-      const role = requireOrgRole(ctx, orgId, 'member');
+      const role = requireOrgRole(ctx, orgId, 'viewer');
       const row = (await client.query(`SELECT id, name, created_at FROM organization WHERE id = $1`, [orgId]))
         .rows[0];
       return { ...row, role };
@@ -105,7 +113,7 @@ orgsRouter.patch(
     const orgId = idParam(req, 'orgId');
     const body = parseBody(z.object({ name: nameSchema }), req.body);
     const org = await studio(req, async (client, ctx) => {
-      requireOrgRole(ctx, orgId, 'admin');
+      requireOrgRole(ctx, orgId, 'manager');
       return (
         await client.query(`UPDATE organization SET name = $1 WHERE id = $2 RETURNING id, name`, [
           body.name,
@@ -170,7 +178,7 @@ orgsRouter.get(
   asyncHandler(async (req, res) => {
     const orgId = idParam(req, 'orgId');
     const apps = await studio(req, async (client, ctx) => {
-      requireOrgRole(ctx, orgId, 'member');
+      requireOrgRole(ctx, orgId, 'viewer');
       // Only apps you have access to (RLS + the explicit id list).
       const visible = [...ctx.apps].filter(([, a]) => a.orgId === orgId).map(([id]) => id);
       const rows = await client.query<AppRow>(
@@ -189,7 +197,7 @@ orgsRouter.post(
     const orgId = idParam(req, 'orgId');
     const body = parseBody(appInputSchema, req.body);
     const app = await studio(req, async (client, ctx) => {
-      requireOrgRole(ctx, orgId, 'admin');
+      requireOrgRole(ctx, orgId, 'manager');
       return createApp(client, orgId, body);
     });
     res.status(201).json({ ...app, role: 'app_admin' });
@@ -284,7 +292,7 @@ orgsRouter.delete(
     const appId = idParam(req, 'appId');
     const body = parseBody(confirmSchema, req.body);
     const deleted = await studio(req, async (client, ctx) => {
-      requireAppRole(ctx, appId, 'app_admin');
+      requireAppManager(ctx, appId);
       const app = await client.query<{ name: string }>(`SELECT name FROM application WHERE id = $1`, [appId]);
       if (app.rows.length === 0) throw notFound();
       assertConfirmName(app.rows[0].name, body.confirmName);
@@ -360,7 +368,7 @@ orgsRouter.post(
   asyncHandler(async (req, res) => {
     const appId = idParam(req, 'appId');
     const app = await studio(req, async (client, ctx) => {
-      requireAppRole(ctx, appId, 'app_admin');
+      requireAppManager(ctx, appId);
       return (
         await client.query<AppRow>(
           `UPDATE application SET public_key = $2 WHERE id = $1 RETURNING ${APP_COLUMNS}`,
@@ -380,7 +388,7 @@ orgsRouter.post(
     const appId = idParam(req, 'appId');
     const secret = generateSigningSecret();
     await studio(req, async (client, ctx) => {
-      requireAppRole(ctx, appId, 'app_admin');
+      requireAppManager(ctx, appId);
       // Encrypted at rest (secrets.ts); the plaintext goes to the caller once.
       await client.query(`UPDATE application SET signing_secret = $2 WHERE id = $1`, [
         appId,
@@ -447,7 +455,7 @@ orgsRouter.get(
   asyncHandler(async (req, res) => {
     const orgId = idParam(req, 'orgId');
     const status = await studio(req, async (client, ctx) => {
-      requireOrgRole(ctx, orgId, 'admin');
+      requireOrgRole(ctx, orgId, 'manager');
       return supportAccessStatus(client, orgId);
     });
     res.json(status);
@@ -513,7 +521,7 @@ orgsRouter.get(
       return {
         id: org.rows[0].id,
         name: org.rows[0].name,
-        role: 'member' as const,
+        role: 'viewer' as const,
         apps: apps.rows.map((a) => ({ id: a.id, name: a.name, role: 'viewer' as const })),
         supportAccessUntil: ctx.support.until.toISOString(),
       };

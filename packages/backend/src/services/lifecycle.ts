@@ -23,14 +23,12 @@ export interface OrganizationExport {
     email: string | null;
     name: string | null;
     orgRole: string;
-    appRoles: Record<string, string>;
   }>;
   /** Pending (unaccepted, unexpired) invitations. Never the link token. */
   invitations: Array<{
     id: string;
     email: string | null;
     orgRole: string;
-    appRoles: Record<string, string>;
     createdAt: string;
     expiresAt: string;
   }>;
@@ -118,23 +116,18 @@ export async function exportOrganization(client: PoolClient, orgId: string): Pro
   }>(
     `SELECT m.user_id, m.role, u.email, u.name
      FROM org_member m JOIN studio_user u ON u.id = m.user_id
-     WHERE m.org_id = $1 ORDER BY m.role, COALESCE(u.name, u.email), m.user_id`,
-    [orgId],
-  );
-  const grants = await client.query<{ user_id: string; app_id: string; role: string }>(
-    `SELECT am.user_id, am.app_id, am.role
-     FROM app_member am JOIN application a ON a.id = am.app_id WHERE a.org_id = $1`,
+     WHERE m.org_id = $1
+     ORDER BY array_position(ARRAY['owner','manager','editor','viewer'], m.role::text), COALESCE(u.name, u.email), m.user_id`,
     [orgId],
   );
   const invitations = await client.query<{
     id: string;
     email: string | null;
     org_role: string;
-    app_roles: Record<string, string>;
     created_at: string;
     expires_at: string;
   }>(
-    `SELECT id, email, org_role, app_roles, created_at, expires_at FROM invitation
+    `SELECT id, email, org_role, created_at, expires_at FROM invitation
      WHERE org_id = $1 AND accepted_at IS NULL AND expires_at > now() ORDER BY created_at`,
     [orgId],
   );
@@ -216,15 +209,11 @@ export async function exportOrganization(client: PoolClient, orgId: string): Pro
       email: m.email,
       name: m.name,
       orgRole: m.role,
-      appRoles: Object.fromEntries(
-        grants.rows.filter((g) => g.user_id === m.user_id).map((g) => [g.app_id, g.role]),
-      ),
     })),
     invitations: invitations.rows.map((i) => ({
       id: i.id,
       email: i.email,
       orgRole: i.org_role,
-      appRoles: i.app_roles,
       createdAt: i.created_at,
       expiresAt: i.expires_at,
     })),

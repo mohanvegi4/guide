@@ -58,20 +58,20 @@ staff) also see **Administration**; see below.
 
 | Role | What you can do |
 |---|---|
-| org **owner** / **admin** | everything in every app of the org; create apps; manage members and invitations. Only owners can grant or remove ownership, and an org always keeps one owner. |
-| app **viewer** | read guides, pages, versions and analytics; the **Install** page (snippet and anchor instructions, read-only) |
-| app **editor** | + create guides, save drafts, make preview links |
-| app **publisher** | + publish, enable / disable, roll back |
-| app **app_admin** | + Install & settings: snippet, websites, signed identity, key rotation, app on / off, help center |
+| **viewer** | read guides, pages, versions and analytics in every app; the **Install** page (snippet and anchor instructions, read-only) |
+| **editor** | + create guides, save drafts, make preview links, publish, enable / disable, roll back; create, edit and move pages; **Install & settings** (websites, signed identity, help center, app on / off) |
+| **manager** | + create apps; rotate keys, delete apps, forget visitors; manage members and invitations |
+| **owner** | + grant or remove ownership (an org always keeps one owner); support access; export or delete the organization; create new organizations |
 | **platform admin** (Guide Engine staff, not a customer role) | the Administration page: every organization's usage, suspension, the kill switch, other admins; a customer's content only under support access, read-only |
 
-The UI adapts to your role: viewers get read-only screens, editors see no Publish button, and so
-on. The backend enforces the same rules regardless.
+One role per person, for every app of the organization. The UI adapts to it: viewers get
+read-only screens, editors see no key rotation or Delete app, and so on. The backend enforces the
+same rules regardless.
 
 **Members → Invite someone** creates a link. It's valid for 7 days and works once. If you enter
-an email, only that verified email can accept it. Choose the org role, plus a role per app for
-members. Send the link however you like; Guide Engine doesn't send email. Pending invitations can
-be revoked.
+an email, only that verified email can accept it. Choose the role (manager, editor or viewer;
+owners are promoted from the member list). Send the link however you like; when the backend has
+mail configured the invitation is also emailed. Pending invitations can be revoked.
 
 ## Guide Engine support access (org owners)
 
@@ -114,7 +114,7 @@ People with the platform-admin flag get an **Administration** link in the top ba
 The first platform admin is created with SQL by the database owner (see the root README);
 after that, grants happen here.
 
-## Install & settings (app admins)
+## Install & settings (editors; the danger zone needs a manager)
 
 - **Install:** the exact `<head>` snippet for this app, with a copy button. Replace `USER_ID` /
   `ACCOUNT_ID` with your signed-in user's ids. SPAs need nothing else. After a later login, call
@@ -140,10 +140,10 @@ after that, grants happen here.
     in red: a topic worth adding.
 - **Guides on/off** for the whole app, and the **Danger zone**: **Rotate public key**, which
   breaks old snippets until they're updated, and **Delete app** (type the app's name), which
-  removes the app with its guides, pages, analytics and per-app roles and returns you to the apps
-  list.
+  removes the app with its guides, pages and analytics and returns you to the apps list. Both are
+  for managers and owners.
 
-**Danger zone → Forget a visitor** (app admins): for an end user's data request, enter the
+**Danger zone → Forget a visitor** (managers and owners): for an end user's data request, enter the
 visitor id your site passed to `guideEngine.initialize`; **Export visitor** downloads their
 events and guide state as JSON, **Forget visitor** deletes them (guides they finished show again
 for that id).
@@ -190,8 +190,7 @@ table shows how many guides use each page and how many of those are live. Click 
 them.
 
 - **Edit** renames a page or changes its URL. Every guide on the page follows immediately, and
-  live guides are moved after a confirmation. Only publishers can change the URL of a page live
-  guides use; editors can still rename it.
+  live guides are moved after a confirmation.
 - **Delete** is disabled while any guide's live version or draft uses the page. Move those guides
   to another page or a custom route first.
 
@@ -219,7 +218,7 @@ src/app/
     onboarding             first org + first app
     apps                   an org's applications; create app
     app-settings           install snippet, websites, signed identity, key rotation, app switch, delete app
-    members                members, org and app roles, invite links, support access, export / delete org (owners)
+    members                members and roles, invite links, support access, export / delete org (owners)
     operator               Guide Engine administration: organizations, suspension, deletion, kill switch, admins
     invite                 accept an invitation
     guide-list             an app's guides, create, enable toggle (optimistic)

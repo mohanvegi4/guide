@@ -33,7 +33,6 @@ const TABLES = [
   'organization',
   'application',
   'org_member',
-  'app_member',
   'invitation',
   'support_access_log',
   'app_page',
@@ -75,8 +74,8 @@ async function makePlatformAdmin(sub: string): Promise<string> {
  */
 async function seedOrg(sub = 'alice', name = 'Acme Corp.') {
   const org = await signUp(sub, name);
-  await addMember(sub, org.orgId, 'adam', 'admin');
-  await addMember(sub, org.orgId, 'mel', 'member', { [org.appId]: 'editor' });
+  await addMember(sub, org.orgId, 'adam', 'manager');
+  await addMember(sub, org.orgId, 'mel', 'editor');
   const page = await request(app)
     .post(`/v1/apps/${org.appId}/pages`)
     .set('Authorization', as(sub))
@@ -89,7 +88,7 @@ async function seedOrg(sub = 'alice', name = 'Acme Corp.') {
   await request(app)
     .post(`/v1/orgs/${org.orgId}/invitations`)
     .set('Authorization', as(sub))
-    .send({ email: 'pat@example.com', orgRole: 'member', appRoles: { [org.appId]: 'viewer' } });
+    .send({ email: 'pat@example.com', orgRole: 'viewer' });
   const ev = (eventType: string) => ({
     guideId: live.guideId,
     guideVersionId: live.versionId,
@@ -130,16 +129,14 @@ describe('GET /v1/orgs/:orgId/export', () => {
     expect(doc.organization).toEqual({ id: acme.orgId, name: 'Acme Corp.', createdAt: expect.any(String) });
     expect(doc.members.map((m: { email: string; orgRole: string }) => [m.email, m.orgRole])).toEqual([
       ['alice@example.com', 'owner'],
-      ['adam@example.com', 'admin'],
-      ['mel@example.com', 'member'],
+      ['adam@example.com', 'manager'],
+      ['mel@example.com', 'editor'],
     ]);
-    expect(doc.members[2].appRoles).toEqual({ [acme.appId]: 'editor' });
     expect(doc.invitations).toEqual([
       {
         id: expect.any(String),
         email: 'pat@example.com',
-        orgRole: 'member',
-        appRoles: { [acme.appId]: 'viewer' },
+        orgRole: 'viewer',
         createdAt: expect.any(String),
         expiresAt: expect.any(String),
       },
@@ -280,7 +277,6 @@ describe('DELETE /v1/orgs/:orgId', () => {
       expect(await left(`SELECT 1 FROM ${t} WHERE org_id = $1`, acme.orgId), t).toBe(0);
     }
     for (const t of [
-      'app_member',
       'app_page',
       'guide',
       'guide_event',
@@ -376,9 +372,9 @@ describe('DELETE /v1/apps/:appId', () => {
   const del = (sub: string, appId: string, confirmName: string) =>
     request(app).delete(`/v1/apps/${appId}`).set('Authorization', as(sub)).send({ confirmName });
 
-  it('lets an app admin (per-app grant) delete the app with all its data; the org and its other apps stay', async () => {
+  it('lets a manager delete the app with all its data; the org and its other apps stay', async () => {
     const acme = await seedOrg();
-    await addMember('alice', acme.orgId, 'ann', 'member', { [acme.appId]: 'app_admin' });
+    await addMember('alice', acme.orgId, 'ann', 'manager');
     const second = await request(app)
       .post(`/v1/orgs/${acme.orgId}/apps`)
       .set('Authorization', as('alice'))
@@ -390,7 +386,6 @@ describe('DELETE /v1/apps/:appId', () => {
     expect((await del('ann', acme.appId, 'Acme Corp. app')).status).toBe(204);
 
     for (const t of [
-      'app_member',
       'app_page',
       'guide',
       'guide_event',

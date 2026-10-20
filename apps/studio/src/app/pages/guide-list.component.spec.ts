@@ -41,7 +41,7 @@ describe('GuideListComponent', () => {
         {
           id: 'o1',
           name: 'Acme',
-          role: 'member',
+          role: 'editor',
           suspendedAt: null,
           apps: [{ id: 'a1', name: 'Web', role }],
         },
