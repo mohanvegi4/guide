@@ -208,10 +208,14 @@ export class AuthService {
   /** The Sign out button: local sign-out, plus the provider's session when using SSO. */
   async signOut(): Promise<void> {
     const sso = this.usingSso() && this.userManager;
-    this.logout();
     if (sso) {
+      // Redirect first: signoutRedirect() reads the stored user for its
+      // id_token_hint (and then removes it). Without the hint Keycloak can't
+      // tell which session is ending and shows a "do you want to log out?"
+      // page instead of signing the person straight out.
       await this.userManager!.signoutRedirect().catch(() => undefined); // provider may not support it
     }
+    this.logout();
   }
 
   /** Asks the backend who this token belongs to, and adopts it only if the backend accepts it. */
