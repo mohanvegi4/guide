@@ -772,7 +772,7 @@ npm test --workspace=apps/studio          # Studio components and services
 
 | Suite | Tests | Covers |
 |---|---|---|
-| **Backend** | 240 | self-serve orgs; apps and settings; the role matrix; invitations; members; saved pages; platform admins and support access (consent, read-only, logging, RLS); secrets at rest, the shared rate limiter, retention (events and agent errors), production boot checks; the agent script's ETag / 304 / cache headers and the version endpoint; agent error reports (validation, the hourly cap, the Studio list, RLS isolation, platform counts); org/app isolation through the API **and directly in RLS** (including replaying the owner bootstrap and forging memberships); the agent API (origins, keys, identity modes, account targeting, kill switches, events and per-visitor state, preview); the guide lifecycle; sanitization; stable step ids; analytics; OIDC (a local JWKS server, algorithm confusion); and migration 005's data conversion |
+| **Backend** | 247 | self-serve orgs; apps and settings; the role matrix; invitations; members; saved pages; platform admins and support access (consent, read-only, logging, RLS); secrets at rest, the shared rate limiter, retention (events and agent errors), production boot checks; the agent script's ETag / 304 / cache headers and the version endpoint; the security headers (and that the agent surface keeps only nosniff); agent error reports (validation, the hourly cap, the Studio list, RLS isolation, platform counts); org/app isolation through the API **and directly in RLS** (including replaying the owner bootstrap and forging memberships); the agent API (origins, keys, identity modes, account targeting, kill switches, events and per-visitor state, preview); the guide lifecycle; sanitization; stable step ids; analytics; OIDC (a local JWKS server, algorithm confusion); and migration 005's data conversion |
 | **Core** | 94 | includes the help widget (search, keyboard, safe rendering), help launches (same page, other page, arrival, shared links) and error reporting (sampling, the per-page cap, never throwing) |
 | **Agent** | 8 | includes `openHelp` queued before load and the build-time version |
 | **Studio** | 43 | guide list and editor (saved pages), Pages, app settings (including the agent-error list), the Administration page |
@@ -831,6 +831,28 @@ Use the two images with these guarantees in place:
 - Serve the Studio statically with an SPA fallback and proxy `/api/*` to the backend with the
   prefix removed (`apps/studio/nginx.conf.template` does both).
 - A CDN in front of `/agent/v1/*` is a drop-in (next section).
+- Set the security headers below yourself if you replace nginx or Caddy.
+
+### Security headers
+
+Each layer sets the headers it is placed to know about:
+
+- **Caddy** (`deploy/Caddyfile`), where TLS ends: `Strict-Transport-Security` (a year, subdomains
+  included) on all three hosts. Everything else passes through from the services.
+- **nginx** (`apps/studio/nginx.conf.template`), for the Studio: `X-Content-Type-Options`,
+  `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`, a
+  `Permissions-Policy` that turns off camera, microphone and geolocation, and a
+  `Content-Security-Policy` that allows only the Studio's own origin plus the identity provider
+  (for the PKCE token exchange and the sign-in redirect). The provider's origin comes from the
+  **`OIDC_ORIGIN`** environment variable of the Studio image (scheme and host, no path:
+  `https://auth.example.com`; `deploy/docker-compose.yml` derives it from `AUTH_HOST`). The
+  image's default is the development Keycloak, `http://localhost:8081`; with the wrong origin
+  SSO simply fails to sign in. `ng serve` is not affected: the headers live in nginx.
+- **Express** (`packages/backend/src/securityHeaders.ts`): `X-Content-Type-Options: nosniff` on
+  every response; `X-Frame-Options: DENY`, `Content-Security-Policy: frame-ancestors 'none'`
+  and `Referrer-Policy: no-referrer` on the Studio API and the other first-party endpoints. The
+  **agent surface** — `/agent/v1/*` and `/v1/agent/*`, which customers' pages load and call
+  cross-origin — gets nosniff only, and keeps its per-app CORS, `ETag` and `Cache-Control`.
 
 ### The agent script: caching and rollbacks
 

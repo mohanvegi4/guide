@@ -94,6 +94,8 @@ services:
     restart: unless-stopped
     environment:
       BACKEND_URL: http://backend:3000
+      # The browser fetches tokens from Keycloak directly; nginx's Content-Security-Policy allows only this origin.
+      OIDC_ORIGIN: https://${AUTH_HOST}
     depends_on:
       - backend
 

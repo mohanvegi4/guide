@@ -2,7 +2,9 @@
 # to the backend (so the Studio needs no CORS and no build-time config).
 # Built from the monorepo root:
 #   docker build -f apps/studio/Dockerfile -t guide-engine-studio .
-# Run with BACKEND_URL=http://backend:3000 (where nginx reaches the backend).
+# Run with BACKEND_URL=http://backend:3000 (where nginx reaches the backend) and
+# OIDC_ORIGIN=https://auth.example.com (the identity provider's origin, which
+# the Content-Security-Policy in nginx.conf.template allows the Studio to call).
 
 FROM node:22-alpine AS build
 WORKDIR /app
@@ -24,5 +26,8 @@ FROM nginx:1.27-alpine
 COPY apps/studio/nginx.conf.template /etc/nginx/templates/default.conf.template
 COPY --from=build /app/apps/studio/dist/studio/browser /usr/share/nginx/html
 ENV BACKEND_URL=http://backend:3000
+# The development Keycloak (npm run idp:up). A wrong origin doesn't leak
+# anything: the CSP just blocks the token exchange, and SSO fails to sign in.
+ENV OIDC_ORIGIN=http://localhost:8081
 EXPOSE 80
 HEALTHCHECK --interval=30s --timeout=5s CMD wget -qO- http://127.0.0.1/healthz >/dev/null || exit 1

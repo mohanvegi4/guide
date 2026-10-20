@@ -1,22 +1,37 @@
 # Automatic HTTPS (Let's Encrypt) for the three public hostnames.
+#
+# TLS ends here, so HSTS is set here too (a year, subdomains included): the
+# services behind Caddy only ever see plain HTTP and can't know to send it.
+# The other security headers come from the services themselves (nginx for the
+# Studio, Express for the API, Keycloak's own for auth) and pass through.
 {
 	email {$ACME_EMAIL}
 }
 
+(hsts) {
+	# `>` sets it after the upstream has answered, so there is exactly one copy
+	# even when the upstream sends its own (Keycloak does).
+	header >Strict-Transport-Security "max-age=31536000; includeSubDomains"
+}
+
 # The Studio: static files, and /api/* proxied to the backend by nginx inside.
 {$STUDIO_HOST} {
+	import hsts
 	encode gzip
 	reverse_proxy studio:80
 }
 
 # The public agent API and the agent script. Customers' pages call this from
-# their own origins; the backend does per-app CORS itself.
+# their own origins; the backend does per-app CORS itself. HSTS only affects
+# how browsers reach this host, never whether another origin may load from it.
 {$API_HOST} {
+	import hsts
 	encode gzip
 	reverse_proxy backend:3000
 }
 
 # Keycloak. Caddy sets X-Forwarded-* headers, which Keycloak trusts (KC_PROXY_HEADERS).
 {$AUTH_HOST} {
+	import hsts
 	reverse_proxy keycloak:8080
 }

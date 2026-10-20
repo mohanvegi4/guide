@@ -9,6 +9,7 @@ import { loadMailConfig } from './mail';
 import { HttpError } from './httpError';
 import { logger as rootLogger, requestLogger, requestLogging } from './logging';
 import { metricsHandler, requestMetrics } from './metrics';
+import { securityHeaders } from './securityHeaders';
 import { healthRoutes } from './health';
 import { routeLabel } from './routeLabel';
 import type { ErrorReporter } from './errorTracking';
@@ -40,10 +41,12 @@ export function createApp(options: AppOptions = {}): express.Express {
 
   const app = express();
   app.set('trust proxy', process.env.TRUST_PROXY === 'true'); // real client IPs for rate limiting behind a proxy
+  app.disable('x-powered-by'); // no need to advertise the framework
   // First, so every response (including errors and 404s) carries a request
-  // id and is counted.
+  // id, is counted, and has the security headers (securityHeaders.ts).
   app.use(requestLogging(log));
   app.use(requestMetrics());
+  app.use(securityHeaders());
   app.use(express.json({ limit: '256kb' })); // guides + event batches are small; cap defensively
 
   app.use(healthRoutes(options.readiness));

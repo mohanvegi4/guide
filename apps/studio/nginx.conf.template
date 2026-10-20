@@ -1,5 +1,20 @@
-# Rendered by the nginx image's entrypoint (envsubst): ${BACKEND_URL} is where
-# nginx reaches the backend, e.g. http://backend:3000.
+# Rendered by the nginx image's entrypoint (envsubst) from two variables:
+#   BACKEND_URL   where nginx reaches the backend, e.g. http://backend:3000
+#   OIDC_ORIGIN   the identity provider's origin (scheme + host, no path),
+#                 e.g. https://auth.example.com — the only third-party origin
+#                 the Studio talks to, so the only one the CSP lets through.
+# Both have defaults in the Dockerfile; deploy/docker-compose.yml sets them.
+
+# Cache-Control by what is being served. Hashed assets can be cached forever;
+# index.html must not be (it names the current hashes). Everything else —
+# including /api/ responses, which set their own — gets none (an empty value
+# means nginx adds no header).
+map $uri $studio_cache_control {
+    default                 "";
+    "/index.html"           "no-cache";
+    ~*\.(js|css|woff2?)$    "public, max-age=31536000, immutable";
+}
+
 server {
     listen 80;
     server_name _;
@@ -9,25 +24,28 @@ server {
     gzip on;
     gzip_types text/plain text/css application/javascript application/json image/svg+xml;
 
+    # Set once at server level so every location inherits them: a location
+    # with an add_header of its own would silently drop them, which is why
+    # Cache-Control is a map above rather than a per-location add_header.
+    add_header Cache-Control $studio_cache_control; # not `always`: a 404 for a hashed asset must not be cached
+    add_header X-Content-Type-Options nosniff always;
+    add_header X-Frame-Options DENY always;
+    add_header Referrer-Policy strict-origin-when-cross-origin always;
+    add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
+    # What the Angular build needs and nothing more: scripts only from here
+    # (there are no inline scripts); styles inline too (Angular inlines
+    # critical CSS and component styles); the OIDC provider for the PKCE
+    # token exchange (fetch) and the sign-in redirect's form posts. Sign-in
+    # uses the refresh token, never an iframe, so no frame-src.
+    add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self' ${OIDC_ORIGIN}; frame-ancestors 'none'; base-uri 'self'; form-action 'self' ${OIDC_ORIGIN}" always;
+
     # The Studio is an SPA: deep links fall back to index.html.
     location / {
         try_files $uri $uri/ /index.html;
-        add_header X-Content-Type-Options nosniff always;
-        add_header X-Frame-Options DENY always;
-        add_header Referrer-Policy strict-origin-when-cross-origin always;
     }
 
-    # Hashed assets can be cached forever; index.html must not be.
     location ~* \.(js|css|woff2?)$ {
         try_files $uri =404;
-        add_header Cache-Control "public, max-age=31536000, immutable";
-    }
-    # add_header isn't inherited by a location that sets its own, so repeat them here.
-    location = /index.html {
-        add_header Cache-Control "no-cache";
-        add_header X-Content-Type-Options nosniff always;
-        add_header X-Frame-Options DENY always;
-        add_header Referrer-Policy strict-origin-when-cross-origin always;
     }
 
     # /api/<path> -> backend/<path> (the trailing slash strips the prefix,
