@@ -1,6 +1,6 @@
 {
   "name": "@guide-engine/angular",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Angular service, directive and module for Guide Engine in-app guides (wraps @guide-engine/core)",
   "license": "MIT",
   "repository": {
@@ -46,7 +46,7 @@
   "peerDependencies": {
     "@angular/core": "^17.0.0 || ^18.0.0 || ^19.0.0 || ^20.0.0 || ^21.0.0",
     "@angular/router": "^17.0.0 || ^18.0.0 || ^19.0.0 || ^20.0.0 || ^21.0.0",
-    "@guide-engine/core": "^0.2.0",
+    "@guide-engine/core": "^0.3.0",
     "rxjs": "^7.4.0"
   },
   "devDependencies": {

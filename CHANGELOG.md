@@ -9,6 +9,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). How a rel
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-20
+
 ### Changed
 
 - **`@guide-engine/core`**: a help-center guide whose start page is the page the visitor is on
@@ -85,5 +87,6 @@ First release on npm. The engine was previously consumed only through the instal
   sources themselves or enable JIT; see the package README.
 - All three packages ship CommonJS + `.d.ts` (no ESM build yet).
 
-[Unreleased]: https://github.com/mohanvegi4/guide/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/mohanvegi4/guide/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/mohanvegi4/guide/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/mohanvegi4/guide/releases/tag/v0.2.0

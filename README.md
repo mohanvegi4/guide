@@ -39,10 +39,11 @@ hosted service (terms, privacy policy, DPA, subprocessors) are in [`docs/legal/`
 9. [API reference](#api-reference)
 10. [Data model and migrations](#data-model-and-migrations)
 11. [Testing](#testing)
-12. [Deploying](#deploying)
-13. [Operations](#operations)
-14. [Troubleshooting](#troubleshooting)
-15. [Known gaps and roadmap](#known-gaps-and-roadmap)
+12. [Go-live checklist](#go-live-checklist)
+13. [Deploying](#deploying)
+14. [Operations](#operations)
+15. [Troubleshooting](#troubleshooting)
+16. [Known gaps and roadmap](#known-gaps-and-roadmap)
 
 ---
 
@@ -255,7 +256,7 @@ fine for showing tips, but not if visitor identity matters to you.
 ### Alternative: npm packages
 
 For bundled apps that prefer a dependency over a script tag, three packages are published to
-npm, always together at one version (currently **0.2.0**; see [CHANGELOG.md](CHANGELOG.md)):
+npm, always together at one version (currently **0.3.0**; see [CHANGELOG.md](CHANGELOG.md)):
 
 | Package | For |
 |---|---|
@@ -824,6 +825,68 @@ through the Studio's danger zone, even when an earlier step failed, so it can be
 the same database without leaving anything behind. On failure, `e2e/playwright-report/` holds the report with a trace
 (`npx playwright show-trace e2e/test-results/<run>/trace.zip`). CI runs it in the `e2e` job
 after the unit tests, starting the same services from `docker-compose.yml`.
+
+---
+
+## Go-live checklist
+
+What to have in place before real customers depend on a deployment. Each item points at the
+section or variable that explains it; the `deploy/` stack is assumed, and
+[Any other platform](#any-other-platform) says what replaces it elsewhere.
+
+1. **DNS and certificates.** Three A records at the host: `STUDIO_HOST`, `API_HOST`, `AUTH_HOST`
+   in `deploy/.env`, plus `ACME_EMAIL` for Let's Encrypt
+   ([Staging or production on one host](#staging-or-production-on-one-host)).
+2. **Secrets in `deploy/.env`** (`deploy/.env.example`; never commit it). Required by
+   `deploy/docker-compose.yml`: `POSTGRES_SUPERUSER_PASSWORD`, `APP_DB_PASSWORD`,
+   `KEYCLOAK_DB_PASSWORD`, `KEYCLOAK_ADMIN_PASSWORD` (with `KEYCLOAK_ADMIN_USER`),
+   `PREVIEW_TOKEN_SECRET` and `SECRETS_KEY` (`openssl rand -hex 32` each; losing `SECRETS_KEY`
+   invalidates every app's signing secret). Keep `.env` and `SECRETS_KEY` in your secret store,
+   not only on the host.
+3. **Keycloak.** `deploy/render-realm.sh` before the first `docker compose up` (no dev users,
+   brute-force detection on, redirect URIs = `https://STUDIO_HOST`). After the stack is up:
+   create the first user in the admin console, create a permanent admin in the **master** realm,
+   and decide how `https://AUTH_HOST/admin` is reached: an IP allowlist in `deploy/Caddyfile`
+   (the TODO there) or a non-public `KC_HOSTNAME_ADMIN` ([Known gaps](#known-gaps-and-roadmap)).
+4. **First platform admin.** After that person has signed in once:
+   `UPDATE studio_user SET platform_admin = TRUE WHERE email = '…'`
+   ([Guide Engine administration](#guide-engine-administration)).
+5. **Invitation emails.** Set `SMTP_URL`, `MAIL_FROM` and `STUDIO_URL` on the backend, or accept
+   that invitations are links the inviter copies. The compose file sets none of the three: add
+   them to the `backend` service's environment ([Configuration reference](#configuration-reference)).
+6. **Error tracking and metrics.** `SENTRY_DSN` on the backend (optional; compose doesn't set
+   it). `METRICS_TOKEN` in `deploy/.env`, then `docker compose --profile monitoring up -d`, and
+   point the `alerting:` block in `deploy/monitoring/prometheus.yml` at an Alertmanager, or no
+   one is paged ([Observability](#observability)).
+7. **Backups.** The `backup` service runs by itself; set `BACKUP_COPY_CMD` or a host cron job
+   for an off-host copy, check `BACKUP_KEEP_DAYS` against what your privacy policy says, and
+   rehearse `deploy/restore.sh` once on a scratch host
+   ([Backups and restore](#backups-and-restore)).
+8. **Event retention.** `EVENT_RETENTION_DAYS` (default 400 in production; `0` is off). Write
+   the number you chose into the privacy policy and the DPA ([Operations](#operations)).
+9. **The agent script.** The snippet URL `https://API_HOST/agent/v1/<key>/guides.js` is a
+   permanent contract. A CDN in front of `/agent/v1/*` is optional and drop-in; purge it on a
+   rollback. After each deploy: `curl https://API_HOST/agent/v1/version` matches the image's
+   banner ([caching and rollbacks](#the-agent-script-caching-and-rollbacks)).
+10. **Security headers.** Nothing to do inside the compose stack. A Studio image run elsewhere
+    needs `OIDC_ORIGIN` = the identity provider's origin, or SSO fails the CSP; a replaced
+    Caddy/nginx must set HSTS and the Studio headers itself
+    ([Security headers](#security-headers)).
+11. **Smoke test the deployed stack** (`e2e/`, Playwright, Chromium). It needs a Keycloak user
+    in the `guide-engine` realm it can sign in as (a dedicated one is simplest; a user who
+    already owns an organization works too), and it **creates and deletes an organization**
+    `E2E <timestamp>` through the Studio, which platform admins see on the Administration page
+    while it exists. `STUDIO_URL=https://STUDIO_HOST API_URL=https://API_HOST KEYCLOAK_USER=…
+    KEYCLOAK_PASSWORD=… npm run e2e` (`e2e/playwright.config.ts`, `e2e/tests/smoke.spec.ts`;
+    `SITE_ORIGIN` defaults to `http://e2e.localhost`, a page the test serves itself).
+12. **Legal templates.** `docs/legal/`: replace `{{COMPANY}}`, `{{CONTACT_EMAIL}}`,
+    `{{JURISDICTION}}` and every `[date]` / `[…]` placeholder in `terms.md`, `privacy.md`,
+    `dpa.md` and `subprocessors.md` (the retention and backup numbers above go in there), and
+    have counsel review them before publishing.
+13. **Per customer (each app in the Studio).** The **Websites** list contains the real site
+    origins (scheme + host + port; nothing loads elsewhere). For production customers:
+    generate the **signing secret** and switch on **Require signed identity**
+    ([Require signed identity](#3-recommended-require-signed-identity)).
 
 ---
 
