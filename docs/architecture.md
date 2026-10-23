@@ -1279,7 +1279,6 @@ Things that are true of the code today and worth knowing before you rely on or c
 - `guide_event` is not partitioned; very large volumes would need it.
 - Forgetting a visitor is a hard delete; there is no anonymization path, and `user_guide_state` is
   never aged out.
-- The org export omits each version's `activation`.
 - The Angular wrapper is not built with ng-packagr, so AOT apps must copy its source or use the
   snippet.
 
