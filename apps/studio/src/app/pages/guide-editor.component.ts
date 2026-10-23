@@ -113,6 +113,10 @@ export class GuideEditorComponent {
     // Audience: everyone, or only the listed account ids (one per line / comma separated).
     audience: this.fb.control<'all' | 'accounts'>('all'),
     accountIds: this.fb.control(''),
+    // Visitor tags: everyone, or only visitors carrying at least one of the
+    // listed tags (what the host app says they may do, e.g. "POINT_OF_SALE").
+    tagAudience: this.fb.control<'all' | 'tags'>('all'),
+    visitorTags: this.fb.control(''),
     // How the guide starts: automatically on its page, or only from the help center.
     activation: this.fb.control<GuideActivation>('auto'),
     // Help center listing (on-demand, searchable).
@@ -245,6 +249,8 @@ export class GuideEditorComponent {
       routeValue: version.route_match.value,
       audience: version.account_ids?.length ? 'accounts' : 'all',
       accountIds: (version.account_ids ?? []).join('\n'),
+      tagAudience: version.visitor_tags?.length ? 'tags' : 'all',
+      visitorTags: (version.visitor_tags ?? []).join('\n'),
       activation: version.activation ?? 'auto',
       helpListed: version.help !== null && version.help !== undefined,
       helpTitle: version.help?.title ?? '',
@@ -331,7 +337,8 @@ export class GuideEditorComponent {
       ...(v.where === 'page'
         ? { pageId: v.pageId }
         : { routeMatch: { type: v.routeType, value: v.routeValue.trim() } }),
-      accountIds: v.audience === 'accounts' ? parseAccountIds(v.accountIds) : null,
+      accountIds: v.audience === 'accounts' ? parseList(v.accountIds) : null,
+      visitorTags: v.tagAudience === 'tags' ? parseList(v.visitorTags) : null,
       activation: v.activation,
       // An on-demand guide is only reachable from the help center, so it's always listed.
       help: this.helpListed()
@@ -376,6 +383,19 @@ export class GuideEditorComponent {
     return this.helpListed() && v.where === 'custom' && v.routeType === 'pattern' && !v.helpStartPath.trim();
   }
 
+  /** Why the visitor-tags box can't be saved as typed, or null. Mirrors the backend's rule. */
+  protected visitorTagProblem(): string | null {
+    const v = this.form.getRawValue();
+    if (v.tagAudience !== 'tags') return null;
+    const tags = parseList(v.visitorTags) ?? [];
+    if (tags.length === 0) return 'Audience: list at least one visitor tag, or choose "All visitors".';
+    if (tags.length > MAX_GUIDE_TAGS) return `Audience: at most ${MAX_GUIDE_TAGS} visitor tags per guide.`;
+    const bad = tags.find((t) => !VISITOR_TAG.test(t));
+    return bad
+      ? `Audience: "${bad}" isn't a valid visitor tag (letters, digits and _ . : / - only, up to 100 characters).`
+      : null;
+  }
+
   /** Placeholder for the help start page: what's used when it's left empty. */
   protected defaultStartPage(): string {
     const v = this.form.getRawValue();
@@ -389,6 +409,11 @@ export class GuideEditorComponent {
     const v = this.form.getRawValue();
     if (v.where === 'page' && !this.selectedPage()) {
       this.error.set('Choose a saved page for this guide, or switch to a custom route.');
+      return false;
+    }
+    const tagProblem = this.visitorTagProblem();
+    if (tagProblem) {
+      this.error.set(tagProblem);
       return false;
     }
     if (this.helpNeedsStartPage()) {
@@ -501,9 +526,13 @@ function toLocalInput(iso: string | null): string {
   return new Date(d.getTime() - d.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
 }
 
-/** Account ids from the audience box: one per line or comma separated, de-duplicated. */
-function parseAccountIds(text: string): string[] | null {
-  const ids = [
+/** A visitor tag, as the backend accepts it (auth/visitor.ts). */
+const VISITOR_TAG = /^[A-Za-z0-9_.:/-]{1,100}$/;
+const MAX_GUIDE_TAGS = 100;
+
+/** Account ids or visitor tags from an audience box: one per line or comma separated, de-duplicated. */
+function parseList(text: string): string[] | null {
+  const items = [
     ...new Set(
       text
         .split(/[\n,]/)
@@ -511,5 +540,5 @@ function parseAccountIds(text: string): string[] | null {
         .filter(Boolean),
     ),
   ];
-  return ids.length ? ids : null;
+  return items.length ? items : null;
 }

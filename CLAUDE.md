@@ -58,9 +58,11 @@ deliberately for this project's scale and constraints:
 - **The app key is public.** End users are identified by the visitor/account ids the host
   page passes in. Each app can require a server-signed identity JWT (per-app secret). Each
   app's websites list is enforced via CORS.
-- **Flag-driven enablement + an account allowlist.** That means a guide `enabled` flag, an app
-  switch, a global kill switch, and an optional per-version `account_ids` list. Don't build
-  metadata segments unless explicitly asked.
+- **Flag-driven enablement + an account allowlist + visitor tags.** That means a guide `enabled`
+  flag, an app switch, a global kill switch, an optional per-version `account_ids` list, and an
+  optional per-version `visitor_tags` list (migration 020) matched by overlap against the opaque
+  `visitor.tags` the host passes or signs. Don't build metadata segments (attributes, rules,
+  operators) unless explicitly asked.
 - **No external analytics integration.** Events live in this repo's own Postgres tables.
 - **`data-guide-id` selector convention**, not raw CSS classes/selectors.
 - **Fail closed, fail silent.** The agent shows nothing when anything can't be verified, and
@@ -118,5 +120,5 @@ npm test                                       # all workspace tests (backend ne
 npm run dev:backend                            # backend on :3000 with hot reload
 npm run seed --workspace=packages/backend      # dev org + app + demo .env.local + a Studio dev token
 npm run mint-token --workspace=packages/backend -- --sub <id> [--email <e>]   # dev Studio token
-npm run sign-identity --workspace=packages/backend -- --secret <ge_sk_…> --visitor <id> [--account <id>]
+npm run sign-identity --workspace=packages/backend -- --secret <ge_sk_…> --visitor <id> [--account <id>] [--tags a,b]
 ```

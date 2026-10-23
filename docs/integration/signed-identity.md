@@ -28,11 +28,12 @@ The backend accepts the token only if **all** of the following hold:
 | Algorithm | **HS256 only.** `alg: none`, RS*/ES*, and any other algorithm are rejected. |
 | Key | The HMAC key is the UTF-8 bytes of the application's **signing secret** exactly as the Studio shows it: `ge_sk_` followed by 43 base64url characters (49 characters, 392 bits). Do not decode or hash it. |
 | `visitor.id` | Required. String, 1–256 characters after trimming. The stable id of the end user. |
+| `visitor.tags` | Optional. Array of up to 1000 strings, each 1–100 characters of letters, digits and `_ . : / -`, case-sensitive. What the user may do in your application (for example one tag per permission they hold); a guide limited to visitor tags shows only to users carrying at least one. Any malformed tag makes the whole token invalid. Tags sent beside the token are ignored. |
 | `account.id` | Optional (or `null`). String, 1–256 characters. The customer/tenant the user belongs to; used for the per-version account allowlist and analytics. |
 | `exp` | **Required**, seconds since the epoch. Tokens without an expiry are rejected ("no eternal identities"). 5 seconds of clock tolerance. |
 | `iat`, `nbf` | Optional. `nbf` is honoured (with the same tolerance). |
-| Other claims | Ignored and never stored. Don't put names or emails in the token: the agent stores ids only. |
-| Size | At most 8192 characters. |
+| Other claims | Ignored and never stored. Don't put names or emails in the token: the agent stores ids only. Tags are used for matching only and are never stored. |
+| Size | At most 65,536 characters, room for several hundred tags. |
 
 How the two identity modes of an application behave (**Install & settings → Signed identity**):
 
@@ -56,7 +57,7 @@ in the Guide Engine repo does):
 ```js
 import jwt from 'jsonwebtoken';
 const token = jwt.sign(
-  { visitor: { id: userId }, account: { id: tenantId } },
+  { visitor: { id: userId, tags: guideTags }, account: { id: tenantId } },  // tags optional
   process.env.GUIDE_ENGINE_SIGNING_SECRET,          // "ge_sk_…"
   { algorithm: 'HS256', expiresIn: '12h' },
 );
@@ -74,7 +75,7 @@ import java.util.Date;
 import java.util.Map;
 
 String token = Jwts.builder()
-    .claim("visitor", Map.of("id", userId))
+    .claim("visitor", Map.of("id", userId, "tags", guideTags))   // List<String>; omit "tags" if unused
     .claim("account", Map.of("id", tenantId))          // omit for users without one
     .issuedAt(new Date())
     .expiration(Date.from(Instant.now().plus(12, ChronoUnit.HOURS)))

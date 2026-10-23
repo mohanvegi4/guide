@@ -175,6 +175,8 @@ describe('GET /v1/orgs/:orgId/export', () => {
       id: acme.versionId,
       steps: [expect.objectContaining({ content: '<p>Invite your team</p>' })],
       routeMatch: sampleVersion.routeMatch,
+      visitorTags: null,
+      activation: 'auto',
       publishedAt: expect.any(String),
     });
     expect(guide.versions[1]).toMatchObject({ pageId: acme.pageId, publishedAt: null });

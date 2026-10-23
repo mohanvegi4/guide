@@ -17,6 +17,7 @@ import {
 } from './context';
 import { guideAnalyticsQuerySchema, rangeSql, toRange } from './analytics';
 import { findPage } from './pages';
+import { visitorTagSchema } from '../../auth/visitor';
 
 /**
  * Authoring routes for one application's guides: /v1/apps/:appId/guides/...
@@ -103,6 +104,16 @@ const versionBodySchema = z
       .transform((ids) => [...new Set(ids)])
       .nullable()
       .optional(),
+    // Visitor tags: omitted/null = every visitor; otherwise only visitors who
+    // carry at least one of these tags (from their host application's
+    // permissions, passed as visitor.tags or inside the signed identity).
+    visitorTags: z
+      .array(visitorTagSchema)
+      .min(1)
+      .max(100)
+      .transform((tags) => [...new Set(tags)])
+      .nullable()
+      .optional(),
     help: helpSchema.nullable().optional(),
     // How the guide starts. 'auto' (default): when the visitor lands on its
     // page, once per published version. 'manual': only from the help center
@@ -145,6 +156,7 @@ interface PreparedVersion {
   startAt: string | null;
   endAt: string | null;
   accountIds: string[] | null;
+  visitorTags: string[] | null;
   help: { title: string; description: string; keywords: string[]; startPath?: string } | null;
   activation: 'auto' | 'manual';
 }
@@ -178,6 +190,7 @@ function parseVersionBody(body: unknown): PreparedVersion {
     startAt: parsed.startAt ?? null,
     endAt: parsed.endAt ?? null,
     accountIds: parsed.accountIds ?? null,
+    visitorTags: parsed.visitorTags ?? null,
     help: parsed.help
       ? {
           title: sanitizePlainText(parsed.help.title),
@@ -206,7 +219,7 @@ async function lockGuide(client: PoolClient, appId: string, guideId: string): Pr
 }
 
 const VERSION_COLUMNS =
-  'id, version_number, steps, route_match, page_id, start_at, end_at, account_ids, help, activation, published_at';
+  'id, version_number, steps, route_match, page_id, start_at, end_at, account_ids, visitor_tags, help, activation, published_at';
 
 /**
  * Creates or overwrites the guide's single working draft (published_at NULL).
@@ -230,10 +243,11 @@ async function upsertDraft(client: PoolClient, appId: string, guideId: string, v
     v.accountIds,
     v.help ? JSON.stringify(v.help) : null,
     v.activation,
+    v.visitorTags,
   ];
   const updated = await client.query(
     `UPDATE guide_version SET steps = $2, route_match = $3, page_id = $4, start_at = $5, end_at = $6,
-                              account_ids = $7, help = $8, activation = $9
+                              account_ids = $7, help = $8, activation = $9, visitor_tags = $10
      WHERE guide_id = $1 AND published_at IS NULL
      RETURNING ${VERSION_COLUMNS}`,
     [guideId, ...values],
@@ -243,8 +257,8 @@ async function upsertDraft(client: PoolClient, appId: string, guideId: string, v
   const inserted = await client.query(
     `INSERT INTO guide_version
        (guide_id, version_number, steps, route_match, page_id, start_at, end_at, account_ids, help, activation,
-        published_at)
-     SELECT $1, COALESCE(MAX(version_number), 0) + 1, $2, $3, $4, $5, $6, $7, $8, $9, NULL
+        visitor_tags, published_at)
+     SELECT $1, COALESCE(MAX(version_number), 0) + 1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NULL
      FROM guide_version WHERE guide_id = $1
      RETURNING ${VERSION_COLUMNS}`,
     [guideId, ...values],
@@ -262,6 +276,7 @@ function toVersionResponse(row: Record<string, unknown>) {
     startAt: row.start_at,
     endAt: row.end_at,
     accountIds: row.account_ids,
+    visitorTags: row.visitor_tags,
     help: row.help,
     activation: row.activation,
     publishedAt: row.published_at,

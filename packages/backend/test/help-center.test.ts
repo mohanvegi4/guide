@@ -152,6 +152,20 @@ describe('help center', () => {
     expect((await agent(key, '/help', visitor('v', 'acme'))).body).toEqual({ enabled: false, guides: [] });
   });
 
+  it('lists a tagged guide only for visitors carrying one of its tags', async () => {
+    const { key, appId } = await signUp('alice');
+    await liveGuide('alice', appId, {
+      ...sampleVersion,
+      routeMatch: { type: 'exact', value: '/t' },
+      help,
+      activation: 'manual',
+      visitorTags: ['POS'],
+    });
+    expect((await agent(key, '/help', { visitor: { id: 'v', tags: ['POS'] } })).body.guides).toHaveLength(1);
+    expect((await agent(key, '/help', { visitor: { id: 'v', tags: ['OTHER'] } })).body.guides).toHaveLength(0);
+    expect((await agent(key, '/help', visitor('v'))).body.guides).toHaveLength(0);
+  });
+
   it('requires a start page for wildcard routes, and only same-site paths', async () => {
     const { appId } = await signUp('alice');
     const g = (

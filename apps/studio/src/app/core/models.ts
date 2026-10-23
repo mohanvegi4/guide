@@ -245,6 +245,8 @@ export interface GuideVersion {
   end_at: string | null;
   /** null = every account */
   account_ids: string[] | null;
+  /** null = every visitor; otherwise visitors carrying at least one of these tags */
+  visitor_tags: string[] | null;
   /** null = not listed in the help center */
   help: HelpListing | null;
   /** How the guide starts; see GuideActivation. */
@@ -289,6 +291,7 @@ export interface PublishPayload {
   startAt?: string;
   endAt?: string;
   accountIds?: string[] | null;
+  visitorTags?: string[] | null;
   help?: HelpListing | null;
   activation?: GuideActivation;
 }

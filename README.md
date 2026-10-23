@@ -219,6 +219,11 @@ guideEngine.initialize({
 - **Anonymous visitors:** omit `visitor`, and the agent keeps a random per-browser id.
 - **After login:** call `guideEngine.identify({ visitor: { id }, account: { id } })`. The agent
   clears what the previous user was shown and re-evaluates.
+- **Visitor tags (optional):** `visitor: { id, tags: ['POINT_OF_SALE', 'CUSTOMERS:edit'] }`. Tags
+  are short strings you choose, usually what the person may do in your app. A guide limited to
+  tags shows only to visitors carrying at least one of them. Letters, digits and `_ . : / -`, up
+  to 100 characters each and 1000 per visitor; the agent drops malformed ones. Pass them before
+  the first `initialize` if you can: a later `identify` re-evaluates the page.
 - The site's origin must be in the app's **Websites** list. Guides never load anywhere else.
 
 ### 2. Tag the elements guides point at
@@ -243,13 +248,14 @@ fine for showing tips, but not if visitor identity matters to you.
    ```js
    import jwt from 'jsonwebtoken';
    const token = jwt.sign(
-     { visitor: { id: user.id }, account: { id: user.companyId } },
+     { visitor: { id: user.id, tags: user.guideTags }, account: { id: user.companyId } },
      process.env.GUIDE_ENGINE_SECRET,
      { algorithm: 'HS256', expiresIn: '1h' },
    );
    ```
 
-3. Pass it to the page: `guideEngine.initialize({ jwt: token })`.
+3. Pass it to the page: `guideEngine.initialize({ jwt: token })`. Ids and tags then come from
+   the token only; anything sent beside it is ignored.
 4. Switch on **Require signed identity**. From then on, unsigned or invalid identities get no
    guides.
 
@@ -343,7 +349,8 @@ Full guide: [`apps/studio/README.md`](apps/studio/README.md).
   - **Where:** a [saved page](#saved-pages) of the app, or a custom route (an exact path, or a
     pattern where `*` matches anything).
   - **Dates:** optional start and end.
-  - **Audience:** all accounts, or only listed account ids.
+  - **Audience:** all accounts, or only listed account ids; and all visitors, or only visitors
+    carrying any of the listed [visitor tags](#1-add-the-snippet). Both rules apply.
   - **Steps:** each has a type, anchor, position, HTML content, and buttons (`next`, `dismiss`,
     `complete`).
   - **Workflow:** save a draft, preview, publish, enable. **Versions** lists the history, with
@@ -452,7 +459,7 @@ packages they're `GuideService.openHelp()` (Angular), `useGuideEngine().openHelp
    identity returns `{ enabled, guides }`. The server checks:
    - the global kill switch and the app's own switch;
    - published, enabled and in the date window;
-   - the account allowlist;
+   - the account allowlist and the visitor tags;
    - that this visitor hasn't already seen, dismissed or completed this version or a newer one
      (automatic guides show once; the help center lets them be replayed).
 
@@ -656,7 +663,8 @@ JSON throughout. Studio responses that are database rows use snake_case.
 ### Agent API (public app key; CORS for the app's websites)
 
 Bodies may be `text/plain` or `application/json`. Each one carries an identity:
-`{ visitor?: { id }, account?: { id } | null, jwt? }`.
+`{ visitor?: { id, tags? }, account?: { id } | null, jwt? }`. With a `jwt`, its claims replace the
+plain `visitor` and `account`.
 
 | Method & path | Body → response |
 |---|---|
@@ -664,7 +672,7 @@ Bodies may be `text/plain` or `application/json`. Each one carries an identity:
 | `POST /v1/agent/:key/events` | identity + `{ events: [{ guideId, guideVersionId, stepId?, sessionId, eventType, occurredAt, metadata? }] }` (1–100) → `202 { accepted }`. Help-center events (`help_opened`, `help_searched`) carry no `guideId` / `guideVersionId`; a `help_searched` event's `metadata` is `{ query, results }` (the query is cut to 200 characters; other keys are dropped). |
 | `POST /v1/agent/:key/preview` | `{ token }` → the previewed guide with `preview: true` |
 | `POST /v1/agent/:key/errors` | `{ message (1–500 chars), stack? (≤ 4000), url? (≤ 2000), agentVersion? }` → `202 { accepted }`. `accepted: false` once the app already has 1000 reports in the last hour. |
-| `POST /v1/agent/:key/help` | identity → `{ enabled, routeMode, button: { label, color, position }, guides: [{ …guide, help: { title, description, keywords, startPath } }] }`. The help-center list; not route-filtered, and includes guides the visitor already finished. |
+| `POST /v1/agent/:key/help` | identity → `{ enabled, routeMode, button: { label, color, position }, guides: [{ …guide, help: { title, description, keywords, startPath } }] }`. The help-center list; not route-filtered, and includes guides the visitor already finished. Account and tag rules still apply. |
 
 `eventType` is one of `guide_shown`, `guide_step_viewed`, `guide_step_completed`,
 `guide_dismissed`, `guide_completed`, `guide_error`, `survey_response`, `help_opened`,
@@ -720,7 +728,7 @@ A `VersionBody` is:
 ```
 { steps: [{ id?, order, type, targetSelector?, content, position?, actions: [{ label, action }] }],
   pageId? | routeMatch?: { type, value },   // exactly one
-  startAt?, endAt?, accountIds?: string[] | null,
+  startAt?, endAt?, accountIds?: string[] | null, visitorTags?: string[] | null,
   help?: { title, description?, keywords?: string[], startPath? } | null,
   activation?: 'auto' | 'manual' }
 ```
@@ -730,6 +738,8 @@ A `VersionBody` is:
 - `targetSelector` must be `[data-guide-id="…"]`.
 - `content` is at most 20,000 characters and is sanitized.
 - `accountIds` is null for everyone, or 1–500 ids.
+- `visitorTags` is null for every visitor, or 1–100 tags (letters, digits and `_ . : / -`, up to 100
+  characters each, case-sensitive). The guide then shows only to visitors carrying at least one.
 - `help` is null when the guide isn't in the help center. Its text is plain, and `startPath` must
   be a path on your own site. It defaults to the page's start page, then to an exact route; custom
   pattern routes require one.
@@ -764,7 +774,7 @@ A `VersionBody` is:
 | `org_member` | One role per person per organization (viewer / editor / manager / owner), applying to every app. `app_member` (per-app grants) is empty since migration 016 and no longer read. |
 | `invitation` | Invite links: hashed token, role, expiry, single use. |
 | `app_page` | Saved pages per app: `name`, `match_type`, `match_value`, `start_path`. |
-| `guide` / `guide_version` | Guides per app. Numbered versions hold steps (JSONB), `page_id` (a saved page) and/or `route_match` (a custom route, or the page's route snapshot), dates, `account_ids`, `help` (the help-center listing) and `activation` (`auto`: pops up on its page; `manual`: help center only). `published_at IS NULL` means the draft, at most one per guide. Published rows are immutable. |
+| `guide` / `guide_version` | Guides per app. Numbered versions hold steps (JSONB), `page_id` (a saved page) and/or `route_match` (a custom route, or the page's route snapshot), dates, `account_ids`, `visitor_tags`, `help` (the help-center listing) and `activation` (`auto`: pops up on its page; `manual`: help center only). `published_at IS NULL` means the draft, at most one per guide. Published rows are immutable. |
 | `guide_event` | Analytics: app, guide, version, step, `visitor_id`, `account_id`. Help-center events (`help_opened`, `help_searched`) have no guide; a CHECK ties a NULL `guide_id` to exactly those two types. |
 | `agent_error` | Exceptions the agent reported from an app's pages: `message`, `stack`, `agent_version`, `url`, `occurred_at`. Written by the agent, read by the app's members and platform admins, deleted by retention. Free text: only ever rendered as text. |
 | `user_guide_state` | Per (app, visitor, guide): shown, dismissed or completed, plus `last_seen_version`. A later `shown` never downgrades dismissed / completed at the same version. |
@@ -797,6 +807,7 @@ pending files and the others wait, then find nothing to do.
 | `019_shown_state.sql` | Adds `shown` to `user_guide_status`: an automatic guide shows once per visitor; `/guides` skips guides the visitor has already seen, like finished ones, until a newer version. |
 | `017_manager_rls.sql` | The editor / manager split in the database: `app_manager_app_ids()` (apps of the orgs where the user is a manager or owner) replaces `app_admin_app_ids()` in the forget-visitor policies, the per-app delete policy from 013 is dropped (`application_delete` on `app_admin_org_ids()` already covers managers), and the `application_guard_keys` trigger refuses a change to `public_key` / `signing_secret` from anyone but a manager (or the maintenance scope used by `encrypt-secrets`). |
 | `018_guide_activation.sql` | `guide_version.activation` (`auto` / `manual`, CHECK-limited; `manual` requires a help listing) on the version and the `active_guide` view. The agent's `/guides` serves only `auto` versions. |
+| `020_visitor_tags.sql` | `guide_version.visitor_tags` (null = every visitor, else 1–100 tags) on the version and the `active_guide` view. `/guides` and `/help` serve a tagged guide only to visitors whose tags overlap. |
 
 ---
 
@@ -1102,7 +1113,7 @@ backend, and sign in as `olivia` / `olivia` (see [Studio login details](#studio-
   | `npm run migrate` | Apply pending migrations (any environment). |
   | `npm run seed` | Dev org + app, `apps/demo/.env.local`, and a Studio token. |
   | `npm run mint-token -- --sub <id> [--email <e>] [--name <n>] [--ttl 8h]` | A dev Studio sign-in token. |
-  | `npm run sign-identity -- --secret <ge_sk_…> --visitor <id> [--account <id>]` | Sign a visitor identity, as a customer's server would. |
+  | `npm run sign-identity -- --secret <ge_sk_…> --visitor <id> [--account <id>] [--tags a,b]` | Sign a visitor identity, as a customer's server would. |
 
 ### Backups and restore
 
@@ -1240,7 +1251,8 @@ Alertmanager, skip the profile and take the files: the scrape job in `prometheus
 1. Is it **published** (Versions shows `live`) **and Enabled**? Is the app switched on?
 2. Does the **route** match the URL path?
 3. Is now inside the start and end dates?
-4. Is the visitor's **account** in the audience, if one is set?
+4. Is the visitor's **account** in the audience, and does the visitor carry one of its **tags**,
+   if either is set? Tags are exact, case-sensitive strings.
 5. Has this visitor already seen, dismissed or completed this version? Publish a newer one, or reset
    their state.
 6. Is the element on the page with exactly that `data-guide-id`? A missing one shows up as

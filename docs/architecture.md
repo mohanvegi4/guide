@@ -8,7 +8,7 @@ nav_order: 4
 This guide explains, part by part, how Guide Engine works inside: what runs where, what each piece
 stores, how a request is authorized, and how a guide gets from the Studio onto a visitor's screen.
 It is written for engineers who will run, extend or review the system, and it describes the code
-as it is on `main` (version 0.3.0, migrations 001 to 019). Where the code and the intent differ, the
+as it is on `main` (version 0.3.0, migrations 001 to 020). Where the code and the intent differ, the
 guide says so in [Known gaps and quirks](#16-known-gaps-and-quirks).
 
 For *using* the product, read the [Guide Engine reference](../README.md) and the
@@ -315,7 +315,7 @@ has RLS **enabled and forced**, so even the table owner is subject to it.
 | `invitation` | Pending invitations | `email`, `org_role` (never owner), `token_hash` (SHA-256 only), `expires_at`, `accepted_at`, `accepted_by` |
 | `application` | Apps | `org_id`, `name`, `public_key` (unique), `allowed_origins[]`, `identity_mode`, `signing_secret` (encrypted), `enabled`, help button settings, `route_mode`, `suspended_at` |
 | `guide` | Guides | `app_id`, `name`, `type`, `status`, `enabled`, `current_version_id`, `created_by` |
-| `guide_version` | Drafts and published versions | `guide_id`, `version_number`, `steps` (JSONB), `route_match` (JSONB), `page_id`, `start_at`, `end_at`, `account_ids[]`, `help` (JSONB), `activation`, `published_at` |
+| `guide_version` | Drafts and published versions | `guide_id`, `version_number`, `steps` (JSONB), `route_match` (JSONB), `page_id`, `start_at`, `end_at`, `account_ids[]`, `visitor_tags[]`, `help` (JSONB), `activation`, `published_at` |
 | `app_page` | Saved pages | `app_id`, `name` (unique per app, case-insensitive), `match_type`, `match_value`, `start_path` |
 | `guide_event` | Everything visitors did | `BIGSERIAL id`, `app_id`, `guide_id`, `guide_version_id`, `step_id`, `visitor_id`, `account_id`, `session_id`, `event_type`, `occurred_at`, `metadata` |
 | `user_guide_state` | Per-visitor guide state | `(app_id, visitor_id, guide_id)` primary key, `status` (shown, dismissed, completed), `last_seen_version` |
@@ -356,7 +356,7 @@ SELECT g.id, g.app_id, g.name, g.type,
        gv.account_ids, gv.start_at, gv.end_at, gv.help,
        p.id AS page_id,
        COALESCE(p.start_path, CASE WHEN p.match_type = 'exact' THEN p.match_value END) AS page_start_path,
-       gv.activation
+       gv.activation, gv.visitor_tags
 FROM guide g
 JOIN guide_version gv ON gv.id = g.current_version_id
 LEFT JOIN app_page p ON p.id = gv.page_id
@@ -393,6 +393,7 @@ The migrations tell the design history. In short:
 | 017 | Editor/manager split enforced in the database | 016 made every editor an app admin; this restores manager-only actions at the RLS level |
 | 018 | `activation` auto or manual | Guides that only appear from the help center |
 | 019 | `shown` visitor state | An automatic guide shows once per visitor per version |
+| 020 | `visitor_tags` on versions | Target guides by what the visitor may do in the host application |
 
 ---
 
@@ -658,7 +659,8 @@ SELECT a.id, a.app_id, a.name, a.type, a.version_id, a.steps, a.route_match
 FROM active_guide a
 WHERE a.app_id = $1                                            -- this app
   AND a.activation = 'auto'                                    -- not help-only
-  AND (a.account_ids IS NULL OR $3::text = ANY(a.account_ids)) -- audience
+  AND (a.account_ids IS NULL OR $3::text = ANY(a.account_ids)) -- account audience
+  AND (a.visitor_tags IS NULL OR a.visitor_tags && $4::text[])  -- visitor tags
   AND NOT EXISTS (                                             -- not seen at this version
     SELECT 1 FROM user_guide_state s
     WHERE s.app_id = $1 AND s.visitor_id = $2 AND s.guide_id = a.id
@@ -710,18 +712,19 @@ The host page passes ids to `guideEngine.initialize()` and later `identify()`. E
 body carries:
 
 ```json
-{ "visitor": { "id": "…" }, "account": { "id": "…" }, "jwt": "…" }
+{ "visitor": { "id": "…", "tags": ["…"] }, "account": { "id": "…" }, "jwt": "…" }
 ```
 
 [`auth/visitor.ts`](../packages/backend/src/auth/visitor.ts) resolves them in this order:
 
 1. **A `jwt` is present** (in any mode): the app must have a signing secret; the token must verify
    with HS256 and that secret (5 seconds of skew, `exp` required) and carry `visitor.id` and
-   optionally `account.id`. The ids come from the token; anything else in the body is ignored.
+   optionally `visitor.tags` and `account.id`. Ids and tags come from the token; anything else in
+   the body is ignored.
    Any failure → `401 identity_invalid`.
 2. **No `jwt`, and the app requires signed identity** → `401 signed_identity_required`.
 3. **No `jwt` and no visitor** → `401 visitor_required`.
-4. Otherwise the plain ids are used.
+4. Otherwise the plain ids and tags are used.
 
 Ids are strings of 1 to 256 characters. If the page passes no visitor and no token, the agent makes
 an anonymous id (`anon-<uuid>`) and keeps it in `localStorage` under `guideEngine.anonymousId`,
@@ -730,46 +733,52 @@ so show-once still works per browser.
 **Why signed identity exists.** The app key is in every page's source, so anyone can call the agent
 API with any visitor or account id they like. That is harmless for tips, but it means plain ids can
 be spoofed to see another account's guides or to pollute analytics. With **Require signed identity**
-on, the customer's backend signs `{ visitor: { id }, account: { id }, exp }` with the app's
-`ge_sk_…` secret, and only those ids are believed. The secret is generated by the backend, shown
+on, the customer's backend signs `{ visitor: { id, tags }, account: { id }, exp }` with the app's
+`ge_sk_…` secret, and only those ids and tags are believed. The secret is generated by the backend, shown
 once, and stored encrypted with AES-256-GCM under `SECRETS_KEY`. The full contract for the
 customer's backend is in [Signed identity](integration/signed-identity.md).
 
-### 9.2 Account-level targeting (built)
+### 9.2 Audience: accounts and visitor tags
 
-Each published version has an **Audience**: everyone, or only a list of account ids (up to 500,
-1 to 256 characters each). It is stored in `guide_version.account_ids` (null means everyone).
+Each published version has two independent audience rules. A visitor gets the guide only if both
+pass.
 
-- The filter runs **on the server** in both `/guides` and `/help`, so a visitor from another
-  account never receives the guide at all.
-- A visitor with no account never matches a non-empty list.
-- In the Studio it is the editor's **Audience** section: "All accounts" or "Only these account
-  ids", one per line or comma separated.
-- With signed identity on, the account id comes from the token and can't be faked.
+| Rule | Stored in | Empty means | Matches when |
+|---|---|---|---|
+| Accounts | `guide_version.account_ids` (up to 500 ids, 1 to 256 characters) | every account | the visitor's account id is in the list |
+| Visitor tags | `guide_version.visitor_tags` (up to 100 tags) | every visitor | the visitor carries **at least one** of the listed tags |
 
-What it is not: there are no groups, wildcards or attributes. Each guide lists account ids
-explicitly. Metadata segments are deliberately not built.
+- Both filters run **on the server**, in `/guides` and `/help`, so a visitor who doesn't qualify
+  never receives the guide at all.
+- A visitor with no account never matches an account list; a visitor with no tags never matches a
+  tag list.
+- In the Studio both live in the editor's **Audience** section: "All accounts" or "Only these
+  accounts", and "All visitors" or "Only visitors with any of these tags", one per line or comma
+  separated.
+- With signed identity on, the account id and the tags come from the token and can't be faked.
+  Without it, both are whatever the page sends, like the visitor id.
 
-### 9.3 Targeting by what the signed-in person may do (not built)
+**What a tag is.** An opaque, case-sensitive string of letters, digits and `_ . : / -`, at most 100
+characters. Guide Engine never interprets it; it only tests whether the visitor's tags and the
+guide's tags overlap (`visitor_tags && $tags` in SQL). The host application decides what the tags
+mean. The usual choice is one tag per permission the person holds, so an author can limit
+"Sell at Point of sale" to `POINT_OF_SALE`. A visitor may carry up to 1,000 tags. Tags are used for
+matching only: they are not stored with events and do not appear in analytics.
 
-Guide Engine knows nothing about a visitor's permissions in the host application. The `visitor` and
-`account` objects accept extra keys, but only the two ids are sent and stored.
+**Where tags come from in the browser.** The page passes
+`initialize({ visitor: { id, tags } })` or `identify(...)`. The engine drops malformed and
+duplicate tags before sending, so one bad tag can't get every request refused, and it sends tags
+only for unsigned visitors (a signed token carries its own). Calling `identify` with new tags
+re-evaluates the page, so a host whose permissions load after the user should wait for both before
+calling `initialize`, or the first guide may be torn down and re-chosen.
 
-What works today without changes: a guide whose **first** step points at an element that the host
-application only renders for authorized users will never show to anyone else, because the engine
-waits for the element and then gives up silently. This is fragile: it is invisible to authors,
-breaks if the element is renamed, and records a `target_not_found` error each time.
+What this is not: there are no groups, wildcards, attributes or rules. Each guide lists account ids
+and tags explicitly. Metadata segments are deliberately not built.
 
-A proposed design, mirroring the account allowlist so it stays inside the existing model:
-
-1. The page passes `visitor.tags: string[]` (for example derived from the host's permission
-   store), and the customer's identity endpoint puts the same tags in the signed token.
-2. A migration adds `guide_version.visitor_tags TEXT[]` (null means everyone), the `active_guide`
-   view exposes it, and `/guides` and `/help` add `AND (visitor_tags IS NULL OR visitor_tags && $tags)`.
-3. The Studio's Audience section gains "Only visitors with any of these tags".
-
-This changes the identity contract and the agent queries, so it needs a decision before it is
-built.
+**Before tags existed** the only way to reach "people who may do X" was to point a guide's first
+step at an element the host only renders for them, so the engine waited and silently gave up for
+everyone else. That still works, but it is invisible to authors and records a `target_not_found`
+error each time; tags replace it.
 
 ---
 
@@ -967,6 +976,7 @@ Validated with zod before anything is written:
 | Where | Exactly one of `pageId` (a saved page of this app) or `routeMatch` (`exact` or `pattern`, starting with `/`). With a page, its route is also copied into `route_match` as a fallback. |
 | `startAt`, `endAt` | Optional; start must be before end. |
 | `accountIds` | Optional, 1 to 500 ids; null means everyone. |
+| `visitorTags` | Optional, 1 to 100 tags (letters, digits and `_ . : / -`, up to 100 characters); null means every visitor. |
 | `help` | Optional listing: title (≤120), description (≤500), up to 20 keywords, a same-site start path. A pattern route needs a start path unless a saved page provides one. |
 | `activation` | `auto` (shows by itself on matching pages) or `manual` (only from the help center; requires a help listing). |
 
@@ -1242,8 +1252,9 @@ Things that are true of the code today and worth knowing before you rely on or c
   leftover of the per-app model and currently mean "editor or above".
 - Content writes (guides, pages) are role-checked in code only; RLS allows any member of the org.
   Manager-only actions are enforced in both layers.
-- Visitor targeting is by account id only. There is no targeting by the visitor's permissions in the
-  host application ([section 9.3](#93-targeting-by-what-the-signed-in-person-may-do-not-built)).
+- Visitor tags are exact strings with no hierarchy. If the host's permissions have levels
+  (read < edit < delete), it must emit one tag per level the person reaches, so a guide can list
+  the lowest level it needs.
 
 **Agent and browser**
 

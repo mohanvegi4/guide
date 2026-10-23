@@ -136,6 +136,7 @@
         </fieldset>
         <fieldset class="audience">
           <legend>Audience</legend>
+          <div class="muted audience-group">Accounts</div>
           <label class="switch"><input type="radio" formControlName="audience" value="all" /> All accounts</label>
           <label class="switch"><input type="radio" formControlName="audience" value="accounts" /> Only these accounts</label>
           @if (form.controls.audience.value === 'accounts') {
@@ -146,6 +147,24 @@
               aria-label="Account ids, one per line"
             ></textarea>
             <small class="muted">The account ids your app passes to <code>guideEngine.initialize(&#123; account: &#123; id &#125; &#125;)</code>.</small>
+          }
+          <div class="muted audience-group">Visitor tags</div>
+          <label class="switch"><input type="radio" formControlName="tagAudience" value="all" /> All visitors</label>
+          <label class="switch"><input type="radio" formControlName="tagAudience" value="tags" /> Only visitors with any of these tags</label>
+          @if (form.controls.tagAudience.value === 'tags') {
+            <textarea
+              formControlName="visitorTags"
+              rows="3"
+              placeholder="POINT_OF_SALE&#10;CUSTOMERS:edit"
+              aria-label="Visitor tags, one per line"
+            ></textarea>
+            <small class="muted">
+              Tags your app passes as <code>visitor.tags</code> (or in the signed identity), usually what
+              the person is allowed to do. Both rules apply: the account and one of the tags must match.
+            </small>
+            @if (form.controls.visitorTags.dirty && visitorTagProblem(); as problem) {
+              <small class="error" role="alert">{{ problem }}</small>
+            }
           }
         </fieldset>
       </section>

@@ -25,6 +25,7 @@ const version = (over: Partial<GuideVersion>): GuideVersion => ({
   start_at: null,
   end_at: null,
   account_ids: null,
+  visitor_tags: null,
   help: null,
   activation: 'auto',
   published_at: '2026-10-19T00:00:00Z',
@@ -123,6 +124,36 @@ describe('GuideEditorComponent', () => {
     expect(form.invalid).toBe(false);
     fixture.componentInstance.publish();
     expect(publishBody().pageId).toBe('p1');
+  });
+
+  it('loads and republishes visitor tags; "All visitors" sends null', async () => {
+    const fixture = await render(guide([version({ visitor_tags: ['POINT_OF_SALE', 'CUSTOMERS:edit'] })]));
+    const form = fixture.componentInstance['form'];
+    expect(form.controls.tagAudience.value).toBe('tags');
+    expect(form.controls.visitorTags.value).toBe('POINT_OF_SALE\nCUSTOMERS:edit');
+
+    form.controls.visitorTags.setValue('POINT_OF_SALE, POINT_OF_SALE\nCATALOG');
+    fixture.componentInstance.publish();
+    expect(publishBody().visitorTags).toEqual(['POINT_OF_SALE', 'CATALOG']);
+    fixture.destroy();
+
+    const again = await render(guide([version({ visitor_tags: ['POINT_OF_SALE'] })]));
+    again.componentInstance['form'].controls.tagAudience.setValue('all');
+    again.componentInstance.publish();
+    expect(publishBody().visitorTags).toBeNull();
+  });
+
+  it('refuses to publish malformed or missing visitor tags, and says why', async () => {
+    const fixture = await render(guide([version({})]));
+    const form = fixture.componentInstance['form'];
+    form.controls.tagAudience.setValue('tags');
+    fixture.componentInstance.publish();
+    expect(fixture.componentInstance['error']()).toContain('at least one visitor tag');
+
+    form.controls.visitorTags.setValue('POS\nhas space');
+    fixture.componentInstance.publish();
+    expect(fixture.componentInstance['error']()).toContain('"has space" isn\'t a valid visitor tag');
+    // Nothing was sent: http.verify() in afterEach fails on an unexpected publish.
   });
 
   it('starts a brand-new guide on a saved page when the app has pages, else on a custom route', async () => {

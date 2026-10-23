@@ -219,9 +219,9 @@ function visitorFrom(req: Request, app: AgentApp): Visitor {
 // ------------------------------------------------------------
 // POST /v1/agent/:key/guides — one round trip: kill switches + every guide
 // this visitor should see right now (published, enabled, in its date window,
-// their account allowed, not already shown or finished at this version or
-// later, and starting automatically — on-demand guides only come through
-// /help).
+// their account allowed, at least one of their tags listed when the guide
+// names tags, not already shown or finished at this version or later, and
+// starting automatically — on-demand guides only come through /help).
 // Route matching happens in the agent.
 // ------------------------------------------------------------
 agentApiRouter.post(
@@ -237,13 +237,14 @@ agentApiRouter.post(
          WHERE a.app_id = $1
            AND a.activation = 'auto'
            AND (a.account_ids IS NULL OR $3::text = ANY(a.account_ids))
+           AND (a.visitor_tags IS NULL OR a.visitor_tags && $4::text[])
            AND NOT EXISTS (
              SELECT 1 FROM user_guide_state s
              WHERE s.app_id = $1 AND s.visitor_id = $2 AND s.guide_id = a.id
                AND s.status IN ('shown', 'dismissed', 'completed')
                AND s.last_seen_version >= a.version_number
            )`,
-        [scoped.id, visitor.visitorId, visitor.accountId],
+        [scoped.id, visitor.visitorId, visitor.accountId, visitor.tags],
       );
       return {
         enabled: true,
@@ -265,7 +266,7 @@ agentApiRouter.post(
 // ------------------------------------------------------------
 // POST /v1/agent/:key/help — the help center: settings for the default button
 // plus every guide authors listed in the help center that this visitor may
-// start (published, enabled, in its date window, account allowed). Unlike
+// start (published, enabled, in its date window, account and tags allowed). Unlike
 // /guides, finished guides stay listed: help is on demand, so they can be
 // replayed any time. Not route-filtered: the agent sends the visitor to a
 // guide's start page if they're elsewhere.
@@ -293,8 +294,9 @@ agentApiRouter.post(
          FROM active_guide a
          WHERE a.app_id = $1 AND a.help IS NOT NULL
            AND (a.account_ids IS NULL OR $2::text = ANY(a.account_ids))
+           AND (a.visitor_tags IS NULL OR a.visitor_tags && $3::text[])
          ORDER BY a.help ->> 'title'`,
-        [scoped.id, visitor.accountId],
+        [scoped.id, visitor.accountId, visitor.tags],
       );
       return {
         enabled: true,

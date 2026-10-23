@@ -165,7 +165,10 @@ for that id).
      help link, so it's always listed there). When several automatic guides match a page, the
      agent shows them one at a time, walkthroughs first.
    - **Audience:** *All accounts*, or *Only these accounts*, one id per line. Use the account ids
-     your site passes to `guideEngine.initialize({ account: { id } })`.
+     your site passes to `guideEngine.initialize({ account: { id } })`. Separately, *All
+     visitors*, or *Only visitors with any of these tags*: the tags your site passes as
+     `visitor.tags` (or in the signed identity), usually what the person may do, such as
+     `POINT_OF_SALE`. Both rules apply, so a visitor needs a listed account and one of the tags.
 3. **Steps:** add, reorder (↑ / ↓) and remove them. Each has:
    - **Anchor:** the element's `data-guide-id`. Leave it blank for a centered card.
    - **Position.**

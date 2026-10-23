@@ -111,9 +111,21 @@ export interface HelpUi {
   confirmNavigation?(item: HelpItem, go: () => void): void;
 }
 
-/** The end user (Pendo calls them visitors). Only `id` is sent to the server. */
+/**
+ * The end user (Pendo calls them visitors). Only `id` and `tags` are sent to
+ * the server; other keys are ignored.
+ */
 export interface Visitor {
   id: string;
+  /**
+   * What this visitor may do in your application, as short strings you
+   * choose (e.g. "POINT_OF_SALE", "CUSTOMERS:edit"). A guide limited to
+   * visitor tags shows only to visitors carrying at least one of them.
+   * Letters, digits and _ . : / - only, up to 100 characters each and 1000
+   * tags; anything else is dropped. With signed identity, put them in the
+   * token's visitor claim instead (tags sent beside a token are ignored).
+   */
+  tags?: string[];
   [key: string]: unknown;
 }
 
@@ -129,7 +141,7 @@ export interface IdentityOptions {
   account?: Account | null;
   /**
    * A JWT your BACKEND signed with the app's signing secret, carrying
-   * { visitor: { id }, account?: { id } }. Required when the app has
+   * { visitor: { id, tags? }, account?: { id } }. Required when the app has
    * "Require signed identity" switched on; its ids take precedence.
    */
   jwt?: string;
@@ -184,7 +196,7 @@ export interface GuideRenderer {
 
 /** What every agent request carries to identify the end user. */
 interface WireIdentity {
-  visitor?: { id: string };
+  visitor?: { id: string; tags?: string[] };
   account?: { id: string } | null;
   jwt?: string;
 }
@@ -217,6 +229,17 @@ export function anonymousVisitorId(): string {
   }
 }
 
+/** Mirrors the backend's rule (auth/visitor.ts) so one bad tag can't get every request refused. */
+const VISITOR_TAG = /^[A-Za-z0-9_.:/-]{1,100}$/;
+const MAX_VISITOR_TAGS = 1000;
+
+/** @internal exported for unit tests. Well-formed, de-duplicated tags; anything else dropped. */
+export function cleanVisitorTags(tags: unknown): string[] {
+  if (!Array.isArray(tags)) return [];
+  const kept = tags.filter((t): t is string => typeof t === 'string' && VISITOR_TAG.test(t));
+  return [...new Set(kept)].slice(0, MAX_VISITOR_TAGS);
+}
+
 function toWireIdentity(options: IdentityOptions): WireIdentity {
   const wire: WireIdentity = {};
   if (options.jwt) wire.jwt = options.jwt;
@@ -225,7 +248,12 @@ function toWireIdentity(options: IdentityOptions): WireIdentity {
     : options.jwt
       ? undefined
       : anonymousVisitorId();
-  if (visitorId) wire.visitor = { id: visitorId };
+  if (visitorId) {
+    wire.visitor = { id: visitorId };
+    // A signed token carries its own tags; the server ignores any sent beside it.
+    const tags = options.jwt ? [] : cleanVisitorTags(options.visitor?.tags);
+    if (tags.length > 0) wire.visitor.tags = tags;
+  }
   if (options.account?.id) wire.account = { id: String(options.account.id) };
   return wire;
 }

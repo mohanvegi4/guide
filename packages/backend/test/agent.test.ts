@@ -147,6 +147,20 @@ describe('visitor identity', () => {
     expect(res.body.error).toBe('identity_invalid');
   });
 
+  it('reads tags from the signed identity and ignores tags sent beside it', async () => {
+    const { key, secret, appId } = await requiredApp();
+    await liveGuide('alice', appId, { ...sampleVersion, visitorTags: ['POS'] });
+    const guides = async (claims: object, extra: object = {}) =>
+      (await agent(key, '/guides', { jwt: sign(secret, claims), ...extra })).body.guides;
+    // requiredApp() already published one untagged guide.
+    expect(await guides({ visitor: { id: 'u1', tags: ['POS'] } })).toHaveLength(2);
+    expect(await guides({ visitor: { id: 'u1' } }, { visitor: { id: 'u1', tags: ['POS'] } })).toHaveLength(1);
+
+    const bad = await agent(key, '/guides', { jwt: sign(secret, { visitor: { id: 'u1', tags: ['no spaces'] } }) });
+    expect(bad.status).toBe(401);
+    expect(bad.body.error).toBe('identity_invalid');
+  });
+
   it('signed claims win over plain ids sent alongside them', async () => {
     const { key, secret, appId } = await requiredApp();
     const g = (await request(app).get(`/v1/apps/${appId}/guides`).set('Authorization', as('alice'))).body[0];
@@ -179,6 +193,45 @@ describe('targeting and kill switches', () => {
     expect((await agent(key, '/guides', visitor('v', 'acme'))).body.guides).toHaveLength(1);
     expect((await agent(key, '/guides', visitor('v', 'initech'))).body.guides).toHaveLength(0);
     expect((await agent(key, '/guides', visitor('v', null))).body.guides).toHaveLength(0);
+  });
+
+  it('limits a guide to visitors carrying any listed tag', async () => {
+    const { key, appId } = await signUp('alice');
+    await liveGuide('alice', appId, { ...sampleVersion, visitorTags: ['POINT_OF_SALE', 'CUSTOMERS:edit'] });
+    const tagged = (tags?: string[]) => agent(key, '/guides', { visitor: { id: 'v', tags } });
+    expect((await tagged(['CUSTOMERS:edit', 'CATALOG'])).body.guides).toHaveLength(1);
+    expect((await tagged(['CATALOG'])).body.guides).toHaveLength(0);
+    expect((await tagged([])).body.guides).toHaveLength(0);
+    expect((await tagged()).body.guides).toHaveLength(0);
+    // Tags are exact strings: case matters.
+    expect((await tagged(['point_of_sale'])).body.guides).toHaveLength(0);
+  });
+
+  it('combines tags with the account allowlist: both must pass', async () => {
+    const { key, appId } = await signUp('alice');
+    await liveGuide('alice', appId, { ...sampleVersion, accountIds: ['acme'], visitorTags: ['POS'] });
+    const call = (account: string, tags: string[]) =>
+      agent(key, '/guides', { visitor: { id: 'v', tags }, account: { id: account } });
+    expect((await call('acme', ['POS'])).body.guides).toHaveLength(1);
+    expect((await call('globex', ['POS'])).body.guides).toHaveLength(0);
+    expect((await call('acme', ['OTHER'])).body.guides).toHaveLength(0);
+  });
+
+  it('serves an untagged guide to every visitor, tagged or not', async () => {
+    const { key, appId } = await signUp('alice');
+    await liveGuide('alice', appId);
+    expect((await agent(key, '/guides', { visitor: { id: 'v', tags: ['ANY'] } })).body.guides).toHaveLength(1);
+    expect((await agent(key, '/guides', visitor())).body.guides).toHaveLength(1);
+  });
+
+  it('rejects malformed visitor tags', async () => {
+    const { key, appId } = await signUp('alice');
+    await liveGuide('alice', appId);
+    for (const tags of [['has space'], [''], ['x'.repeat(101)], Array.from({ length: 1001 }, (_, i) => `t${i}`)]) {
+      const res = await agent(key, '/guides', { visitor: { id: 'v', tags } });
+      expect(res.status).toBe(400);
+    }
+    expect((await agent(key, '/guides', { visitor: { id: 'v', tags: ['a', 'a'] } })).status).toBe(200);
   });
 
   it('serves nothing when the app or the whole engine is switched off', async () => {

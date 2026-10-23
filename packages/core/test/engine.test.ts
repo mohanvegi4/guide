@@ -61,6 +61,30 @@ describe('talking to the agent API', () => {
     expect(bodyOf(fetchMock.mock.calls[0])).toEqual({ visitor: { id: 'user-1' }, account: { id: 'acme' } });
   });
 
+  it('sends visitor tags, dropping malformed and duplicate ones', async () => {
+    const fetchMock = mockFetch({ [R.guides]: serving() });
+    await new GuideEngine().init(
+      {
+        ...baseOptions,
+        visitor: { id: 'user-1', tags: ['POS', 'POS', 'CUSTOMERS:edit', 'has space', '', 7 as unknown as string] },
+      },
+      fakeRenderer().renderer,
+    );
+    expect(bodyOf(fetchMock.mock.calls[0])).toEqual({
+      visitor: { id: 'user-1', tags: ['POS', 'CUSTOMERS:edit'] },
+      account: { id: 'acme' },
+    });
+  });
+
+  it('leaves tags to the signed token when there is one', async () => {
+    const fetchMock = mockFetch({ [R.guides]: serving() });
+    await new GuideEngine().init(
+      { apiBaseUrl: API, appKey: KEY, jwt: 'signed.jwt.here', visitor: { id: 'u', tags: ['POS'] } },
+      fakeRenderer().renderer,
+    );
+    expect(bodyOf(fetchMock.mock.calls[0])).toEqual({ jwt: 'signed.jwt.here', visitor: { id: 'u' } });
+  });
+
   it('sends a signed identity when given one', async () => {
     const fetchMock = mockFetch({ [R.guides]: serving() });
     await new GuideEngine().init(
@@ -165,6 +189,15 @@ describe('identify()', () => {
     expect(rendered).toHaveLength(2); // shown again for the new user
     const last = callsTo(fetchMock, R.guides).slice(-1)[0];
     expect(bodyOf(last)).toEqual({ visitor: { id: 'u-42' }, account: { id: 'globex' } });
+  });
+
+  it('re-evaluates with new tags, so guides for the new permissions are fetched', async () => {
+    const fetchMock = mockFetch({ [R.guides]: serving(), [R.events]: () => ({ status: 202 }) });
+    const engine = new GuideEngine();
+    await engine.init(baseOptions, fakeRenderer().renderer);
+    await engine.identify({ visitor: { id: 'user-1', tags: ['POS'] } });
+    const last = callsTo(fetchMock, R.guides).slice(-1)[0];
+    expect(bodyOf(last)).toMatchObject({ visitor: { id: 'user-1', tags: ['POS'] } });
   });
 });
 

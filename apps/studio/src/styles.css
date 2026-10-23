@@ -100,3 +100,5 @@ fieldset.where legend { font-weight: 500; padding: 0; margin-bottom: 4px; }
 .agent-errors { width: 100%; border-collapse: collapse; }
 .agent-errors td, .agent-errors th { vertical-align: top; }
 .agent-errors code { white-space: pre-wrap; word-break: break-word; }
+.audience-group { font-size: 13px; margin-top: 8px; }
+.audience-group:first-of-type { margin-top: 0; }

@@ -76,7 +76,9 @@ export interface OrganizationExport {
         startAt: string | null;
         endAt: string | null;
         accountIds: string[] | null;
+        visitorTags: string[] | null;
         help: unknown;
+        activation: 'auto' | 'manual';
         createdAt: string;
         publishedAt: string | null;
       }>;
@@ -188,12 +190,14 @@ export async function exportOrganization(client: PoolClient, orgId: string): Pro
     start_at: string | null;
     end_at: string | null;
     account_ids: string[] | null;
+    visitor_tags: string[] | null;
     help: unknown;
+    activation: 'auto' | 'manual';
     created_at: string;
     published_at: string | null;
   }>(
     `SELECT v.id, v.guide_id, v.version_number, v.steps, v.route_match, v.page_id, v.start_at, v.end_at,
-            v.account_ids, v.help, v.created_at, v.published_at
+            v.account_ids, v.visitor_tags, v.help, v.activation, v.created_at, v.published_at
      FROM guide_version v JOIN guide g ON g.id = v.guide_id
      WHERE g.app_id = ANY($1::uuid[]) ORDER BY v.guide_id, v.version_number`,
     [appIds],
@@ -266,7 +270,9 @@ export async function exportOrganization(client: PoolClient, orgId: string): Pro
               startAt: v.start_at,
               endAt: v.end_at,
               accountIds: v.account_ids,
+              visitorTags: v.visitor_tags,
               help: v.help,
+              activation: v.activation,
               createdAt: v.created_at,
               publishedAt: v.published_at,
             })),

@@ -144,6 +144,25 @@ describe('lifecycle', () => {
       (await call('put', `${base()}/draft`, { ...sampleVersion, accountIds: null })).body.accountIds,
     ).toBeNull();
   });
+
+  it('validates visitor tags: a deduplicated list of up to 100 well-formed tags, or everyone', async () => {
+    const v = await call('put', `${base()}/draft`, {
+      ...sampleVersion,
+      visitorTags: ['POINT_OF_SALE', 'CUSTOMERS:edit', 'POINT_OF_SALE'],
+    });
+    expect(v.status).toBe(200);
+    expect(v.body.visitorTags).toEqual(['POINT_OF_SALE', 'CUSTOMERS:edit']);
+    for (const visitorTags of [[], ['has space'], ['<b>'], Array.from({ length: 101 }, (_, i) => `t${i}`)]) {
+      expect((await call('put', `${base()}/draft`, { ...sampleVersion, visitorTags })).status).toBe(400);
+    }
+    expect((await call('put', `${base()}/draft`, sampleVersion)).body.visitorTags).toBeNull();
+
+    // Published with the version, and immutable like the rest of it.
+    const pub = await call('post', `${base()}/publish`, { ...sampleVersion, visitorTags: ['POS'] });
+    expect(pub.body.visitorTags).toEqual(['POS']);
+    const detail = await call('get', base());
+    expect(detail.body.versions[0].visitor_tags).toEqual(['POS']);
+  });
 });
 
 describe('sanitization on the write path', () => {
