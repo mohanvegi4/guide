@@ -59,14 +59,15 @@ staff) also see **Administration**; see below.
 | Role | What you can do |
 |---|---|
 | **viewer** | read guides, pages, versions and analytics in every app; the **Install** page (snippet and anchor instructions, read-only) |
-| **editor** | + create guides, save drafts, make preview links, publish, enable / disable, roll back; create, edit and move pages; **Install & settings** (websites, signed identity, help center, app on / off) |
-| **manager** | + create apps; rotate keys, delete apps, forget visitors; manage members and invitations |
+| **editor** | + create guides, save drafts, make preview links, publish, enable / disable, roll back, delete guides; create, edit and move pages; **Install & settings** (websites, routing, require signed identity, help center, app on / off) |
+| **manager** | + create apps; rotate the public key, generate or rotate the signing secret, delete apps, export or forget visitors; manage members and invitations |
 | **owner** | + grant or remove ownership (an org always keeps one owner); support access; export or delete the organization; create new organizations |
 | **platform admin** (Guide Engine staff, not a customer role) | the Administration page: every organization's usage, suspension, the kill switch, other admins; a customer's content only under support access, read-only |
 
 One role per person, for every app of the organization. The UI adapts to it: viewers get
-read-only screens, editors see no key rotation or Delete app, and so on. The backend enforces the
-same rules regardless.
+read-only screens and the Install page only. The backend enforces every rule regardless. One gap:
+editors still see the manager-only buttons (generate signing secret, rotate public key, forget
+visitor, delete app), and the backend answers them with "Your role doesn't allow this."
 
 **Members → Invite someone** creates a link. It's valid for 7 days and works once. If you enter
 an email, only that verified email can accept it. Choose the role (manager, editor or viewer;

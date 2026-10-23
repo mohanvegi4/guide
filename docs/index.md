@@ -32,6 +32,12 @@ an **organization** owns any number of **applications**, and everyone in it has 
 - [Using the Studio](reference/README.md#using-the-studio) in the main reference, including
   [Saved pages](reference/README.md#saved-pages) and the [Help center](reference/README.md#help-center).
 
+**Engineers running, extending or reviewing Guide Engine**
+
+- [How Guide Engine is built](architecture.md): the whole system part by part, from the boot
+  sequence and row-level security to the browser engine, with a who-can-do-what matrix, the
+  audience-targeting model and a list of known gaps.
+
 **Operators running Guide Engine**
 
 - [Deploying](reference/README.md#deploying): CI, images, the single-host stack, any other

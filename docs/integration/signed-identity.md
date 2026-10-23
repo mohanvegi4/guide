@@ -1,3 +1,8 @@
+---
+title: Signed identity
+nav_order: 5
+---
+
 # Signed identity
 
 The app key in the install snippet is public, so by default the visitor and account ids are
