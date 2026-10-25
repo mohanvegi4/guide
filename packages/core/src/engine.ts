@@ -113,10 +113,11 @@ export interface HelpUi {
 
 /**
  * The end user (Pendo calls them visitors). Only `id` and `tags` are sent to
- * the server; other keys are ignored.
+ * the server; other keys are ignored. Without an `id` the visitor is anonymous
+ * (a random id is kept per browser) but can still carry tags, e.g. ["anonymous"].
  */
 export interface Visitor {
-  id: string;
+  id?: string;
   /**
    * What this visitor may do in your application, as short strings you
    * choose (e.g. "POINT_OF_SALE", "CUSTOMERS:edit"). A guide limited to
@@ -136,7 +137,7 @@ export interface Account {
 }
 
 export interface IdentityOptions {
-  /** The signed-in end user. Omit for anonymous visitors (a random id is kept per browser). */
+  /** The signed-in end user. Omit it, or its id, for anonymous visitors (a random id is kept per browser). */
   visitor?: Visitor;
   account?: Account | null;
   /**

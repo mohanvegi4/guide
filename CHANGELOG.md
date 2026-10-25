@@ -16,6 +16,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). How a rel
   malformed and duplicate tags are dropped first (letters, digits and `_ . : / -`, at most 100
   characters each and 1000 tags). With signed identity, put them in the token's `visitor` claim
   instead. Needs a backend with migration 020; older backends ignore them.
+- `visitor.id` is optional (core): `initialize({ visitor: { tags: ['anonymous'] } })` keeps the
+  per-browser anonymous id and still sends the tags.
 
 ## [0.3.0] - 2026-10-20
 

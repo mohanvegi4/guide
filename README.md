@@ -216,7 +216,8 @@ guideEngine.initialize({
 - It loads asynchronously and queues calls until the agent arrives, so it never delays your page.
 - **Single-page apps need nothing else.** The agent follows `history.pushState` /
   `replaceState`, back/forward and hash changes by itself.
-- **Anonymous visitors:** omit `visitor`, and the agent keeps a random per-browser id.
+- **Anonymous visitors:** omit `visitor`, and the agent keeps a random per-browser id. To give them
+  tags, pass `visitor: { tags: ['anonymous'] }` without an id.
 - **After login:** call `guideEngine.identify({ visitor: { id }, account: { id } })`. The agent
   clears what the previous user was shown and re-evaluates.
 - **Visitor tags (optional):** `visitor: { id, tags: ['POINT_OF_SALE', 'CUSTOMERS:edit'] }`. Tags

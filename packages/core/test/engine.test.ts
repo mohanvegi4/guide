@@ -76,6 +76,15 @@ describe('talking to the agent API', () => {
     });
   });
 
+  it('sends tags for an anonymous visitor, with the per-browser id', async () => {
+    const fetchMock = mockFetch({ [R.guides]: serving() });
+    await new GuideEngine().init(
+      { apiBaseUrl: API, appKey: KEY, visitor: { tags: ['anonymous'] } },
+      fakeRenderer().renderer,
+    );
+    expect(bodyOf(fetchMock.mock.calls[0])).toEqual({ visitor: { id: anonymousVisitorId(), tags: ['anonymous'] } });
+  });
+
   it('leaves tags to the signed token when there is one', async () => {
     const fetchMock = mockFetch({ [R.guides]: serving() });
     await new GuideEngine().init(
