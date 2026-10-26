@@ -75,33 +75,38 @@ App keys are public by design; the development keys are committed in the apps' d
 files. The guides were authored through the Studio API by a script running as a manager of that
 organization with a development token.
 
+Every guide below starts **only from the help center** (or a help link): none pops up by itself.
+They were switched from *automatic* in one pass, each republished as a new version with nothing
+else changed, and new guides now default to help center only in the Studio. To make one pop up
+again, choose *Automatically* in its editor and publish.
+
 **Console guides (22)**, with the permission tag each needs (the tag scheme is under "Identity
 passed" in [section 1.2](#12-the-two-wise-applications)):
 
 | Guide | Starts | Visitor tag | Where the console checks it |
 |---|---|---|---|
-| Welcome to Wise Console | automatic | none (everyone) | landing page |
-| Catalog search tip | automatic | none | catalogue: system option only |
+| Welcome to Wise Console | help only | none (everyone) | landing page |
+| Catalog search tip | help only | none | catalogue: system option only |
 | Refine catalog results | help only | none | same |
 | Place a hold for a customer | help only | `SERVICE_CUSTOMER_HOLDS:edit` | title page Place hold button |
-| Check in items | automatic | `CUSTOMER_SERVICES` | Circulation in the navigation |
+| Check in items | help only | `CUSTOMER_SERVICES` | Circulation in the navigation |
 | Backdate a check-in | help only | `CUSTOMER_SERVICES` | same (plus system option CIRCDAT) |
 | Check out items | help only | `CUSTOMER_SERVICES` | same |
 | Create an item on the fly | help only | `CUSTOMER_SERVICES` | same |
 | Print receipts at End session | help only | `CUSTOMER_SERVICES` | same |
-| Work the picklist | automatic | `CUSTOMER_SERVICES` | same (plus system option PICKLST) |
-| Clear the holds shelf | automatic | `CUSTOMER_SERVICES` | same (plus system option HLDSHLF) |
-| Customer search tip | automatic | `SERVICE_CUSTOMERS` | Customers in the navigation |
+| Work the picklist | help only | `CUSTOMER_SERVICES` | same (plus system option PICKLST) |
+| Clear the holds shelf | help only | `CUSTOMER_SERVICES` | same (plus system option HLDSHLF) |
+| Customer search tip | help only | `SERVICE_CUSTOMERS` | Customers in the navigation |
 | Find a customer the right way | help only | `SERVICE_CUSTOMERS` | same |
-| Register a new customer | automatic | `SERVICE_CUSTOMERS` | same; the New customer button has no stricter check |
-| Reading a customer record | automatic | `SERVICE_CUSTOMERS` | same |
+| Register a new customer | help only | `SERVICE_CUSTOMERS` | same; the New customer button has no stricter check |
+| Reading a customer record | help only | `SERVICE_CUSTOMERS` | same |
 | Recently viewed customers | help only | `SERVICE_CUSTOMERS` | record history has no check; the guide is about customers |
-| Renew items from the account | automatic | `SERVICE_CUSTOMERS:edit` | Renew needs this **and** `CUSTOMER_SERVICES` |
+| Renew items from the account | help only | `SERVICE_CUSTOMERS:edit` | Renew needs this **and** `CUSTOMER_SERVICES` |
 | Cancel a customer's hold | help only | `SERVICE_CUSTOMER_HOLDS:edit` | holds table |
 | Pay or waive a charge | help only | `SERVICE_CASH_REGISTER:edit` | charges table; reaching it also needs `SERVICE_CUSTOMERS` |
 | Set up receipt printing | help only | `CLIENT_CONFIGURATION:edit` | Save on Peripherals |
-| Process an item request | automatic | `ITEM_REQUEST_MANAGEMENT` | Item request manager in the navigation |
-| Sell at Point of sale | automatic | `SERVICE_CASH_REGISTER:edit` | Point of sale in the navigation (edit level) |
+| Process an item request | help only | `ITEM_REQUEST_MANAGEMENT` | Item request manager in the navigation |
+| Sell at Point of sale | help only | `SERVICE_CASH_REGISTER:edit` | Point of sale in the navigation (edit level) |
 
 Three staff profiles checked against the agent API: catalogue-only staff get 3 guides, a circulation
 desk user (circulation, customers edit, holds edit) gets 18, a cashier (cash register edit) gets 5.
@@ -112,29 +117,29 @@ stricter one; a cashier without customer access still sees "Pay or waive a charg
 
 | Guide | Starts | Visitor tags | Where the OPAC checks it |
 |---|---|---|---|
-| Welcome to the catalogue | automatic | none | home page |
-| Search tip | automatic | none | search |
+| Welcome to the catalogue | help only | none | home page |
+| Search tip | help only | none | search |
 | Search tips | help only | none | search |
-| Refine results with filters | automatic | none | search results |
+| Refine results with filters | help only | none | search results |
 | What the availability means | help only | none | search results |
 | Search in a different catalogue | help only | none | search |
-| Browse new arrivals | automatic | none | new arrivals page |
-| Recommendations by author | automatic | none | recommendations page |
+| Browse new arrivals | help only | none | new arrivals page |
+| Recommendations by author | help only | none | recommendations page |
 | Sign in to do more | help only | `anonymous` | the Log in button shows only when signed out |
 | Place a hold | help only | `anonymous`, `MA_PLACE_HOLDS` | the hold button: holds permitted **or** not signed in |
 | Save a title to your wish list | help only | `anonymous`, `MA_VIEW_WISHLIST` | add-to-list: anyone signed out; the lists need wish-list access |
-| My account tour | automatic | `signed-in` | My account |
-| Renew a loan | automatic | `MA_RENEW` | renew on My checkouts |
-| Manage your holds | automatic | `MA_VIEW_HOLDS` | My holds in the My account menu |
-| Pay fines and fees | automatic | `MA_VIEW_FINANCIAL_DATA` | Financial details in the menu |
-| Update your details and pickup branch | automatic | `MA_PERSONAL_DATA` | Personal data route guard |
-| Choose how the library contacts you | automatic | `MA_CHANGE_MESSAGE_DELIVERY_PREFERENCES`, `MA_SUBSCRIBE_NEWSLETTER_CLASSIC`, `MA_SUBSCRIBE_NEW_TITLES_NOTIFICATION` | the menu needs any one of these three |
-| Report a lost card | automatic | `MA_REPORT_PATRONCARD_LOSS` | menu item |
-| Request a title we don't have | automatic | `MA_SUBMIT_ITEM_REQUEST` | Requests route guard |
-| Create a Community list | automatic | `MA_VIEW_WISHLIST` | My lists route guard |
+| My account tour | help only | `signed-in` | My account |
+| Renew a loan | help only | `MA_RENEW` | renew on My checkouts |
+| Manage your holds | help only | `MA_VIEW_HOLDS` | My holds in the My account menu |
+| Pay fines and fees | help only | `MA_VIEW_FINANCIAL_DATA` | Financial details in the menu |
+| Update your details and pickup branch | help only | `MA_PERSONAL_DATA` | Personal data route guard |
+| Choose how the library contacts you | help only | `MA_CHANGE_MESSAGE_DELIVERY_PREFERENCES`, `MA_SUBSCRIBE_NEWSLETTER_CLASSIC`, `MA_SUBSCRIBE_NEW_TITLES_NOTIFICATION` | the menu needs any one of these three |
+| Report a lost card | help only | `MA_REPORT_PATRONCARD_LOSS` | menu item |
+| Request a title we don't have | help only | `MA_SUBMIT_ITEM_REQUEST` | Requests route guard |
+| Create a Community list | help only | `MA_VIEW_WISHLIST` | My lists route guard |
 | Your inbox | help only | `MA_VIEW_INBOX` | Inbox in the menu |
 
-Three profiles checked against the agent API: an anonymous visitor gets 11 guides, a typical adult
+Three profiles checked against the agent API's help list: an anonymous visitor gets 11 guides, a typical adult
 patron 20, a patron who may only view loans 9.
 
 Every guide has a help-center entry (title, description, keywords; start pages on branch 1400 for the
