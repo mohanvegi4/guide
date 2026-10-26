@@ -75,6 +75,7 @@ export function createHelpWidget(options: {
       .launcher .icon { display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 50%;
         border: 2px solid currentColor; font-size: 12px; line-height: 1; }
       .backdrop { position: fixed; inset: 0; z-index: 2147482001; background: rgba(15,23,42,.25); }
+      /* Never taller than 560px, wherever it opens: a long topic list scrolls inside it. */
       .panel { position: fixed; right: 20px; bottom: 80px; z-index: 2147482002;
         width: min(380px, calc(100vw - 32px)); max-height: min(560px, calc(100vh - 120px));
         display: flex; flex-direction: column; background: #fff; color: #111; border-radius: 12px;
@@ -86,10 +87,10 @@ export function createHelpWidget(options: {
       :host([data-ge-pos="top-right"]) .panel, :host([data-ge-pos="top-left"]) .panel { bottom: auto; top: 80px; }
       /* Center: the list and the confirmation sit mid-screen; the button keeps its bottom-right corner. */
       :host([data-ge-pos="center"]) .panel { top: 50%; left: 50%; right: auto; bottom: auto;
-        transform: translate(-50%, -50%); max-height: calc(100vh - 32px); }
+        transform: translate(-50%, -50%); max-height: min(560px, calc(100vh - 32px)); }
       @media (max-width: 480px) {
         /* Phones: the panel spans the width, hugging the top or bottom edge, or staying centered. */
-        .panel { right: 16px; left: 16px; width: auto; max-height: calc(100vh - 32px); }
+        .panel { right: 16px; left: 16px; width: auto; max-height: min(560px, calc(100vh - 32px)); }
         :host(:not([data-ge-pos^="top"])) .panel { bottom: 16px; }
         :host([data-ge-pos^="top"]) .panel { top: 16px; }
         :host([data-ge-pos="center"]) .panel { top: 50%; bottom: auto; transform: translateY(-50%); }

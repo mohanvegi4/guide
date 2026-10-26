@@ -31,6 +31,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). How a rel
 - `visitor.id` is optional (core): `initialize({ visitor: { tags: ['anonymous'] } })` keeps the
   per-browser anonymous id and still sends the tags.
 
+### Fixed
+
+- The help center's topic list (core) no longer fills the whole screen height when it opens in the
+  center or on a phone: like the corner positions, it is at most 560px tall and the list scrolls
+  inside it.
+
 ## [0.3.0] - 2026-10-20
 
 ### Changed
