@@ -266,6 +266,7 @@ agentApiRouter.post(
       return {
         enabled: true,
         routeMode: scoped.routeMode,
+        theme: scoped.theme,
         guides: rows.rows.map((r) => ({
           id: r.id,
           versionId: r.version_id,
@@ -319,6 +320,7 @@ agentApiRouter.post(
       return {
         enabled: true,
         routeMode: scoped.routeMode,
+        theme: scoped.theme,
         button: {
           label: s.help_button_label,
           color: s.help_button_color,
@@ -578,7 +580,7 @@ agentApiRouter.post(
          WHERE gv.id = $1 AND g.id = $2 AND g.app_id = $3`,
         [claims.versionId, claims.guideId, scoped.id],
       );
-      return row.rows[0] ?? null;
+      return row.rows[0] ? { ...row.rows[0], theme: scoped.theme } : null;
     });
     if (!guide) throw notFound();
     res.json({
@@ -589,6 +591,8 @@ agentApiRouter.post(
       steps: guide.steps,
       routeMatch: guide.route_match,
       preview: true,
+      // So a preview looks like the real thing on the customer's site.
+      theme: guide.theme,
     });
   }),
 );

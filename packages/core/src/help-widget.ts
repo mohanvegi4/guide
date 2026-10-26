@@ -1,5 +1,6 @@
 import { currentRoutePath, displayRoutePath, matchesRoute } from './engine';
 import type { HelpButtonSettings, HelpItem, HelpPosition, HelpUi, RouteMode } from './engine';
+import { GuideTheme, applyTheme } from './theme';
 
 /** How long typing must pause before a search is recorded (one event per query, not per keystroke). */
 export const SEARCH_TRACK_DELAY_MS = 500;
@@ -34,7 +35,9 @@ const POSITIONS: ReadonlySet<string> = new Set([
  *
  * Lives in a Shadow DOM so host-page CSS can't break it (or vice versa).
  * Everything from the server goes in via textContent — never innerHTML — and
- * the button color is applied only if it's a plain hex value.
+ * the app's color is applied only if it's a plain hex value. Colors, font and
+ * corners follow the app's theme (theme.ts): the website's own Bootstrap
+ * theme when the app matches it.
  *
  * Accessible: role="dialog" + aria-modal, labelled; focus moves into the
  * search box on open and back to whatever opened it on close; ↑/↓ move
@@ -52,6 +55,7 @@ export function createHelpWidget(options: {
   let button: HelpButtonSettings = { label: 'Help', color: '#4f46e5' };
   let showButton = false;
   let routeMode: RouteMode = 'path';
+  let theme: GuideTheme | null = null;
   let open = false;
   let query = '';
   let active = 0;
@@ -66,19 +70,21 @@ export function createHelpWidget(options: {
   shadow.innerHTML = `
     <style>
       :host { all: initial; }
-      * { box-sizing: border-box; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+      * { box-sizing: border-box; font-family: var(--ge-font, system-ui, -apple-system, "Segoe UI", sans-serif); }
       .launcher { position: fixed; right: 20px; bottom: 20px; z-index: 2147482000;
         display: inline-flex; align-items: center; gap: 8px; padding: 12px 18px; border: none; border-radius: 999px;
-        background: var(--ge-color); color: #fff; font-size: 15px; font-weight: 600; cursor: pointer;
+        background: var(--ge-primary, #4f46e5); color: #fff; font-size: 15px; font-weight: 600; cursor: pointer;
         box-shadow: 0 6px 20px rgba(0,0,0,.18); }
-      .launcher:focus-visible, button:focus-visible, input:focus-visible, li:focus-visible { outline: 3px solid #93c5fd; outline-offset: 2px; }
+      .launcher:focus-visible, button:focus-visible, input:focus-visible, li:focus-visible {
+        outline: 3px solid color-mix(in srgb, var(--ge-primary, #4f46e5) 45%, transparent); outline-offset: 2px; }
       .launcher .icon { display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 50%;
         border: 2px solid currentColor; font-size: 12px; line-height: 1; }
       .backdrop { position: fixed; inset: 0; z-index: 2147482001; background: rgba(15,23,42,.25); }
       /* Never taller than 560px, wherever it opens: a long topic list scrolls inside it. */
       .panel { position: fixed; right: 20px; bottom: 80px; z-index: 2147482002;
         width: min(380px, calc(100vw - 32px)); max-height: min(560px, calc(100vh - 120px));
-        display: flex; flex-direction: column; background: #fff; color: #111; border-radius: 12px;
+        display: flex; flex-direction: column; background: var(--ge-bg, #fff); color: var(--ge-text, #111);
+        border-radius: calc(var(--ge-radius, 6px) + 6px);
         box-shadow: 0 12px 40px rgba(0,0,0,.25); overflow: hidden; }
       /* Corners: the button hugs the corner, the panel opens beside it (80px in from the vertical edge). */
       :host([data-ge-pos="bottom-left"]) .launcher, :host([data-ge-pos="top-left"]) .launcher,
@@ -98,11 +104,12 @@ export function createHelpWidget(options: {
       header { display: flex; align-items: center; justify-content: space-between; padding: 16px 16px 8px; }
       h2 { margin: 0; font-size: 17px; }
       .close { border: none; background: none; font-size: 22px; line-height: 1; cursor: pointer; color: #555; padding: 4px 8px; border-radius: 6px; }
-      .search { margin: 0 16px 8px; padding: 10px 12px; border: 1px solid #d0d5dd; border-radius: 8px; font-size: 14px; }
+      .search { margin: 0 16px 8px; padding: 10px 12px; border: 1px solid #d0d5dd; border-radius: var(--ge-radius, 6px);
+        font-size: 14px; background: var(--ge-bg, #fff); color: var(--ge-text, #111); }
       ul { list-style: none; margin: 0; padding: 4px 8px 12px; overflow-y: auto; }
-      li { padding: 10px 12px; border-radius: 8px; cursor: pointer; }
-      li[aria-selected="true"] { background: #eef2ff; }
-      li:hover { background: #f5f7ff; }
+      li { padding: 10px 12px; border-radius: var(--ge-radius, 6px); cursor: pointer; }
+      li[aria-selected="true"] { background: color-mix(in srgb, var(--ge-primary, #4f46e5) 12%, var(--ge-bg, #fff)); }
+      li:hover { background: color-mix(in srgb, var(--ge-primary, #4f46e5) 6%, var(--ge-bg, #fff)); }
       .title { font-weight: 600; font-size: 14px; }
       .desc { font-size: 13px; color: #555; margin-top: 2px; }
       .where { font-size: 12px; color: #6b7280; margin-top: 4px; }
@@ -111,9 +118,9 @@ export function createHelpWidget(options: {
       .confirm { padding: 0 16px 16px; }
       .confirm p { margin: 0 0 16px; font-size: 14px; line-height: 1.5; color: #333; }
       .confirm .buttons { display: flex; gap: 8px; justify-content: flex-end; }
-      .confirm button { font: inherit; font-size: 14px; padding: 9px 14px; border-radius: 8px; cursor: pointer;
-        border: 1px solid #d0d5dd; background: #fff; color: #111; }
-      .confirm .go { background: var(--ge-color); border-color: var(--ge-color); color: #fff; font-weight: 600; }
+      .confirm button { font: inherit; font-size: 14px; padding: 9px 14px; border-radius: var(--ge-radius, 6px); cursor: pointer;
+        border: 1px solid #d0d5dd; background: var(--ge-bg, #fff); color: var(--ge-text, #111); }
+      .confirm .go { background: var(--ge-primary, #4f46e5); border-color: var(--ge-primary, #4f46e5); color: #fff; font-weight: 600; }
       [hidden] { display: none !important; }
     </style>
     <button class="launcher" type="button" aria-haspopup="dialog" aria-expanded="false" hidden>
@@ -224,7 +231,8 @@ export function createHelpWidget(options: {
 
   function renderButton(): void {
     label.textContent = button.label;
-    host.style.setProperty('--ge-color', /^#[0-9a-fA-F]{6}$/.test(button.color) ? button.color : '#4f46e5');
+    // An older backend sends no theme: the button color alone, as before.
+    applyTheme(host, theme ?? { color: button.color, matchSite: false });
     // An unknown value (an older agent, a tampered response) falls back to the default corner.
     const pos: HelpPosition = POSITIONS.has(button.position ?? '') ? button.position! : 'bottom-right';
     host.setAttribute('data-ge-pos', pos);
@@ -345,6 +353,7 @@ export function createHelpWidget(options: {
       button = state.button;
       showButton = state.showButton;
       routeMode = state.routeMode ?? 'path';
+      theme = state.theme ?? null;
       attach();
       renderButton();
       if (open) renderList();

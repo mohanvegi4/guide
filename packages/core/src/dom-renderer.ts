@@ -1,6 +1,6 @@
 import type { Guide, GuideRenderer, Step } from './engine';
+import { DEFAULT_THEME_COLOR, GuideTheme, applyTheme } from './theme';
 
-const SPOTLIGHT_RING = '#4f46e5';
 const SPOTLIGHT_DIM = 'rgba(15, 23, 42, 0.3)';
 const SPOTLIGHT_PAD = 4;
 
@@ -21,6 +21,8 @@ export function createDomRenderer(engine: {
   dismissGuide(guideId: string): void;
 }): GuideRenderer {
   const hosts = new Map<string, { host: HTMLElement; spotlight: HTMLElement }>();
+  /** The app's theme (see theme.ts): set on every card host and spotlight. */
+  let theme: GuideTheme | null = null;
   /** guideId -> step id last scrolled to, so re-renders (the target moving) don't scroll again. */
   const scrolledTo = new Map<string, string>();
   /**
@@ -110,10 +112,12 @@ export function createDomRenderer(engine: {
         zIndex: '2147482999', // just under the card
         pointerEvents: 'none',
         borderRadius: '6px',
-        boxShadow: `0 0 0 3px ${SPOTLIGHT_RING}, 0 0 0 100vmax ${SPOTLIGHT_DIM}`,
+        boxShadow: `0 0 0 3px var(--ge-primary, ${DEFAULT_THEME_COLOR}), 0 0 0 100vmax ${SPOTLIGHT_DIM}`,
         transition: 'top .15s, left .15s, width .15s, height .15s',
         display: 'none',
       } satisfies Partial<CSSStyleDeclaration>);
+      applyTheme(host, theme);
+      applyTheme(spotlight, theme);
       document.body.appendChild(host);
       document.body.appendChild(spotlight);
       entry = { host, spotlight };
@@ -204,6 +208,14 @@ export function createDomRenderer(engine: {
   const builtStep = new Map<string, string>();
 
   return {
+    setTheme(next: GuideTheme) {
+      theme = next;
+      for (const { host, spotlight } of hosts.values()) {
+        applyTheme(host, theme);
+        applyTheme(spotlight, theme);
+      }
+    },
+
     renderStep(guide: Guide, step: Step, targetEl: Element | null) {
       const { host, spotlight, shadow } = ensureHost(guide.id);
       if (targetEl) scrollToTarget(guide, step, targetEl);
@@ -225,13 +237,19 @@ export function createDomRenderer(engine: {
       // Do not relax this assumption in the renderer.
       shadow.innerHTML = `
         <style>
-          .card { font-family: system-ui, sans-serif; background: #fff; color: #111;
-                  border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.15);
-                  padding: 16px; max-width: 320px; }
+          /* Colors, font and corners come from the app's theme (theme.ts):
+             the website's Bootstrap theme when the app matches it. */
+          .card { font-family: var(--ge-font, system-ui, sans-serif); background: var(--ge-bg, #fff);
+                  color: var(--ge-text, #111); border-radius: calc(var(--ge-radius, 6px) + 2px);
+                  box-shadow: 0 4px 20px rgba(0,0,0,0.15); padding: 16px; max-width: 320px; }
           .actions { display: flex; gap: 8px; margin-top: 12px; justify-content: flex-end; }
-          button { border: none; border-radius: 6px; padding: 6px 12px; cursor: pointer; font-size: 14px; }
-          .primary { background: #4f46e5; color: #fff; }
-          .secondary { background: #f3f4f6; color: #111; }
+          button { font-family: inherit; border: 1px solid transparent; border-radius: var(--ge-radius, 6px);
+                   padding: 6px 12px; cursor: pointer; font-size: 14px; }
+          .primary { background: var(--ge-primary, #4f46e5); border-color: var(--ge-primary, #4f46e5); color: #fff; }
+          .primary:hover { background: color-mix(in srgb, var(--ge-primary, #4f46e5) 85%, #000); }
+          .secondary { background: #f3f4f6; color: var(--ge-text, #111); }
+          button:focus-visible { outline: 3px solid color-mix(in srgb, var(--ge-primary, #4f46e5) 45%, transparent);
+                                 outline-offset: 1px; }
           button:disabled { opacity: .5; cursor: default; }
           .preview-badge { display: inline-block; margin-bottom: 8px; padding: 1px 8px; border-radius: 999px;
                            background: #fef0c7; color: #7a2e0e; font-size: 11px; font-weight: 600; }

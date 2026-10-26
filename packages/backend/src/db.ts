@@ -237,6 +237,12 @@ export interface AgentApp {
   allowedOrigins: string[];
   /** 'path' or 'hash': which part of the URL the agent matches routes on. */
   routeMode: 'path' | 'hash';
+  /**
+   * How the agent styles cards and the help center: the app's color, and
+   * whether the page's own Bootstrap theme takes over (the color then only
+   * applies on pages without one).
+   */
+  theme: { color: string; matchSite: boolean };
 }
 
 /** Resolves a public key (no transaction; used for CORS checks and preflights). */
@@ -249,7 +255,8 @@ export async function findAppByPublicKey(publicKey: string): Promise<AgentApp | 
 
 async function loadAgentApp(client: PoolClient, publicKey: string): Promise<AgentApp | null> {
   const result = await client.query(
-    `SELECT id, org_id, enabled, suspended_at, identity_mode, signing_secret, allowed_origins, route_mode
+    `SELECT id, org_id, enabled, suspended_at, identity_mode, signing_secret, allowed_origins, route_mode,
+            help_button_color, match_site_theme
      FROM application WHERE public_key = $1`,
     [publicKey],
   );
@@ -264,6 +271,7 @@ async function loadAgentApp(client: PoolClient, publicKey: string): Promise<Agen
     signingSecret: row.signing_secret ? readSigningSecret(row.signing_secret, row.id) : null,
     allowedOrigins: row.allowed_origins,
     routeMode: row.route_mode === 'hash' ? 'hash' : 'path',
+    theme: { color: row.help_button_color, matchSite: row.match_site_theme },
   };
 }
 

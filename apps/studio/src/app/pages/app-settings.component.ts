@@ -169,12 +169,32 @@ import { EnvironmentSelectComponent } from '../components/environment-select.com
             A floating button opens a searchable list of the guides you've marked
             <em>List in the help center</em>. It only appears when a visitor has at least one such guide.
           </p>
+          <label class="switch">
+            <input
+              type="checkbox"
+              [checked]="a.match_site_theme"
+              [disabled]="busy()"
+              (change)="save({ matchSiteTheme: $any($event.target).checked })"
+            />
+            <span>Match the website's theme</span>
+          </label>
+          <p class="muted small">
+            @if (a.match_site_theme) {
+              Guides and the help center take your site's Bootstrap theme: its primary color, font, text
+              color and corners, page by page (so a site with several themes gets each one). The color
+              below is used only on pages without a Bootstrap theme.
+            } @else {
+              Guides and the help center use the color below for their buttons, and Guide Engine's own
+              font and corners.
+            }
+          </p>
           <div class="inline-form">
             <label
               >Button label <input [(ngModel)]="helpLabel" maxlength="40" aria-label="Help button label"
             /></label>
             <label
-              >Button color <input type="color" [(ngModel)]="helpColor" aria-label="Help button color"
+              >{{ a.match_site_theme ? 'Fallback color' : 'Button color' }}
+              <input type="color" [(ngModel)]="helpColor" aria-label="Help button color"
             /></label>
             <span class="help-preview" [style.background]="helpColor">? {{ helpLabel || 'Help' }}</span>
           </div>

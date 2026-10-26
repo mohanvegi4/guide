@@ -20,6 +20,7 @@ const app: App = {
   help_button_color: '#4f46e5',
   help_position: 'bottom-right',
   route_mode: 'path',
+  match_site_theme: true,
   created_at: '2026-10-19T00:00:00Z',
   role: 'app_admin',
   snippet: "<script>…'ge_pk_0123'…</script>",
@@ -161,6 +162,26 @@ describe('AppSettingsComponent', () => {
       helpPosition: 'center',
     });
     req.flush({ ...app, help_button_label: 'Need help?', help_button_color: '#0ea5e9' });
+  });
+
+  it("switches matching the website's theme, and says what the color is then for", async () => {
+    const el = await render();
+    const card = [...Array.from(el.querySelectorAll('section.card'))].find((c) =>
+      c.textContent?.includes('Help center'),
+    )!;
+    expect(card.textContent).toContain('Fallback color');
+    const toggle = [...Array.from(card.querySelectorAll<HTMLInputElement>('.switch input'))].find((i) =>
+      i.parentElement?.textContent?.includes("Match the website's theme"),
+    )!;
+    expect(toggle.checked).toBe(true);
+    toggle.checked = false;
+    toggle.dispatchEvent(new Event('change'));
+    const req = http.expectOne('/api/v1/apps/a1');
+    expect(req.request.body).toEqual({ matchSiteTheme: false });
+    req.flush({ ...app, match_site_theme: false });
+    await lastFixture.whenStable();
+    expect(card.textContent).toContain('Button color');
+    expect(card.textContent).not.toContain('Fallback color');
   });
 
   it('deletes the app only after its exact name is typed, then goes back to the apps list', async () => {

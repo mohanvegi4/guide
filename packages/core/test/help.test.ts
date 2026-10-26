@@ -98,7 +98,7 @@ describe('default help widget', () => {
     expect($<HTMLButtonElement>('.launcher').hidden).toBe(false);
     expect($('.label').textContent).toBe('Need help?');
     expect(
-      (document.querySelector('[data-guide-help]') as HTMLElement).style.getPropertyValue('--ge-color'),
+      (document.querySelector('[data-guide-help]') as HTMLElement).style.getPropertyValue('--ge-primary'),
     ).toBe('#0ea5e9');
     document.body.innerHTML = '';
     expect(mount(false).$<HTMLButtonElement>('.launcher').hidden).toBe(true);
@@ -222,7 +222,7 @@ describe('default help widget', () => {
       showButton: true,
     });
     expect(
-      (document.querySelector('[data-guide-help]') as HTMLElement).style.getPropertyValue('--ge-color'),
+      (document.querySelector('[data-guide-help]') as HTMLElement).style.getPropertyValue('--ge-primary'),
     ).toBe('#4f46e5');
   });
 });

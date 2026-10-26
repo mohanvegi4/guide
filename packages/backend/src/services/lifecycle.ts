@@ -46,6 +46,7 @@ export interface OrganizationExport {
     helpButtonColor: string;
     helpPosition: string;
     routeMode: string;
+    matchSiteTheme: boolean;
     suspendedAt: string | null;
     createdAt: string;
     environments: Array<{ id: string; name: string; position: number; websites: string[]; analyticsEnabled: boolean }>;
@@ -224,6 +225,7 @@ export async function exportOrganization(client: PoolClient, orgId: string): Pro
       helpButtonColor: a.help_button_color,
       helpPosition: a.help_position,
       routeMode: a.route_mode,
+      matchSiteTheme: a.match_site_theme,
       suspendedAt: a.suspended_at,
       createdAt: a.created_at,
       environments: environments.rows

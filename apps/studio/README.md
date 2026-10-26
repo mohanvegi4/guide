@@ -137,6 +137,10 @@ after that, grants happen here.
     `{ visitor: { id }, account: { id } }` with it (HS256, with an expiry) and the page passes
     `jwt`.
   - Then switch on **Require signed identity**. That toggle is locked until a secret exists.
+- **Match the website's theme** (in the help center card, on by default): guide cards and the help
+  center take your site's Bootstrap theme (primary color, font, text color, corners), page by
+  page; the color below is then only used on pages without one. Off: that color for the buttons,
+  and Guide Engine's own font and corners.
 - **Help center:** on or off, plus the floating button's label and color (with a preview) and
   where the topic list opens (a corner, or the center of the screen; the "Go to another page?"
   dialog follows it). It

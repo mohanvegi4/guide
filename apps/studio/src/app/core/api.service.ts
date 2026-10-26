@@ -74,6 +74,7 @@ export class ApiService {
       helpButtonColor?: string;
       helpPosition?: HelpPosition;
       routeMode?: RouteMode;
+      matchSiteTheme?: boolean;
     },
   ): Observable<App> {
     return this.http.patch<App>(`${this.base}/apps/${appId}`, patch);

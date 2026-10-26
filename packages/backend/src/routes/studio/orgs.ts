@@ -236,6 +236,7 @@ const appPatchSchema = z
       .optional(),
     helpPosition: z.enum(HELP_POSITIONS).optional(),
     routeMode: z.enum(ROUTE_MODES).optional(),
+    matchSiteTheme: z.boolean().optional(),
   })
   .refine((v) => Object.keys(v).length > 0, 'nothing to update');
 
@@ -274,7 +275,8 @@ orgsRouter.patch(
            help_button_label = COALESCE($7, help_button_label),
            help_button_color = COALESCE($8, help_button_color),
            help_position = COALESCE($9, help_position),
-           route_mode = COALESCE($10, route_mode)
+           route_mode = COALESCE($10, route_mode),
+           match_site_theme = COALESCE($11, match_site_theme)
          WHERE id = $1 RETURNING ${APP_COLUMNS}`,
         [
           appId,
@@ -287,6 +289,7 @@ orgsRouter.patch(
           body.helpButtonColor ?? null,
           body.helpPosition ?? null,
           body.routeMode ?? null,
+          body.matchSiteTheme ?? null,
         ],
       );
       return result.rows[0];

@@ -8,7 +8,7 @@ nav_order: 4
 This guide explains, part by part, how Guide Engine works inside: what runs where, what each piece
 stores, how a request is authorized, and how a guide gets from the Studio onto a visitor's screen.
 It is written for engineers who will run, extend or review the system, and it describes the code
-as it is on `main` (version 0.3.0, migrations `001_schema.sql` and `002_drop_leftovers.sql`). Where the code and the intent differ, the
+as it is on `main` (version 0.3.0, migrations `001_schema.sql` to `003_match_site_theme.sql`). Where the code and the intent differ, the
 guide says so in [Known gaps and quirks](#16-known-gaps-and-quirks).
 
 For *using* the product, read the [Guide Engine reference](../README.md) and the
@@ -415,6 +415,7 @@ schema matched the chain's object for object. The old files are in git history (
 | 020 | `visitor_tags` on versions | Target guides by what the visitor may do in the host application |
 | 021 | Environments, releases and the release log; events and visitor state per environment; `active_guide` on releases | Dev → Test → Accept → Prod promotion with revert, from one Studio and one key; analytics that never mix environments and can be switched off per environment. Existing apps got one *Production* environment |
 | 002 (after the squash) | Leftovers dropped: `app_member`, `app_role`, `invitation.app_roles`, `step`, the retired `org_role` values, `snoozed` | The first migration after the squash; the enums are rebuilt because Postgres can't drop an enum value |
+| 003 (after the squash) | `match_site_theme` on applications | Cards and the help center look like the customer's site (its Bootstrap theme), per page and per tenant theme |
 
 ---
 
@@ -907,6 +908,15 @@ That convention keeps guides off CSS classes, which change with every refactor.
 | Element present and the page keeps changing | A `MutationObserver` re-positions the card on each change, coalesced to one animation frame, ignoring changes inside Guide Engine's own elements. If the element is replaced, the selector is re-queried. |
 
 ### 10.5 Drawing a step
+
+**Theme.** [`theme.ts`](../packages/core/src/theme.ts) turns the app's `{ color, matchSite }`
+(sent with every `/guides`, `/help` and `/preview` answer) into CSS custom properties on each
+shadow host and the spotlight: `--ge-primary`, `--ge-font`, `--ge-text`, `--ge-bg`,
+`--ge-radius`. Custom properties inherit through a shadow boundary, so with `matchSite` each is a
+`var(--bs-…, <ours>)` expression that resolves against the page's live Bootstrap 5 theme, with no
+script reading the page; without it, the app's color and Guide Engine's own values. Only a hex
+color is ever written into a declaration. The engine passes a changed theme to the renderer
+(`setTheme`, optional for custom renderers) and the help UI.
 
 [`dom-renderer.ts`](../packages/core/src/dom-renderer.ts) creates two elements per guide, appended
 to `document.body`:

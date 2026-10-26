@@ -426,6 +426,14 @@ Name the parts of your app once and reuse them in every guide, like Pendo's tagg
 A floating **Help** button (bottom right by default; the corner is an app setting) opens
 **"How can we help?"**, a searchable list of guides.
 
+**How it looks.** With **Match the website's theme** on (the default, in the app's settings), guide
+cards and the help center take the page's own Bootstrap 5 theme: `--bs-primary` for buttons, the
+spotlight ring and focus rings, `--bs-body-font-family`, `--bs-body-color`, `--bs-body-bg` and
+`--bs-border-radius`. They are read live through the shadow DOM, page by page, so a site whose
+theme differs per tenant (the WISE OPAC's library themes) shows each tenant's colors. The app's
+color is the fallback for pages without a Bootstrap theme. With it off, the app's color styles
+the help button and the cards' main buttons, with Guide Engine's own font and corners.
+
 **How the list is built**
 - It lists the guides authors marked **List in the help center**, filtered like everything else:
   published, enabled, inside their dates, and the visitor's account allowed. Guides set to start
@@ -714,11 +722,11 @@ plain `visitor` and `account`, and anything else sent beside it is ignored. Tags
 
 | Method & path | Body → response |
 |---|---|
-| `POST /v1/agent/:key/guides` | identity → `{ enabled, routeMode, guides: [{ id, versionId, name, type, steps, routeMatch }] }`. `routeMode` is `path` or `hash`. |
+| `POST /v1/agent/:key/guides` | identity → `{ enabled, routeMode, theme: { color, matchSite }, guides: [{ id, versionId, name, type, steps, routeMatch }] }`. `routeMode` is `path` or `hash`; `theme` is the app's color and whether to match the website's Bootstrap theme ([Help center](#help-center)). |
 | `POST /v1/agent/:key/events` | identity + `{ events: [{ guideId, guideVersionId, stepId?, sessionId, eventType, occurredAt, metadata? }] }` (1–100) → `202 { accepted }`. Stored under the environment of the page's `Origin`; when that environment's analytics are off, the events update show-once state only and are not stored. Help-center events (`help_opened`, `help_searched`) carry no `guideId` / `guideVersionId`; a `help_searched` event's `metadata` is `{ query, results }` (the query is cut to 200 characters; other keys are dropped). |
-| `POST /v1/agent/:key/preview` | `{ token }` → the previewed guide with `preview: true` |
+| `POST /v1/agent/:key/preview` | `{ token }` → the previewed guide with `preview: true` and the app's `theme` |
 | `POST /v1/agent/:key/errors` | `{ message (1–500 chars), stack? (≤ 4000), url? (≤ 2000), agentVersion? }` → `202 { accepted }`. `accepted: false` once the app already has 1000 reports in the last hour. |
-| `POST /v1/agent/:key/help` | identity → `{ enabled, routeMode, button: { label, color, position }, guides: [{ …guide, help: { title, description, keywords, startPath } }] }`. The help-center list; not route-filtered, and includes guides the visitor already finished. Account and tag rules still apply. |
+| `POST /v1/agent/:key/help` | identity → `{ enabled, routeMode, theme, button: { label, color, position }, guides: [{ …guide, help: { title, description, keywords, startPath } }] }`. The help-center list; not route-filtered, and includes guides the visitor already finished. Account and tag rules still apply. |
 
 `eventType` is one of `guide_shown`, `guide_step_viewed`, `guide_step_completed`,
 `guide_dismissed`, `guide_completed`, `guide_error`, `survey_response`, `help_opened`,
@@ -742,7 +750,7 @@ plain `visitor` and `account`, and anything else sent beside it is ignored. Tags
 | `GET /orgs/:orgId/export` | owner | The organization's data as a JSON download (`Content-Disposition: attachment; filename="guide-engine-<org-slug>-<date>.json"`): `{ format, formatVersion, exportedAt, organization, members[], invitations[], apps: [{ …, pages[], guides: [{ …, analytics: { shown, completed, dismissed }, versions[] }] }], notes[] }`. Never signing secrets, invitation tokens or raw events. |
 | `DELETE /orgs/:orgId` | owner | `{ confirmName }` must equal the organization's name (`400 confirmation_mismatch`). Deletes the organization and everything in it; `204`. |
 | `GET` / `POST /orgs/:orgId/apps` | viewer / manager | Every member sees every app of the organization. |
-| `GET` / `PATCH /apps/:appId` | viewer / editor | `GET` includes `snippet`. `PATCH` takes `{ name?, websites?, identityMode?, enabled?, helpEnabled?, helpButtonLabel?, helpButtonColor?, helpPosition?, routeMode? }`; the color must be hex, the position one of `bottom-right`, `bottom-left`, `top-right`, `top-left`, `center`, the route mode `path` or `hash` (returned as `route_mode`). `websites` edits the app's only environment; with several, `400 websites_per_environment` (edit each environment instead). |
+| `GET` / `PATCH /apps/:appId` | viewer / editor | `GET` includes `snippet`. `PATCH` takes `{ name?, websites?, identityMode?, enabled?, helpEnabled?, helpButtonLabel?, helpButtonColor?, helpPosition?, routeMode?, matchSiteTheme? }` (returned as `match_site_theme`); the color must be hex, the position one of `bottom-right`, `bottom-left`, `top-right`, `top-left`, `center`, the route mode `path` or `hash` (returned as `route_mode`). `websites` edits the app's only environment; with several, `400 websites_per_environment` (edit each environment instead). |
 | `GET` / `POST /apps/:appId/environments` | viewer / editor | `[{ id, name, position, websites, analyticsEnabled }]` in promotion order (the last is production). `POST` takes `{ name, websites?, analyticsEnabled?, last? }` and adds it in front of production unless `last`. Names are unique per app ignoring case (`409 environment_name_taken`); a website belongs to one environment (`409 website_in_use`, `details.websites`). |
 | `PATCH /apps/:appId/environments/:environmentId` | editor | `{ name?, websites?, analyticsEnabled? }` |
 | `PUT /apps/:appId/environments/order` | editor | `{ ids }`: every environment id, in the new order (`400 order_must_list_every_environment`). The last becomes production. |
@@ -822,7 +830,7 @@ A `VersionBody` is:
 | Table | Purpose |
 |---|---|
 | `organization` | A customer workspace (`created_by`), plus `suspended_at` and the support window (`support_access_until`, `support_access_granted_by`). |
-| `application` | `public_key`, `allowed_origins` (the union of its environments' websites, kept in sync by the API; the CORS check reads it), `identity_mode`, `signing_secret`, `enabled` (the app switch), `route_mode` (`path` or `hash`), and the help center: `help_enabled`, `help_button_label`, `help_button_color`, `help_position`. |
+| `application` | `public_key`, `allowed_origins` (the union of its environments' websites, kept in sync by the API; the CORS check reads it), `identity_mode`, `signing_secret`, `enabled` (the app switch), `route_mode` (`path` or `hash`), and the help center: `help_enabled`, `help_button_label`, `help_button_color`, `help_position`; `match_site_theme` (style guides with the website's Bootstrap theme, the color being the fallback). |
 | `studio_user` | People who use the Studio, keyed by (`oidc_issuer`, `oidc_sub`); created on first sign-in. `platform_admin` marks Guide Engine staff. |
 | `support_access_log` | Every request a platform admin made under an organization's support access (who, when, method, path). |
 | `org_member` | One role per person per organization (viewer / editor / manager / owner), applying to every app. |
@@ -851,6 +859,7 @@ pending files and the others wait, then find nothing to do.
 |---|---|
 | `001_schema.sql` | The whole schema: types, the session-variable helpers RLS reads, every table with its constraints and indexes, the `application_guard_keys` trigger, the `active_guide` view, every RLS policy (enabled and forced), and the kill-switch row. |
 | `002_drop_leftovers.sql` | Drops what the code no longer used: `app_member` and `app_role` (per-app roles), `invitation.app_roles`, the never-used `step` table, the retired `admin` / `member` roles (`org_role` now has only owner, manager, editor, viewer) and the unused `snoozed` visitor status. The two enums are rebuilt, with the policy and CHECK constraints that embed them. |
+| `003_match_site_theme.sql` | `application.match_site_theme` (default on, existing apps included): guide cards and the help center follow the website's Bootstrap theme, with `help_button_color` as the fallback. |
 
 The 21 migrations written during development were squashed into `001_schema.sql` before the first
 deployment (they had only run on development databases); [How the schema got

@@ -6,6 +6,8 @@
  * login. Rendering is injected — this file owns state, not DOM painting.
  */
 
+import { GuideTheme, readTheme, sameTheme } from './theme';
+
 // ------------------------------------------------------------
 // Types
 // ------------------------------------------------------------
@@ -99,6 +101,8 @@ export interface HelpUi {
     button: HelpButtonSettings;
     showButton: boolean;
     routeMode?: RouteMode;
+    /** The app's look; null until the backend has sent one. */
+    theme?: GuideTheme | null;
   }): void;
   open(): void;
   close(): void;
@@ -191,6 +195,8 @@ export const HELP_QUERY_MAX = 200;
 export interface GuideRenderer {
   renderStep(guide: Guide, step: Step, targetEl: Element | null): void;
   clear(guideId: string): void;
+  /** The app's look (see theme.ts). Optional: a custom renderer may style itself. */
+  setTheme?(theme: GuideTheme): void;
 }
 
 // ------------------------------------------------------------
@@ -574,6 +580,8 @@ export class GuideEngine {
    * /help response; until the first one arrives the engine assumes paths.
    */
   private routeMode: RouteMode = 'path';
+  /** The app's look, from the latest /guides, /help or /preview answer. */
+  private theme: GuideTheme | null = null;
   /**
    * How a help guide on another page is reached: a normal page load (like
    * Pendo). Overridable for tests.
@@ -671,6 +679,19 @@ export class GuideEngine {
     } catch {
       return false;
     }
+  }
+
+  /** Takes the app's look from an API answer, and re-styles the cards and help center if it changed. */
+  private useTheme(data: { theme?: unknown } | null): void {
+    const theme = readTheme(data);
+    if (!theme || sameTheme(theme, this.theme)) return;
+    this.theme = theme;
+    try {
+      this.renderer?.setTheme?.(theme);
+    } catch (err) {
+      this.reportError(err, 'render');
+    }
+    if (this.helpLoaded) this.pushHelpState();
   }
 
   /** Reads the app's route mode from a /guides or /help response; anything unknown means paths. */
@@ -788,6 +809,7 @@ export class GuideEngine {
         const data = (await res.json()) as {
           enabled?: unknown;
           routeMode?: unknown;
+          theme?: unknown;
           guides?: unknown;
           button?: HelpButtonSettings;
         } | null;
@@ -796,6 +818,7 @@ export class GuideEngine {
           items = (data.guides as HelpItem[]).filter((g) => g?.help && typeof g.help.title === 'string');
           if (data.button) button = data.button;
           this.applyRouteMode(data);
+          this.useTheme(data);
         }
       }
     } catch {
@@ -826,6 +849,7 @@ export class GuideEngine {
         button: this.helpButton,
         showButton: this.options?.helpButton !== false && this.helpItems.length > 0,
         routeMode: this.routeMode,
+        theme: this.theme,
       });
     } catch (err) {
       this.reportError(err, 'help');
@@ -959,8 +983,9 @@ export class GuideEngine {
     try {
       const res = await this.client!.post('/preview', { token });
       if (!res.ok) return false;
-      const guide = (await res.json()) as Guide;
+      const guide = (await res.json()) as Guide & { theme?: unknown };
       if (!guide || typeof guide.id !== 'string' || !Array.isArray(guide.steps)) return false;
+      this.useTheme(guide);
 
       this.previewMode = true;
       // Force-render: no route matching, no enabled/publish checks.
@@ -988,7 +1013,12 @@ export class GuideEngine {
     try {
       const res = await this.client.post('/guides');
       if (!res.ok) return;
-      const data = (await res.json()) as { enabled?: unknown; routeMode?: unknown; guides?: unknown } | null;
+      const data = (await res.json()) as {
+        enabled?: unknown;
+        routeMode?: unknown;
+        theme?: unknown;
+        guides?: unknown;
+      } | null;
       if (generation !== this.identityGeneration) return; // chosen for a previous identity
       if (data?.enabled === false) {
         this.disabled = true;
@@ -997,6 +1027,7 @@ export class GuideEngine {
       if (data?.enabled !== true || !Array.isArray(data.guides)) return;
       guides = data.guides as Guide[];
       this.applyRouteMode(data);
+      this.useTheme(data);
     } catch (err) {
       // Silent failure — never block the host app. Reported because a
       // non-JSON 200 (a CDN or proxy error page) is a deployment problem

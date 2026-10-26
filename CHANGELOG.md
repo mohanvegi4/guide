@@ -11,6 +11,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). How a rel
 
 ### Added
 
+- Theming (core): guide cards, the spotlight and the help center can take the host page's
+  Bootstrap 5 theme (`--bs-primary`, `--bs-body-font-family`, `--bs-body-color`, `--bs-body-bg`,
+  `--bs-border-radius`), read live through the shadow DOM, with the app's color as the fallback.
+  The backend sends the app's `theme` with `/guides`, `/help` and `/preview`; `GuideRenderer`
+  gains an optional `setTheme()`, and the help UI gets `theme` in `update()`. Without a theme
+  from the backend (an older one), everything looks as before.
+
 - `visitor.tags` (core): pass `initialize({ visitor: { id, tags: ['POINT_OF_SALE'] } })` to target
   guides by what the visitor may do. Unsigned visitors' tags go with the `/guides` and `/help`
   requests only; malformed and duplicate tags are dropped first (letters, digits and `_ . : / -`,

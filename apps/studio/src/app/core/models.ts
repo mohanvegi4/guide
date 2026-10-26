@@ -164,6 +164,8 @@ export interface App {
   help_button_color: string;
   help_position: HelpPosition;
   route_mode: RouteMode;
+  /** Guides and the help center take the website's Bootstrap theme; help_button_color is then the fallback. */
+  match_site_theme: boolean;
   created_at: string;
   role: AppRole;
   /** Present on GET /v1/apps/:id — the exact <head> snippet for this app. */

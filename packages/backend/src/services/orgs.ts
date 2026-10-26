@@ -44,6 +44,8 @@ export interface AppRow {
   help_button_color: string;
   help_position: HelpPosition;
   route_mode: RouteMode;
+  /** Style guides and the help center with the website's Bootstrap theme (help_button_color is the fallback). */
+  match_site_theme: boolean;
   suspended_at: string | null;
   created_at: string;
 }
@@ -62,7 +64,8 @@ export type RouteMode = (typeof ROUTE_MODES)[number];
 
 export const APP_COLUMNS = `id, org_id, name, public_key, allowed_origins, identity_mode,
   signing_secret IS NOT NULL AS has_signing_secret, enabled,
-  help_enabled, help_button_label, help_button_color, help_position, route_mode, suspended_at, created_at`;
+  help_enabled, help_button_label, help_button_color, help_position, route_mode, match_site_theme,
+  suspended_at, created_at`;
 
 export async function createApp(
   client: PoolClient,
