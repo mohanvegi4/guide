@@ -1,5 +1,6 @@
 import { parseArgs } from 'util';
 import jwt from 'jsonwebtoken';
+import { MAX_VISITOR_TAGS, VISITOR_TAG_PATTERN } from '../auth/visitor';
 
 /**
  * Signs a visitor identity the way a customer's BACKEND would when their app
@@ -25,10 +26,24 @@ function main(): void {
     );
     process.exit(1);
   }
-  const tags = (values.tags ?? '')
-    .split(',')
-    .map((t) => t.trim())
-    .filter(Boolean);
+  const tags = [
+    ...new Set(
+      (values.tags ?? '')
+        .split(',')
+        .map((t) => t.trim())
+        .filter(Boolean),
+    ),
+  ];
+  // The agent ignores tags it can't match; say so here instead of signing them.
+  const bad = tags.filter((t) => !VISITOR_TAG_PATTERN.test(t));
+  if (bad.length > 0 || tags.length > MAX_VISITOR_TAGS) {
+    console.error(
+      bad.length > 0
+        ? `not a valid tag (letters, digits and _ . : / - only, up to 100 characters): ${bad.join(', ')}`
+        : `at most ${MAX_VISITOR_TAGS} tags`,
+    );
+    process.exit(1);
+  }
   const claims: Record<string, unknown> = {
     visitor: { id: values.visitor, ...(tags.length ? { tags } : {}) },
   };

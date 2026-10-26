@@ -12,10 +12,22 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). How a rel
 ### Added
 
 - `visitor.tags` (core): pass `initialize({ visitor: { id, tags: ['POINT_OF_SALE'] } })` to target
-  guides by what the visitor may do. Tags are sent with every request for unsigned visitors;
-  malformed and duplicate tags are dropped first (letters, digits and `_ . : / -`, at most 100
-  characters each and 1000 tags). With signed identity, put them in the token's `visitor` claim
-  instead. Needs a backend with migration 020; older backends ignore them.
+  guides by what the visitor may do. Unsigned visitors' tags go with the `/guides` and `/help`
+  requests only; malformed and duplicate tags are dropped first (letters, digits and `_ . : / -`,
+  at most 100 characters each and 1000 tags). With signed identity, put them in the token's
+  `visitor` claim instead. Needs a backend with migration 020; older backends ignore them.
+
+### Changed
+
+- `identify()` (core) with the same visitor id and account and new tags keeps the guide on screen
+  and only refreshes which guides apply; another visitor or account still resets everything.
+  A visitor without an `id` key keeps the current id (`id: undefined` makes them anonymous).
+- `identify(null)` (core, agent, Angular wrapper): nobody is signed in any more. The previous
+  visitor's guides and help list are removed and nothing is fetched until the next `identify()`. Overlapping
+  calls resolve to the latest, and answers requested for a previous identity are dropped.
+- Event batches (core) too large for the browser's 64 KiB keepalive budget are sent as ordinary
+  requests, and a batch the browser refuses as keepalive is retried once without it. Error reports
+  no longer carry the visitor's identity, which the server never read.
 - `visitor.id` is optional (core): `initialize({ visitor: { tags: ['anonymous'] } })` keeps the
   per-browser anonymous id and still sends the tags.
 

@@ -28,12 +28,12 @@ The backend accepts the token only if **all** of the following hold:
 | Algorithm | **HS256 only.** `alg: none`, RS*/ES*, and any other algorithm are rejected. |
 | Key | The HMAC key is the UTF-8 bytes of the application's **signing secret** exactly as the Studio shows it: `ge_sk_` followed by 43 base64url characters (49 characters, 392 bits). Do not decode or hash it. |
 | `visitor.id` | Required. String, 1–256 characters after trimming. The stable id of the end user. |
-| `visitor.tags` | Optional. Array of up to 1000 strings, each 1–100 characters of letters, digits and `_ . : / -`, case-sensitive. What the user may do in your application (for example one tag per permission they hold); a guide limited to visitor tags shows only to users carrying at least one. Any malformed tag makes the whole token invalid. Tags sent beside the token are ignored. |
+| `visitor.tags` | Optional. Array of up to 1000 strings, each 1–100 characters of letters, digits and `_ . : / -`, case-sensitive. What the user may do in your application (for example one tag per permission they hold); a guide limited to visitor tags shows only to users carrying at least one. Malformed entries (and a `tags` value that isn't a list, such as `null`) are ignored; the rest of the token still counts. Duplicates are removed before the 1000 cap applies. Anything sent beside the token is ignored. |
 | `account.id` | Optional (or `null`). String, 1–256 characters. The customer/tenant the user belongs to; used for the per-version account allowlist and analytics. |
 | `exp` | **Required**, seconds since the epoch. Tokens without an expiry are rejected ("no eternal identities"). 5 seconds of clock tolerance. |
 | `iat`, `nbf` | Optional. `nbf` is honoured (with the same tolerance). |
 | Other claims | Ignored and never stored. Don't put names or emails in the token: the agent stores ids only. Tags are used for matching only and are never stored. |
-| Size | At most 65,536 characters, room for several hundred tags. |
+| Size | At most 65,536 characters; a longer token gets 401 `identity_invalid`. That bounds signed tags: about 1,500 tags of 30 characters, or 470 of 100. The token rides on every event batch, so a smaller one is kinder to the page: bodies over the browser's 64 KiB keepalive budget are still sent, but not while the page is closing. |
 
 How the two identity modes of an application behave (**Install & settings → Signed identity**):
 

@@ -58,8 +58,9 @@ describe('error reporting', () => {
     expect(String(body.stack)).toContain('renderer exploded');
     expect(body.url).toBe(`${window.location.origin}/dashboard?tab=1`);
     expect(body.agentVersion).toBe('9.9.9');
-    // The identity rides along like on every agent request.
-    expect(body.visitor).toEqual({ id: 'user-1' });
+    // The server never reads an identity here, so none is sent (no ids or tags in error reports).
+    expect(body.visitor).toBeUndefined();
+    expect(body.account).toBeUndefined();
     // The broken guide was taken down, not left half-drawn.
     expect(cleared).toEqual(['guide-1']);
   });

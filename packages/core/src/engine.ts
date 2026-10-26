@@ -113,8 +113,10 @@ export interface HelpUi {
 
 /**
  * The end user (Pendo calls them visitors). Only `id` and `tags` are sent to
- * the server; other keys are ignored. Without an `id` the visitor is anonymous
- * (a random id is kept per browser) but can still carry tags, e.g. ["anonymous"].
+ * the server; other keys are ignored. Initialized without an `id`, the visitor
+ * is anonymous (a random id is kept per browser) but can still carry tags,
+ * e.g. ["anonymous"]. In identify(), a visitor without an `id` key keeps the
+ * current id (a tags update); pass `id: undefined` to become anonymous.
  */
 export interface Visitor {
   id?: string;
@@ -230,12 +232,15 @@ export function anonymousVisitorId(): string {
   }
 }
 
-/** Mirrors the backend's rule (auth/visitor.ts) so one bad tag can't get every request refused. */
+/**
+ * Mirrors the backend's rule (auth/visitor.ts), which ignores malformed tags
+ * too; dropping them here keeps them off the wire.
+ */
 const VISITOR_TAG = /^[A-Za-z0-9_.:/-]{1,100}$/;
 const MAX_VISITOR_TAGS = 1000;
 
-/** @internal exported for unit tests. Well-formed, de-duplicated tags; anything else dropped. */
-export function cleanVisitorTags(tags: unknown): string[] {
+/** Well-formed, de-duplicated tags; anything else dropped. */
+function cleanVisitorTags(tags: unknown): string[] {
   if (!Array.isArray(tags)) return [];
   const kept = tags.filter((t): t is string => typeof t === 'string' && VISITOR_TAG.test(t));
   return [...new Set(kept)].slice(0, MAX_VISITOR_TAGS);
@@ -259,6 +264,30 @@ function toWireIdentity(options: IdentityOptions): WireIdentity {
   return wire;
 }
 
+/** Endpoints that target guides by visitor tags; every other one is sent without them. */
+const TAGGED_PATHS = new Set(['/guides', '/help']);
+/** Endpoints that never read the visitor's identity, so none is sent. */
+const ANONYMOUS_PATHS = new Set(['/errors', '/preview']);
+/**
+ * Browsers refuse a keepalive request once the keepalive bodies in flight add
+ * up to more than 64 KiB. A larger body is sent as an ordinary request: it
+ * still arrives unless the page is closing.
+ */
+const KEEPALIVE_BODY_LIMIT = 60 * 1024;
+
+const utf8 = typeof TextEncoder === 'undefined' ? null : new TextEncoder();
+/** UTF-8 size of a request body (an over-estimate where TextEncoder is missing). */
+function byteLength(text: string): number {
+  return utf8 ? utf8.encode(text).length : text.length * 3;
+}
+
+/** The identity a request to `path` needs: tags only where they're matched, nothing where it's unused. */
+function identityFor(path: string, identity: WireIdentity): WireIdentity | Record<string, never> {
+  if (ANONYMOUS_PATHS.has(path)) return {};
+  if (TAGGED_PATHS.has(path) || !identity.visitor?.tags) return identity;
+  return { ...identity, visitor: { id: identity.visitor.id } };
+}
+
 /**
  * Talks to the public agent API for one app key. Bodies are JSON sent as
  * text/plain: a CORS "simple" request, so the browser skips the preflight
@@ -274,12 +303,14 @@ export class AgentClient {
   ) {}
 
   post(path: string, body: Record<string, unknown> = {}, keepalive = false): Promise<Response> {
+    const json = JSON.stringify({ ...identityFor(path, this.identity()), ...body });
     return fetch(`${this.apiBaseUrl.replace(/\/$/, '')}/v1/agent/${encodeURIComponent(this.appKey)}${path}`, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain' },
-      body: JSON.stringify({ ...this.identity(), ...body }),
+      body: json,
       credentials: 'omit', // the key + identity are the credentials; never send the host site's cookies
-      keepalive,
+      // The limit is in bytes; a JS string length counts UTF-16 units, up to 3 bytes each.
+      keepalive: keepalive && byteLength(json) <= KEEPALIVE_BODY_LIMIT,
     });
   }
 }
@@ -329,8 +360,15 @@ export class EventQueue {
     try {
       await this.client.post('/events', { events: batch }, true);
     } catch {
-      // Fire-and-forget: never block or throw into host app. Drop the batch
-      // rather than retrying indefinitely and building unbounded memory.
+      // A keepalive request is refused outright when other keepalive requests
+      // already use the browser's 64 KiB budget; while the page is still open
+      // an ordinary request gets through. One retry, then fire-and-forget:
+      // never block or throw into the host app, and never build unbounded memory.
+      try {
+        await this.client.post('/events', { events: batch });
+      } catch {
+        // dropped
+      }
     }
   }
 }
@@ -438,6 +476,20 @@ export function displayRoutePath(mode: RouteMode, path: string): string {
 export class GuideEngine {
   private options: SdkInitOptions | null = null;
   private identity: WireIdentity = {};
+  /**
+   * Bumped whenever identify() switches the identity. A response requested
+   * under an earlier identity is dropped when it arrives, so guides chosen for
+   * the previous visitor (or their old tags) never start for the new one.
+   */
+  private identityGeneration = 0;
+  /** Counts identify() calls, so the latest of overlapping calls is the one applied. */
+  private identifyCalls = 0;
+  /** What overlapping identify() calls asked for so far; a later partial call builds on it. */
+  private requestedOptions: SdkInitOptions | null = null;
+  /** A help-center or shared-guide link this page was opened with, started once the help list arrives. */
+  private pendingLaunch: { guideId: string; source: 'help' | 'link' } | null = null;
+  /** identify(null): nobody is signed in, so nothing is fetched or shown until the next identify(). */
+  private signedOut = false;
   private client: AgentClient | null = null;
   private eventQueue: EventQueue | null = null;
   private sessionId: string = uuid();
@@ -501,10 +553,11 @@ export class GuideEngine {
       // so automatic evaluation doesn't start it a second time.
       const launch = readLaunchParam();
       if (launch) {
-        await this.loadHelp();
-        const item = this.helpItems.find((g) => g.id === launch.guideId);
-        if (item) this.startOnDemand(item, launch.source);
+        this.pendingLaunch = launch;
         stripLaunchParam();
+        // Started by the first help list fetched for the current identity: this
+        // one, or identify()'s if the visitor changes before this answer lands.
+        await this.loadHelp();
       }
 
       await this.evaluateGuidesForRoute();
@@ -576,7 +629,7 @@ export class GuideEngine {
 
   /** Opens the help center (for a product's own help button). */
   openHelp(): void {
-    if (this.disabled || this.previewMode) return;
+    if (this.disabled || this.previewMode || this.signedOut) return;
     this.helpUi?.open();
   }
 
@@ -652,10 +705,11 @@ export class GuideEngine {
 
   /** Fetches this visitor's help-center guides and settings, and updates the help UI. */
   private async loadHelp(): Promise<void> {
-    if (!this.client) return;
+    if (!this.client || this.signedOut) return;
     this.helpLoaded = true;
     let items: HelpItem[] = [];
     let button: HelpButtonSettings = { label: 'Help', color: '#4f46e5' };
+    const generation = this.identityGeneration;
     try {
       const res = await this.client.post('/help');
       if (res.ok) {
@@ -665,6 +719,7 @@ export class GuideEngine {
           guides?: unknown;
           button?: HelpButtonSettings;
         } | null;
+        if (generation !== this.identityGeneration) return; // the list of a previous identity
         if (data?.enabled === true && Array.isArray(data.guides)) {
           items = (data.guides as HelpItem[]).filter((g) => g?.help && typeof g.help.title === 'string');
           if (data.button) button = data.button;
@@ -676,6 +731,12 @@ export class GuideEngine {
     }
     this.helpItems = items;
     this.helpButton = button;
+    const launch = this.pendingLaunch;
+    this.pendingLaunch = null;
+    if (launch) {
+      const item = items.find((g) => g.id === launch.guideId);
+      if (item) this.startOnDemand(item, launch.source);
+    }
     this.pushHelpState();
   }
 
@@ -718,21 +779,73 @@ export class GuideEngine {
   }
 
   /**
-   * Switch to a different end user (e.g. after login). Clears what the
-   * previous user was shown and re-evaluates the current page.
+   * Tell the engine who the visitor is now.
+   *  - A different person (another visitor id, or a signed token, whose ids
+   *    the engine can't read) clears what the previous one was shown and
+   *    re-evaluates the page.
+   *    So does another account: events and account-limited guides belong to it.
+   *  - The same person in the same account with new tags keeps the guide on
+   *    screen and only refreshes which guides apply and the help list.
+   *  - null: nobody is signed in any more (a logout). The previous visitor's
+   *    events are sent, their guides and help list removed, and nothing is
+   *    fetched or shown until the next identify().
+   * A `visitor` without an `id` key keeps the current id, so
+   * identify({ visitor: { tags } }) updates the tags of the same person; pass
+   * `id: undefined` to become anonymous. When calls overlap, the latest one
+   * wins, built on what the earlier ones asked for.
    */
-  async identify(identity: IdentityOptions): Promise<void> {
+  async identify(identity: IdentityOptions | null): Promise<void> {
     if (!this.options || !this.client) return;
+    const call = ++this.identifyCalls;
+    if (identity === null) {
+      this.requestedOptions = null;
+      try {
+        await this.eventQueue?.flush(); // the old identity's events go out under the old identity
+        if (call !== this.identifyCalls) return;
+        this.signedOut = true;
+        this.identityGeneration++;
+        for (const id of [...this.activeGuides.keys()]) this.teardownGuide(id);
+        this.queued = [];
+        this.finished.clear();
+        this.pendingLaunch = null;
+        this.helpItems = [];
+        this.helpUi?.close();
+        this.pushHelpState();
+      } catch (err) {
+        this.reportError(err, 'identify');
+      }
+      return;
+    }
+    const base = this.requestedOptions ?? this.options;
+    const options = { ...base, ...identity };
+    if (identity.visitor && !('id' in identity.visitor) && base.visitor?.id) {
+      options.visitor = { ...identity.visitor, id: base.visitor.id };
+    }
+    this.requestedOptions = options;
     try {
-      await this.eventQueue?.flush(); // the old user's events go out under the old identity
-      this.options = { ...this.options, ...identity };
-      this.identity = toWireIdentity(this.options);
-      for (const id of [...this.activeGuides.keys()]) this.teardownGuide(id);
+      const next = toWireIdentity(options);
+      const samePerson =
+        !this.signedOut &&
+        !next.jwt &&
+        !this.identity.jwt &&
+        next.visitor?.id === this.identity.visitor?.id &&
+        next.account?.id === this.identity.account?.id;
+      // The old identity's events go out under the old identity.
+      if (!samePerson) await this.eventQueue?.flush();
+      if (call !== this.identifyCalls) return; // a later identify() took over meanwhile
+      this.requestedOptions = null;
+      this.signedOut = false;
+      this.options = options;
+      this.identity = next;
+      this.identityGeneration++; // anything still in flight was asked for the old identity
+      if (!samePerson) {
+        for (const id of [...this.activeGuides.keys()]) this.teardownGuide(id);
+        this.finished.clear();
+      }
       this.queued = [];
-      this.finished.clear();
       if (!this.disabled && !this.previewMode) {
         await this.evaluateGuidesForRoute();
-        if (!this.disabled) await this.loadHelp(); // the new user's help list (account targeting)
+        if (!this.disabled) await this.loadHelp(); // the help list is account- and tag-targeted too
       }
     } catch (err) {
       // fail silent
@@ -771,13 +884,15 @@ export class GuideEngine {
    * AFTER the response, because that's when the route mode is known.
    */
   private async evaluateGuidesForRoute(path?: string): Promise<void> {
-    if (!this.client) return;
+    if (!this.client || this.signedOut) return;
+    const generation = this.identityGeneration;
 
     let guides: Guide[];
     try {
       const res = await this.client.post('/guides');
       if (!res.ok) return;
       const data = (await res.json()) as { enabled?: unknown; routeMode?: unknown; guides?: unknown } | null;
+      if (generation !== this.identityGeneration) return; // chosen for a previous identity
       if (data?.enabled === false) {
         this.disabled = true;
         return;
@@ -940,6 +1055,9 @@ export class GuideEngine {
 
   private watchForTarget(state: GuideRuntimeState, step: Step, revisit: boolean, attempt = 0): void {
     const maxAttempts = 10;
+    // A guide torn down while it waited (identify(), a help launch) must not
+    // come back, nor remove a newer run of the same guide.
+    if (this.activeGuides.get(state.guide.id) !== state) return;
     if (attempt >= maxAttempts) {
       state.status = 'error';
       this.emitEvent(state, step.id, 'guide_error', { reason: 'target_not_found' });
@@ -949,6 +1067,7 @@ export class GuideEngine {
     }
     setTimeout(
       () => {
+        if (this.activeGuides.get(state.guide.id) !== state) return;
         const el = document.querySelector(step.targetSelector!);
         if (el) {
           this.showCurrentStep(state, revisit);

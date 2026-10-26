@@ -7,7 +7,7 @@ import { z } from 'zod';
 import { asyncHandler } from '../asyncHandler';
 import { AgentApp, findAppByPublicKey, withAgentSession } from '../db';
 import { HttpError, notFound } from '../httpError';
-import { identityInputSchema, resolveVisitor, Visitor } from '../auth/visitor';
+import { parseIdentityInput, resolveVisitor, Visitor } from '../auth/visitor';
 import { previewSecret, verifyPreviewToken } from '../preview';
 import { rateLimiterFromEnv } from '../rateLimit';
 import { RESOLVED_ROUTE_MATCH_SQL } from './studio/context';
@@ -208,10 +208,23 @@ async function engineEnabled(client: PoolClient, app: AgentApp): Promise<boolean
   return row.rows[0]?.value !== 'false';
 }
 
+/**
+ * Who may get a guide from `active_guide a`: its account allowlist and its
+ * visitor tags (NULL = everyone, for either). Shared by /guides and /help so
+ * the two never disagree. The tag test looks each of the guide's tags up in
+ * the visitor's list, which Postgres can hash, rather than `&&`, which
+ * compares every pair (up to 100 guide tags × 1000 visitor tags per row).
+ */
+function audienceSql(accountParam: string, tagsParam: string): string {
+  return `(a.account_ids IS NULL OR ${accountParam}::text = ANY(a.account_ids))
+           AND (a.visitor_tags IS NULL
+                OR EXISTS (SELECT 1 FROM unnest(a.visitor_tags) AS t(tag) WHERE t.tag = ANY(${tagsParam}::text[])))`;
+}
+
 function visitorFrom(req: Request, app: AgentApp): Visitor {
-  const input = identityInputSchema.safeParse(req.body ?? {});
-  if (!input.success) throw new HttpError(400, 'invalid_body');
-  const result = resolveVisitor(app, input.data);
+  const input = parseIdentityInput(req.body);
+  if (!input) throw new HttpError(400, 'invalid_body');
+  const result = resolveVisitor(app, input);
   if (!result.ok) throw new HttpError(401, result.error);
   return result.visitor;
 }
@@ -236,8 +249,7 @@ agentApiRouter.post(
          FROM active_guide a
          WHERE a.app_id = $1
            AND a.activation = 'auto'
-           AND (a.account_ids IS NULL OR $3::text = ANY(a.account_ids))
-           AND (a.visitor_tags IS NULL OR a.visitor_tags && $4::text[])
+           AND ${audienceSql('$3', '$4')}
            AND NOT EXISTS (
              SELECT 1 FROM user_guide_state s
              WHERE s.app_id = $1 AND s.visitor_id = $2 AND s.guide_id = a.id
@@ -293,8 +305,7 @@ agentApiRouter.post(
         `SELECT a.id, a.name, a.type, a.version_id, a.steps, a.route_match, a.help, a.page_start_path
          FROM active_guide a
          WHERE a.app_id = $1 AND a.help IS NOT NULL
-           AND (a.account_ids IS NULL OR $2::text = ANY(a.account_ids))
-           AND (a.visitor_tags IS NULL OR a.visitor_tags && $3::text[])
+           AND ${audienceSql('$2', '$3')}
          ORDER BY a.help ->> 'title'`,
         [scoped.id, visitor.accountId, visitor.tags],
       );

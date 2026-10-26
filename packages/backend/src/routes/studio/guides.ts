@@ -17,7 +17,8 @@ import {
 } from './context';
 import { guideAnalyticsQuerySchema, rangeSql, toRange } from './analytics';
 import { findPage } from './pages';
-import { visitorTagSchema } from '../../auth/visitor';
+import { MAX_GUIDE_TAGS, visitorTagSchema } from '../../auth/visitor';
+import { toVersionResponse, versionColumns } from '../../services/versions';
 
 /**
  * Authoring routes for one application's guides: /v1/apps/:appId/guides/...
@@ -107,11 +108,11 @@ const versionBodySchema = z
     // Visitor tags: omitted/null = every visitor; otherwise only visitors who
     // carry at least one of these tags (from their host application's
     // permissions, passed as visitor.tags or inside the signed identity).
+    // Duplicates are dropped before the count is checked.
     visitorTags: z
       .array(visitorTagSchema)
-      .min(1)
-      .max(100)
       .transform((tags) => [...new Set(tags)])
+      .pipe(z.array(z.string()).min(1).max(MAX_GUIDE_TAGS))
       .nullable()
       .optional(),
     help: helpSchema.nullable().optional(),
@@ -218,8 +219,7 @@ async function lockGuide(client: PoolClient, appId: string, guideId: string): Pr
   if (result.rows.length === 0) throw notFound();
 }
 
-const VERSION_COLUMNS =
-  'id, version_number, steps, route_match, page_id, start_at, end_at, account_ids, visitor_tags, help, activation, published_at';
+const VERSION_COLUMNS = versionColumns();
 
 /**
  * Creates or overwrites the guide's single working draft (published_at NULL).
@@ -264,23 +264,6 @@ async function upsertDraft(client: PoolClient, appId: string, guideId: string, v
     [guideId, ...values],
   );
   return inserted.rows[0];
-}
-
-function toVersionResponse(row: Record<string, unknown>) {
-  return {
-    id: row.id,
-    versionNumber: row.version_number,
-    steps: row.steps,
-    routeMatch: row.route_match,
-    pageId: row.page_id,
-    startAt: row.start_at,
-    endAt: row.end_at,
-    accountIds: row.account_ids,
-    visitorTags: row.visitor_tags,
-    help: row.help,
-    activation: row.activation,
-    publishedAt: row.published_at,
-  };
 }
 
 // ------------------------------------------------------------

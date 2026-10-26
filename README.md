@@ -220,11 +220,15 @@ guideEngine.initialize({
   tags, pass `visitor: { tags: ['anonymous'] }` without an id.
 - **After login:** call `guideEngine.identify({ visitor: { id }, account: { id } })`. The agent
   clears what the previous user was shown and re-evaluates.
+- **After logout** (when the page doesn't reload): call `guideEngine.identify(null)`. The previous
+  user's guides and help list go away, and nothing is fetched or shown until the next `identify`.
 - **Visitor tags (optional):** `visitor: { id, tags: ['POINT_OF_SALE', 'CUSTOMERS:edit'] }`. Tags
   are short strings you choose, usually what the person may do in your app. A guide limited to
   tags shows only to visitors carrying at least one of them. Letters, digits and `_ . : / -`, up
-  to 100 characters each and 1000 per visitor; the agent drops malformed ones. Pass them before
-  the first `initialize` if you can: a later `identify` re-evaluates the page.
+  to 100 characters each and 1000 per visitor; malformed ones are ignored. When the visitor's
+  permissions change, call `identify` with the same `id` and account and the new tags: the guide
+  on screen stays and the page's guides are refreshed. `identify({ visitor: { tags } })` without an
+  `id` keeps the current one; pass `id: undefined` to make the visitor anonymous.
 - The site's origin must be in the app's **Websites** list. Guides never load anywhere else.
 
 ### 2. Tag the elements guides point at
@@ -663,9 +667,10 @@ JSON throughout. Studio responses that are database rows use snake_case.
 
 ### Agent API (public app key; CORS for the app's websites)
 
-Bodies may be `text/plain` or `application/json`. Each one carries an identity:
+Bodies may be `text/plain` or `application/json`. `/guides`, `/help` and `/events` carry an identity:
 `{ visitor?: { id, tags? }, account?: { id } | null, jwt? }`. With a `jwt`, its claims replace the
-plain `visitor` and `account`.
+plain `visitor` and `account`, and anything else sent beside it is ignored. Tags that can't match
+(malformed, or not a list) are ignored rather than refused.
 
 | Method & path | Body → response |
 |---|---|

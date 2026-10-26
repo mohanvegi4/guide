@@ -20,7 +20,8 @@ import { GuideEngine, IdentityOptions, createDomRenderer, createHelpWidget } fro
 export interface AgentApi {
   readonly version: string;
   initialize(options?: InitializeOptions): void;
-  identify(options: IdentityOptions): void;
+  /** Switch the visitor, update their tags, or pass null when nobody is signed in any more. */
+  identify(options: IdentityOptions | null): void;
   /** Open the help center (e.g. from your own help button). */
   openHelp(): void;
   closeHelp(): void;
@@ -155,7 +156,7 @@ export function startAgent(win: Window = window): void {
     },
     identify(options) {
       try {
-        if (!started) return api.initialize(options);
+        if (!started) return options ? api.initialize(options) : undefined;
         void engine.identify(options);
       } catch {
         // fail silent

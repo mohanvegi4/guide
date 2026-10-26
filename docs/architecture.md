@@ -649,8 +649,9 @@ bundle answers `503`. `GET /agent/v1/version` returns `{ version, hash }` uncach
 
 ### 8.3 Endpoints
 
-All are `POST`, and every body carries the identity fields described in
-[section 9](#9-visitors-accounts-and-audience-targeting).
+All are `POST`. `/guides`, `/help` and `/events` carry the identity fields described in
+[section 9](#9-visitors-accounts-and-audience-targeting); the agent sends tags only to `/guides` and
+`/help`, and no identity at all to `/errors` and `/preview`, which never read one.
 
 **`/v1/agent/<key>/guides`**: the automatic guides for this visitor.
 
@@ -708,8 +709,8 @@ secret is unset.
 
 ### 9.1 How a visitor is identified
 
-The host page passes ids to `guideEngine.initialize()` and later `identify()`. Every agent request
-body carries:
+The host page passes ids to `guideEngine.initialize()` and later `identify()`. Requests for guides,
+the help list and events carry (events without the tags):
 
 ```json
 { "visitor": { "id": "…", "tags": ["…"] }, "account": { "id": "…" }, "jwt": "…" }
@@ -767,10 +768,15 @@ matching only: they are not stored with events and do not appear in analytics.
 
 **Where tags come from in the browser.** The page passes
 `initialize({ visitor: { id, tags } })` or `identify(...)`. The engine drops malformed and
-duplicate tags before sending, so one bad tag can't get every request refused, and it sends tags
-only for unsigned visitors (a signed token carries its own). Calling `identify` with new tags
-re-evaluates the page, so a host whose permissions load after the user should wait for both before
-calling `initialize`, or the first guide may be torn down and re-chosen.
+duplicate tags before sending, and the server ignores any that still arrive, so a bad tag never
+costs the visitor their other guides. Tags go only with `/guides` and `/help`, and only for
+unsigned visitors (a signed token carries its own). Calling `identify` with the same visitor id,
+the same account and new tags keeps the guide on screen and only refreshes which guides apply; a
+different id or account (or any signed token) resets everything, after sending the queued events
+under the old identity. A visitor without an `id` key keeps the current id, so
+`identify({ visitor: { tags } })` is a tags update; `id: undefined` makes the visitor anonymous.
+`identify(null)` means nobody is signed in any more: the previous visitor's events are sent, their
+guides and help list removed, and nothing is fetched until the next `identify`.
 
 What this is not: there are no groups, wildcards, attributes or rules. Each guide lists account ids
 and tags explicitly. Metadata segments are deliberately not built.
@@ -909,8 +915,10 @@ Each event carries the guide, version, step, a per-page-load `sessionId`, and `m
 
 The queue sends a batch when it reaches 20 events or 5 seconds after the first one. Dismissed and
 completed go out **immediately**, because the server's state must be updated before the next page
-load asks for guides. On `pagehide` the queue flushes with `fetch(…, { keepalive: true })`. There is
-no retry: a failed batch is dropped. To close the gap before the server's state lands, the engine
+load asks for guides. Batches are sent with `fetch(…, { keepalive: true })` so they outlive the page
+(the queue also flushes on `pagehide`). Browsers allow 64 KiB of keepalive bodies in flight, so a
+larger batch goes as an ordinary request, and a batch the browser refuses as keepalive is retried
+once without it; after that it is dropped. To close the gap before the server's state lands, the engine
 also remembers finished guides (by guide and version) for the rest of the page session.
 
 **Error reports.** The engine never writes to the console. About 10% of internal errors, at most 5
@@ -1258,8 +1266,9 @@ Things that are true of the code today and worth knowing before you rely on or c
 
 **Agent and browser**
 
-- Event delivery has no retry: a failed batch is lost. Page exit relies on `fetch` with `keepalive`
-  (no `sendBeacon`, no `visibilitychange` flush).
+- Event delivery retries once, and only a batch the browser refused as keepalive; a batch that
+  fails on the network is lost. Page exit relies on `fetch` with `keepalive` (no `sendBeacon`, no
+  `visibilitychange` flush), and a batch over 64 KiB can't use it.
 - The step card has no dialog role and does not move focus; Escape works only while focus is inside
   it. The help panel, by contrast, is fully labelled and traps focus.
 - There is no placement flipping and no arrow; cards are clamped into the viewport instead.

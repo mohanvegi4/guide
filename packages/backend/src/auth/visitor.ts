@@ -13,8 +13,8 @@ import type { AgentApp } from '../db';
  * at all it must verify, even when it isn't required.
  *
  * Visitor tags travel the same way: plain in the body for unsigned visitors,
- * inside the token's visitor claim for signed ones (body tags are then
- * ignored, like body ids).
+ * inside the token's visitor claim for signed ones (everything sent beside a
+ * token is then ignored, ids included).
  */
 export interface Visitor {
   visitorId: string;
@@ -33,37 +33,67 @@ const idSchema = z.string().trim().min(1).max(256);
 export const VISITOR_TAG_PATTERN = /^[A-Za-z0-9_.:/-]{1,100}$/;
 export const visitorTagSchema = z.string().regex(VISITOR_TAG_PATTERN, 'letters, digits and _ . : / - only (max 100)');
 
+/** Tags a guide version may list (routes/studio/guides.ts, migration 020's CHECK). */
+export const MAX_GUIDE_TAGS = 100;
 /**
- * A visitor's tags. Generous, because a host application may derive one per
- * permission and level (a staff user can hold several hundred); the per-guide
- * list is much shorter (see guides.ts).
+ * Tags a visitor may carry. Generous, because a host application may derive
+ * one per permission and level (a staff user can hold several hundred).
  */
 export const MAX_VISITOR_TAGS = 1000;
-const visitorTagsSchema = z.array(visitorTagSchema).max(MAX_VISITOR_TAGS);
+/**
+ * A signed identity's length. It travels with every event batch, and browsers
+ * cap keepalive requests at 64 KiB in total; the agent sends a larger body as
+ * an ordinary request, which is lost only if the page is closing.
+ */
+export const MAX_IDENTITY_TOKEN_LENGTH = 65_536;
 
-const visitorInputSchema = z.object({ id: idSchema, tags: visitorTagsSchema.optional() }).passthrough();
+/**
+ * The visitor's tags, as far as they can match anything: well-formed,
+ * de-duplicated, at most MAX_VISITOR_TAGS. Anything else is dropped rather
+ * than refused: a malformed tag can never match a guide (guide tags follow the
+ * same pattern), so dropping it changes no decision, while refusing would
+ * cost the visitor every guide, untagged ones included.
+ */
+function usableTags(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  const wellFormed = raw.filter((t): t is string => typeof t === 'string' && VISITOR_TAG_PATTERN.test(t));
+  return [...new Set(wellFormed)].slice(0, MAX_VISITOR_TAGS);
+}
 
-export const identityInputSchema = z.object({
+const visitorInputSchema = z.object({ id: idSchema, tags: z.unknown().optional() }).passthrough();
+const accountInputSchema = z.object({ id: idSchema }).passthrough().nullable().optional();
+
+const plainIdentitySchema = z.object({
   visitor: visitorInputSchema.optional(),
-  account: z.object({ id: idSchema }).passthrough().nullable().optional(),
-  // Room for a signed visitor with hundreds of tags.
-  jwt: z.string().max(65_536).optional(),
+  account: accountInputSchema,
 });
-export type IdentityInput = z.infer<typeof identityInputSchema>;
 
 const signedClaimsSchema = z.object({
   visitor: visitorInputSchema,
-  account: z.object({ id: idSchema }).passthrough().nullable().optional(),
+  account: accountInputSchema,
   exp: z.number(), // required: no eternal identities
 });
 
-export type VisitorResult = { ok: true; visitor: Visitor } | { ok: false; error: string };
+/** A request body's identity: a signed token (anything beside it is ignored), or plain ids. */
+export type IdentityInput =
+  | { jwt: string }
+  | { jwt?: undefined; visitor?: z.infer<typeof visitorInputSchema>; account?: { id: string } | null };
 
-const uniqueTags = (tags: string[] | undefined): string[] => [...new Set(tags ?? [])];
+/** Parses the identity part of an agent request body; null when it's malformed. */
+export function parseIdentityInput(body: unknown): IdentityInput | null {
+  const token = (body as { jwt?: unknown } | null)?.jwt;
+  if (token !== undefined) return typeof token === 'string' ? { jwt: token } : null;
+  const plain = plainIdentitySchema.safeParse(body ?? {});
+  return plain.success ? plain.data : null;
+}
+
+export type VisitorResult = { ok: true; visitor: Visitor } | { ok: false; error: string };
 
 export function resolveVisitor(app: AgentApp, input: IdentityInput): VisitorResult {
   if (input.jwt !== undefined) {
-    if (!app.signingSecret) return { ok: false, error: 'identity_invalid' };
+    if (!app.signingSecret || input.jwt.length > MAX_IDENTITY_TOKEN_LENGTH) {
+      return { ok: false, error: 'identity_invalid' };
+    }
     try {
       const payload = jwt.verify(input.jwt, app.signingSecret, { algorithms: ['HS256'], clockTolerance: 5 });
       const claims = signedClaimsSchema.safeParse(payload);
@@ -73,7 +103,7 @@ export function resolveVisitor(app: AgentApp, input: IdentityInput): VisitorResu
         visitor: {
           visitorId: claims.data.visitor.id,
           accountId: claims.data.account?.id ?? null,
-          tags: uniqueTags(claims.data.visitor.tags),
+          tags: usableTags(claims.data.visitor.tags),
         },
       };
     } catch {
@@ -88,7 +118,7 @@ export function resolveVisitor(app: AgentApp, input: IdentityInput): VisitorResu
     visitor: {
       visitorId: input.visitor.id,
       accountId: input.account?.id ?? null,
-      tags: uniqueTags(input.visitor.tags),
+      tags: usableTags(input.visitor.tags),
     },
   };
 }

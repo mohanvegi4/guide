@@ -156,9 +156,24 @@ describe('visitor identity', () => {
     expect(await guides({ visitor: { id: 'u1', tags: ['POS'] } })).toHaveLength(2);
     expect(await guides({ visitor: { id: 'u1' } }, { visitor: { id: 'u1', tags: ['POS'] } })).toHaveLength(1);
 
-    const bad = await agent(key, '/guides', { jwt: sign(secret, { visitor: { id: 'u1', tags: ['no spaces'] } }) });
-    expect(bad.status).toBe(401);
-    expect(bad.body.error).toBe('identity_invalid');
+    // A malformed or null tag claim costs only that tag, not the identity.
+    expect(await guides({ visitor: { id: 'u1', tags: ['no spaces', 'POS'] } })).toHaveLength(2);
+    expect(await guides({ visitor: { id: 'u1', tags: null } })).toHaveLength(1);
+    // Nothing beside a token is read, not even a malformed body visitor.
+    expect(await guides({ visitor: { id: 'u1' } }, { visitor: { tags: 'not even a list' } })).toHaveLength(1);
+  });
+
+  it('refuses a validly signed token longer than 65,536 characters', async () => {
+    const { key, secret } = await requiredApp();
+    const tags = (n: number) => Array.from({ length: n }, (_, i) => `T${i}`.padEnd(100, 'x'));
+    const fits = sign(secret, { visitor: { id: 'u1', tags: tags(400) } });
+    const tooLong = sign(secret, { visitor: { id: 'u1', tags: tags(600) } });
+    expect(fits.length).toBeLessThanOrEqual(65_536);
+    expect(tooLong.length).toBeGreaterThan(65_536);
+    expect((await agent(key, '/guides', { jwt: fits })).status).toBe(200);
+    const res = await agent(key, '/guides', { jwt: tooLong });
+    expect(res.status).toBe(401);
+    expect(res.body.error).toBe('identity_invalid');
   });
 
   it('signed claims win over plain ids sent alongside them', async () => {
@@ -224,14 +239,21 @@ describe('targeting and kill switches', () => {
     expect((await agent(key, '/guides', visitor())).body.guides).toHaveLength(1);
   });
 
-  it('rejects malformed visitor tags', async () => {
+  it('ignores tags it could never match instead of refusing the visitor', async () => {
     const { key, appId } = await signUp('alice');
-    await liveGuide('alice', appId);
-    for (const tags of [['has space'], [''], ['x'.repeat(101)], Array.from({ length: 1001 }, (_, i) => `t${i}`)]) {
+    await liveGuide('alice', appId); // untagged
+    await liveGuide('alice', appId, { ...sampleVersion, visitorTags: ['POS'] });
+    const served = async (tags: unknown) => {
       const res = await agent(key, '/guides', { visitor: { id: 'v', tags } });
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(200);
+      return res.body.guides.length;
+    };
+    for (const tags of [['has space'], [''], ['x'.repeat(101)], null, 'POS', [7]]) {
+      expect(await served(tags)).toBe(1); // the untagged guide only
     }
-    expect((await agent(key, '/guides', { visitor: { id: 'v', tags: ['a', 'a'] } })).status).toBe(200);
+    expect(await served(['has space', 'POS', 'POS'])).toBe(2);
+    // The 1000-tag cap counts distinct tags.
+    expect(await served([...Array.from({ length: 1500 }, () => 'dup'), 'POS'])).toBe(2);
   });
 
   it('serves nothing when the app or the whole engine is switched off', async () => {

@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   AgentClient,
   EventQueue,
+  Guide,
   GuideEngine,
   GuideEventPayload,
   anonymousVisitorId,
@@ -730,5 +731,281 @@ describe('step change vs. target observer (regression)', () => {
     await new Promise((r) => setTimeout(r, 100));
 
     expect(rendered[rendered.length - 1].target).toBe(second);
+  });
+});
+
+describe('identity changes and transport', () => {
+  type Answer = { status?: number; body?: unknown };
+  /** A fetch stub whose responder sees the parsed body and may wait. */
+  function stubFetch(answer: (path: string, body: Record<string, unknown>, init?: RequestInit) => Promise<Answer> | Answer) {
+    const fn = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const path = String(input).slice(API.length);
+      const out = await answer(path, init?.body ? JSON.parse(String(init.body)) : {}, init);
+      return new Response(JSON.stringify(out.body ?? {}), { status: out.status ?? 200 });
+    });
+    vi.stubGlobal('fetch', fn);
+    return fn;
+  }
+
+  it('sends tags only where guides are matched: ids to /events, nothing with error reports', async () => {
+    window.history.replaceState({}, '', '/dashboard');
+    const fetchMock = mockFetch({ [R.guides]: serving(makeGuide()), [R.events]: () => ({ status: 202 }) });
+    const engine = new GuideEngine();
+    await engine.init({ ...baseOptions, visitor: { id: 'user-1', tags: ['POS'] } }, fakeRenderer().renderer);
+    engine.dismissGuide('guide-1'); // an urgent flush
+    await flushPromises();
+
+    expect(bodyOf(callsTo(fetchMock, R.guides)[0])).toMatchObject({ visitor: { id: 'user-1', tags: ['POS'] } });
+    const events = callsTo(fetchMock, R.events);
+    expect(events).toHaveLength(1);
+    expect(bodyOf(events[0]).visitor).toEqual({ id: 'user-1' });
+  });
+
+  it('sends a body too large for keepalive as an ordinary request', async () => {
+    const fetchMock = mockFetch({ [R.events]: () => ({ status: 202 }) });
+    await new AgentClient(API, KEY, () => ({ jwt: 'x'.repeat(70_000) })).post('/events', { events: [] }, true);
+    await new AgentClient(API, KEY, () => ({ jwt: 'small' })).post('/events', { events: [] }, true);
+    expect(fetchMock.mock.calls[0][1]).toMatchObject({ keepalive: false });
+    expect(fetchMock.mock.calls[1][1]).toMatchObject({ keepalive: true });
+  });
+
+  it('measures the keepalive budget in bytes, not characters', async () => {
+    const fetchMock = mockFetch({ [R.events]: () => ({ status: 202 }) });
+    // 25,000 characters but about 62,500 bytes in UTF-8: over the 60 KiB budget.
+    await new AgentClient(API, KEY, () => ({})).post('/events', { events: [], note: 'é€'.repeat(12_500) }, true);
+    expect(fetchMock.mock.calls[0][1]).toMatchObject({ keepalive: false });
+  });
+
+  it('retries an event batch the browser refused as keepalive, once, without keepalive', async () => {
+    const fn = vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
+      if (init?.keepalive) throw new TypeError('Failed to fetch');
+      return new Response('{}', { status: 202 });
+    });
+    vi.stubGlobal('fetch', fn);
+    const queue = new EventQueue(new AgentClient(API, KEY, () => ({ visitor: { id: 'u' } })));
+    queue.push({ sessionId: 's', eventType: 'guide_dismissed', occurredAt: new Date().toISOString() });
+    await flushPromises();
+    expect(fn).toHaveBeenCalledTimes(2);
+    expect(fn.mock.calls[1][1]).toMatchObject({ keepalive: false });
+  });
+
+  it('keeps the guide on screen when the same visitor gets new tags, and re-fetches with them', async () => {
+    window.history.replaceState({}, '', '/dashboard');
+    const fetchMock = mockFetch({ [R.guides]: serving(makeGuide()), [R.events]: () => ({ status: 202 }) });
+    const { renderer, rendered, cleared } = fakeRenderer();
+    const engine = new GuideEngine();
+    await engine.init(baseOptions, renderer);
+    expect(rendered).toHaveLength(1);
+
+    await engine.identify({ visitor: { id: 'user-1', tags: ['POS'] } });
+
+    expect(cleared).toEqual([]);
+    expect(rendered).toHaveLength(1); // neither torn down nor shown twice
+    expect(bodyOf(callsTo(fetchMock, R.guides).slice(-1)[0])).toEqual({
+      visitor: { id: 'user-1', tags: ['POS'] },
+      account: { id: 'acme' },
+    });
+  });
+
+  it('drops a /guides answer requested for the previous identity', async () => {
+    window.history.replaceState({}, '', '/dashboard');
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    stubFetch(async (path, body) => {
+      if (path !== R.guides) return { status: 404 };
+      const tags = (body.visitor as { tags?: string[] } | undefined)?.tags ?? [];
+      if (tags.includes('anonymous')) {
+        await gate; // answered only after the visitor signed in
+        return { body: { enabled: true, guides: [makeGuide({ id: 'anonymous-only' })] } };
+      }
+      return { body: { enabled: true, guides: [] } };
+    });
+    const { renderer, rendered } = fakeRenderer();
+    const engine = new GuideEngine();
+    const started = engine.init({ apiBaseUrl: API, appKey: KEY, visitor: { tags: ['anonymous'] } }, renderer);
+    await flushPromises();
+    await engine.identify({ visitor: { id: 'p1', tags: ['signed-in'] } });
+    release();
+    await started;
+
+    expect(rendered).toEqual([]);
+  });
+
+  it('lets the latest of two overlapping identify() calls win', async () => {
+    window.history.replaceState({}, '', '/dashboard');
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    const fetchMock = stubFetch(async (path) => {
+      if (path === R.events) {
+        await gate; // the first identify() waits here, flushing the old user's events
+        return { status: 202 };
+      }
+      if (path === R.guides) return { body: { enabled: true, guides: [makeGuide()] } };
+      return { status: 404 };
+    });
+    const engine = new GuideEngine();
+    await engine.init(baseOptions, fakeRenderer().renderer); // shows guide-1: guide_shown is queued
+
+    const first = engine.identify({ visitor: { id: 'u2' } });
+    await flushPromises();
+    const second = engine.identify({ visitor: { id: 'u3' } });
+    await second;
+    release();
+    await first;
+
+    const lastGuides = callsTo(fetchMock, R.guides).slice(-1)[0];
+    expect(bodyOf(lastGuides).visitor).toEqual({ id: 'u3' });
+  });
+
+  it('does not bring back a guide torn down while it waited for its anchor', async () => {
+    window.history.replaceState({}, '', '/dashboard');
+    const waiting = makeGuide({
+      id: 'late',
+      steps: [makeStep({ targetSelector: '[data-guide-id="late"]' })],
+    });
+    let served: Guide[] = [waiting];
+    stubFetch((path) => (path === R.guides ? { body: { enabled: true, guides: served } } : { status: 202 }));
+    const { renderer, rendered } = fakeRenderer();
+    const engine = new GuideEngine();
+    await engine.init(baseOptions, renderer); // waits quietly for the anchor
+    served = [];
+    await engine.identify({ visitor: { id: 'someone-else' } });
+
+    const anchor = document.createElement('button');
+    anchor.setAttribute('data-guide-id', 'late');
+    document.body.appendChild(anchor);
+    await new Promise((resolve) => setTimeout(resolve, 700)); // past the first two polls
+
+    expect(rendered).toEqual([]);
+  });
+
+  it('still starts a help link when identify() overlaps the first help answer', async () => {
+    window.history.replaceState({}, '', '/dashboard?guideEngine=help:g1');
+    const listed = { ...makeGuide({ id: 'g1' }), help: { title: 'T', description: '', keywords: [], startPath: '/dashboard' } };
+    stubFetch((path) =>
+      path.endsWith('/help')
+        ? { body: { enabled: true, guides: [listed] } }
+        : path === R.guides
+          ? { body: { enabled: true, guides: [] } }
+          : { status: 202 },
+    );
+    const { renderer, rendered } = fakeRenderer();
+    const engine = new GuideEngine();
+    const started = engine.init(baseOptions, renderer); // its /help answer will be stale
+    await engine.identify({ visitor: { id: 'user-1', tags: ['POS'] } });
+    await started;
+
+    expect(rendered.map((r) => r.guide.id)).toEqual(['g1']);
+    expect(window.location.search).toBe('');
+  });
+
+  it('treats another account as another context: events flushed first, guides reset', async () => {
+    window.history.replaceState({}, '', '/dashboard');
+    const fetchMock = mockFetch({ [R.guides]: serving(makeGuide()), [R.events]: () => ({ status: 202 }) });
+    const { renderer, cleared } = fakeRenderer();
+    const engine = new GuideEngine();
+    await engine.init(baseOptions, renderer); // guide_shown queued under acme
+
+    await engine.identify({ account: { id: 'globex' } });
+
+    expect(bodyOf(callsTo(fetchMock, R.events)[0])).toMatchObject({ account: { id: 'acme' } });
+    expect(cleared).toEqual(['guide-1']);
+  });
+
+  it('combines overlapping partial identify() calls', async () => {
+    window.history.replaceState({}, '', '/dashboard');
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    const fetchMock = stubFetch(async (path) => {
+      if (path === R.events) {
+        await gate;
+        return { status: 202 };
+      }
+      return path === R.guides ? { body: { enabled: true, guides: [makeGuide()] } } : { status: 404 };
+    });
+    const engine = new GuideEngine();
+    await engine.init(baseOptions, fakeRenderer().renderer);
+
+    const first = engine.identify({ visitor: { id: 'u2' } });
+    await flushPromises();
+    const second = engine.identify({ account: { id: 'globex' } });
+    release();
+    await Promise.all([first, second]);
+
+    const last = bodyOf(callsTo(fetchMock, R.guides).slice(-1)[0]);
+    expect(last).toMatchObject({ visitor: { id: 'u2' }, account: { id: 'globex' } });
+  });
+
+  it('drops an answer requested while identify() was still flushing the old identity', async () => {
+    window.history.replaceState({}, '', '/dashboard');
+    let releaseEvents!: () => void;
+    const eventsGate = new Promise<void>((resolve) => (releaseEvents = resolve));
+    let releaseRoute!: () => void;
+    const routeGate = new Promise<void>((resolve) => (releaseRoute = resolve));
+    let guidesCalls = 0;
+    stubFetch(async (path, body) => {
+      if (path === R.events) {
+        await eventsGate;
+        return { status: 202 };
+      }
+      if (path !== R.guides) return { status: 404 };
+      guidesCalls++;
+      const visitor = (body.visitor as { id: string }).id;
+      if (guidesCalls === 1) return { body: { enabled: true, guides: [makeGuide()] } }; // init, as u1
+      if (visitor === 'user-1') {
+        await routeGate; // a navigation's answer for u1, arriving late
+        return { body: { enabled: true, guides: [makeGuide({ id: 'u1-only' })] } };
+      }
+      return { body: { enabled: true, guides: [] } };
+    });
+    const { renderer, rendered } = fakeRenderer();
+    const engine = new GuideEngine();
+    await engine.init(baseOptions, renderer); // shows guide-1; guide_shown queued
+
+    const switching = engine.identify({ visitor: { id: 'u2' } }); // waits on the flush
+    await flushPromises();
+    const navigating = engine.onRouteChange('/dashboard'); // still asks as u1
+    await flushPromises();
+    releaseEvents();
+    await switching;
+    releaseRoute();
+    await navigating;
+
+    expect(rendered.map((r) => r.guide.id)).toEqual(['guide-1']);
+  });
+
+  it('keeps the visitor id when identify() only updates tags; id: undefined makes them anonymous', async () => {
+    window.history.replaceState({}, '', '/dashboard');
+    const fetchMock = mockFetch({ [R.guides]: serving(), [R.events]: () => ({ status: 202 }) });
+    const engine = new GuideEngine();
+    await engine.init({ ...baseOptions, visitor: { id: 'u-42' } }, fakeRenderer().renderer);
+
+    await engine.identify({ visitor: { tags: ['POS'] } });
+    expect(bodyOf(callsTo(fetchMock, R.guides).slice(-1)[0]).visitor).toEqual({ id: 'u-42', tags: ['POS'] });
+
+    await engine.identify({ visitor: { id: undefined, tags: ['anonymous'] } });
+    expect(bodyOf(callsTo(fetchMock, R.guides).slice(-1)[0]).visitor).toEqual({
+      id: anonymousVisitorId(),
+      tags: ['anonymous'],
+    });
+  });
+
+  it('identify(null) signs the visitor out: guides removed, nothing fetched until the next identify()', async () => {
+    window.history.replaceState({}, '', '/dashboard');
+    const fetchMock = mockFetch({ [R.guides]: serving(makeGuide()), [R.events]: () => ({ status: 202 }) });
+    const { renderer, rendered, cleared } = fakeRenderer();
+    const engine = new GuideEngine();
+    await engine.init(baseOptions, renderer); // shows guide-1; guide_shown queued
+    const guidesBefore = callsTo(fetchMock, R.guides).length;
+
+    await engine.identify(null);
+    expect(cleared).toEqual(['guide-1']);
+    expect(eventsSent(fetchMock).map((e) => e.eventType)).toEqual(['guide_shown']); // sent as the old visitor
+    await engine.onRouteChange('/dashboard');
+    expect(callsTo(fetchMock, R.guides)).toHaveLength(guidesBefore);
+
+    await engine.identify({ visitor: { id: 'next-user' } });
+    expect(bodyOf(callsTo(fetchMock, R.guides).slice(-1)[0]).visitor).toEqual({ id: 'next-user' });
+    expect(rendered).toHaveLength(2);
   });
 });

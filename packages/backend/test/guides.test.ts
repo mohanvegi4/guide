@@ -155,6 +155,9 @@ describe('lifecycle', () => {
     for (const visitorTags of [[], ['has space'], ['<b>'], Array.from({ length: 101 }, (_, i) => `t${i}`)]) {
       expect((await call('put', `${base()}/draft`, { ...sampleVersion, visitorTags })).status).toBe(400);
     }
+    // The cap counts distinct tags.
+    const withDuplicate = [...Array.from({ length: 100 }, (_, i) => `t${i}`), 't0'];
+    expect((await call('put', `${base()}/draft`, { ...sampleVersion, visitorTags: withDuplicate })).body.visitorTags).toHaveLength(100);
     expect((await call('put', `${base()}/draft`, sampleVersion)).body.visitorTags).toBeNull();
 
     // Published with the version, and immutable like the rest of it.

@@ -1,6 +1,7 @@
 import { PoolClient } from 'pg';
 import { HttpError, notFound } from '../httpError';
 import { APP_COLUMNS, AppRow } from './orgs';
+import { toVersionResponse, versionColumns, VersionResponse, VersionRow } from './versions';
 
 /**
  * A customer's data lifecycle: taking an organization's data out (export)
@@ -67,21 +68,7 @@ export interface OrganizationExport {
       updatedAt: string;
       /** Lifetime totals. Raw events are not exported: they identify end users. */
       analytics: { shown: number; completed: number; dismissed: number };
-      versions: Array<{
-        id: string;
-        versionNumber: number;
-        steps: unknown;
-        routeMatch: unknown;
-        pageId: string | null;
-        startAt: string | null;
-        endAt: string | null;
-        accountIds: string[] | null;
-        visitorTags: string[] | null;
-        help: unknown;
-        activation: 'auto' | 'manual';
-        createdAt: string;
-        publishedAt: string | null;
-      }>;
+      versions: Array<VersionResponse & { createdAt: string }>;
     }>;
   }>;
   notes: string[];
@@ -180,24 +167,8 @@ export async function exportOrganization(client: PoolClient, orgId: string): Pro
      ORDER BY g.app_id, g.created_at, g.id`,
     [appIds],
   );
-  const versions = await client.query<{
-    id: string;
-    guide_id: string;
-    version_number: number;
-    steps: unknown;
-    route_match: unknown;
-    page_id: string | null;
-    start_at: string | null;
-    end_at: string | null;
-    account_ids: string[] | null;
-    visitor_tags: string[] | null;
-    help: unknown;
-    activation: 'auto' | 'manual';
-    created_at: string;
-    published_at: string | null;
-  }>(
-    `SELECT v.id, v.guide_id, v.version_number, v.steps, v.route_match, v.page_id, v.start_at, v.end_at,
-            v.account_ids, v.visitor_tags, v.help, v.activation, v.created_at, v.published_at
+  const versions = await client.query<VersionRow & { guide_id: string; created_at: string }>(
+    `SELECT ${versionColumns('v')}, v.guide_id, v.created_at
      FROM guide_version v JOIN guide g ON g.id = v.guide_id
      WHERE g.app_id = ANY($1::uuid[]) ORDER BY v.guide_id, v.version_number`,
     [appIds],
@@ -261,21 +232,7 @@ export async function exportOrganization(client: PoolClient, orgId: string): Pro
           analytics: { shown: g.shown, completed: g.completed, dismissed: g.dismissed },
           versions: versions.rows
             .filter((v) => v.guide_id === g.id)
-            .map((v) => ({
-              id: v.id,
-              versionNumber: v.version_number,
-              steps: v.steps,
-              routeMatch: v.route_match,
-              pageId: v.page_id,
-              startAt: v.start_at,
-              endAt: v.end_at,
-              accountIds: v.account_ids,
-              visitorTags: v.visitor_tags,
-              help: v.help,
-              activation: v.activation,
-              createdAt: v.created_at,
-              publishedAt: v.published_at,
-            })),
+            .map((v) => ({ ...toVersionResponse(v), createdAt: v.created_at })),
         })),
     })),
     notes: [

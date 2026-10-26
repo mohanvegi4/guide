@@ -53,7 +53,7 @@ export class GuideService implements OnDestroy {
   }
 
   /** Switch to a different end user (e.g. after login). */
-  identify(identity: IdentityOptions): Promise<void> {
+  identify(identity: IdentityOptions | null): Promise<void> {
     return this.engine.identify(identity);
   }
 
