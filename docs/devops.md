@@ -1,9 +1,13 @@
 ---
 title: DevOps quick guide
 nav_order: 5
+has_children: true
 ---
 
 # DevOps quick guide
+
+First deployment? Start with the [DevOps handoff](handoff-devops.md): the servers to provision,
+the decisions we need and the go-live steps.
 
 The short version of running Guide Engine on one server with the `deploy/` stack. Each task is a
 few commands. The [Guide Engine reference](../README.md#deploying) has the full detail, and
