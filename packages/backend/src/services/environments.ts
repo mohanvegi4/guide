@@ -2,7 +2,7 @@ import { PoolClient } from 'pg';
 import { HttpError } from '../httpError';
 
 /**
- * Environments and releases (migration 021).
+ * Environments and releases.
  *
  * An app's environments are its release stages in promotion order (position
  * 1 first); the last one is production. Each owns websites, which is how the

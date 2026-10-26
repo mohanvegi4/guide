@@ -118,8 +118,7 @@ export const routeMatchSchema = z.object({
  * SQL for a version's effective route: the saved page's URL when the version
  * references one (so live guides follow page edits), else its own
  * route_match. Expects `gv` (guide_version) and `p` (LEFT JOIN app_page ON
- * p.id = gv.page_id) in the FROM clause. Mirrors the active_guide view
- * (migration 007); every query that serves a route must use one of the two.
+ * p.id = gv.page_id) in the FROM clause. Mirrors the active_guide view; every query that serves a route must use one of the two.
  */
 export const RESOLVED_ROUTE_MATCH_SQL = `CASE WHEN p.id IS NOT NULL
   THEN jsonb_build_object('type', p.match_type::text, 'value', p.match_value)

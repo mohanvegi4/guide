@@ -43,9 +43,9 @@ deliberately for this project's scale and constraints:
     Internally the backend derives an `AppRole` (viewer | app_admin) from it for the existing
     per-app route checks; destructive app actions (delete, key rotation, forget visitor) are
     gated by `requireAppManager` (manager+) and, in the database, by `app.manager_app_ids`
-    (policies + the `application_guard_keys` trigger, migration 017).
+    (policies + the `application_guard_keys` trigger).
   - HS256 dev tokens exist only in development/test.
-- **Above organizations, Pendo-style (migration 009).**
+- **Above organizations, Pendo-style.**
   - `studio_user.platform_admin` (granted by SQL, then from the Administration page) runs the
     service through `withPlatformSession`: organizations, apps, members, counts — the
     `*_platform_select` policies never include guide_version / app_page / user_guide_state.
@@ -60,10 +60,10 @@ deliberately for this project's scale and constraints:
   app's websites list is enforced via CORS.
 - **Flag-driven enablement + an account allowlist + visitor tags.** That means a guide `enabled`
   flag, an app switch, a global kill switch, an optional per-version `account_ids` list, and an
-  optional per-version `visitor_tags` list (migration 020) matched by overlap against the opaque
+  optional per-version `visitor_tags` list matched by overlap against the opaque
   `visitor.tags` the host passes or signs. Don't build metadata segments (attributes, rules,
   operators) unless explicitly asked.
-- **Environments are release stages inside one app (migration 021).** An app's environments
+- **Environments are release stages inside one app.** An app's environments
   (e.g. Dev → Test → Accept → Prod, last = production) each own websites; the agent picks one
   from the request Origin. Publishing releases to the first; promote / revert / withdraw move
   `guide_release` rows and append to `guide_release_event`. `guide.current_version_id` mirrors
@@ -91,8 +91,9 @@ deliberately for this project's scale and constraints:
 - **Studio routes** resolve access with `requireOrgRole` / `requireAppRole`
   (`src/routes/studio/context.ts`). Unknown or other people's ids answer 404; insufficient
   role answers 403.
-- **Migrations** are new numbered files in `packages/backend/migrations/`. Never edit one
-  that has been applied anywhere.
+- **Migrations** are new numbered files in `packages/backend/migrations/`, after
+  `001_schema.sql` (the whole schema; the development-era migrations were squashed into it
+  before the first deployment). Never edit one that has been applied anywhere.
 - Comments explain *why*, not just *what*. Prefer explicit error handling (`HttpError`) and
   fail-closed defaults over optimistic assumptions.
 - **Studio `effect()`s that load data** must call the API inside `untracked()`. The HTTP

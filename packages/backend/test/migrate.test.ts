@@ -135,7 +135,7 @@ describe('pendingMigrations and the boot check', () => {
   });
 
   it('lists every file on a fresh database (no schema_migrations table yet)', async () => {
-    expect(MIGRATION_FILES.length).toBeGreaterThan(2);
+    expect(MIGRATION_FILES.length).toBeGreaterThan(0);
     await expect(pendingMigrations(db)).resolves.toEqual(MIGRATION_FILES);
   });
 
@@ -161,12 +161,16 @@ describe('pendingMigrations and the boot check', () => {
     expect(warn).toHaveBeenCalledTimes(2);
   });
 
-  it('lists exactly the later files after migrating through an earlier one', async () => {
-    await runMigrations(db, () => undefined, { through: MIGRATION_FILES[1] });
-    await expect(pendingMigrations(db)).resolves.toEqual(MIGRATION_FILES.slice(2));
+  it('lists exactly the files the database has not recorded', async () => {
+    await runMigrations(db, () => undefined);
+    // As if the newest file had shipped after this database was migrated.
+    const newest = MIGRATION_FILES[MIGRATION_FILES.length - 1];
+    await db.query(`DELETE FROM schema_migrations WHERE filename = $1`, [newest]);
+    await expect(pendingMigrations(db)).resolves.toEqual([newest]);
     await expect(assertMigrationsApplied(db, { NODE_ENV: 'production' }, () => undefined)).rejects.toThrow(
-      `${MIGRATION_FILES.length - 2} database migration(s) not applied`,
+      '1 database migration(s) not applied',
     );
+    await db.query(`INSERT INTO schema_migrations (filename) VALUES ($1)`, [newest]);
   });
 
   it('is empty after runMigrations, and the boot check is silent', async () => {

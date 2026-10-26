@@ -15,7 +15,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). How a rel
   guides by what the visitor may do. Unsigned visitors' tags go with the `/guides` and `/help`
   requests only; malformed and duplicate tags are dropped first (letters, digits and `_ . : / -`,
   at most 100 characters each and 1000 tags). With signed identity, put them in the token's
-  `visitor` claim instead. Needs a backend with migration 020; older backends ignore them.
+  `visitor` claim instead. Needs a backend from this release; older backends ignore them.
 
 ### Changed
 

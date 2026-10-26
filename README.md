@@ -822,7 +822,7 @@ A `VersionBody` is:
 | `application` | `public_key`, `allowed_origins` (the union of its environments' websites, kept in sync by the API; the CORS check reads it), `identity_mode`, `signing_secret`, `enabled` (the app switch), `route_mode` (`path` or `hash`), and the help center: `help_enabled`, `help_button_label`, `help_button_color`, `help_position`. |
 | `studio_user` | People who use the Studio, keyed by (`oidc_issuer`, `oidc_sub`); created on first sign-in. `platform_admin` marks Guide Engine staff. |
 | `support_access_log` | Every request a platform admin made under an organization's support access (who, when, method, path). |
-| `org_member` | One role per person per organization (viewer / editor / manager / owner), applying to every app. `app_member` (per-app grants) is empty since migration 016 and no longer read. |
+| `org_member` | One role per person per organization (viewer / editor / manager / owner), applying to every app. `app_member` (per-app grants from before the organization-wide role) is empty and no longer read. |
 | `invitation` | Invite links: hashed token, role, expiry, single use. |
 | `app_page` | Saved pages per app: `name`, `match_type`, `match_value`, `start_path`. |
 | `app_environment` | An app's release stages: `name`, `position` (promotion order; the highest is production), `origins` (its websites) and `analytics_enabled`. |
@@ -846,23 +846,12 @@ pending files and the others wait, then find nothing to do.
 
 | Migration | What it does |
 |---|---|
-| `001`–`004` | The original OCLC-era tenant schema and its RLS hardening, drafts and platform admins (kept, never edited). |
-| `005_organizations_apps.sql` | Converts that schema into orgs and apps. Each former tenant becomes an org with a "Default app"; its events keep the old tenant as their `account_id`. Global guides move to a "Migrated global guides" org. Then every RLS policy is rebuilt on session variables. |
-| `006_help_center.sql` | Adds `guide_version.help` and the per-app help-center settings (the button color is CHECK-limited to a hex value). |
-| `007_app_pages.sql` | Adds saved pages (`app_page`, with RLS), `guide_version.page_id`, and makes `active_guide` resolve routes through pages. |
-| `008_help_position.sql` | Adds `help_position`: where the help list and its confirmation open (a corner or `center`, CHECK-limited). |
-| `009_platform_admin.sql` | Platform admins, organization suspension, support access and its log, the `*_platform_select` policies, and a stricter `guide_version` select policy. |
-| `010_production.sql` | `agent_rate_limit` (the shared agent-API budget), the `app_retention()` function and the retention policies on `guide_event`, an index on `occurred_at`. |
-| `011_agent_delivery.sql` | `agent_error` with its RLS: agent insert/select for its own app (the hourly cap counts in the same session), Studio and platform select, retention select/delete. |
-| `012_engine_gaps.sql` | Adds `application.route_mode` (CHECK-limited to `path` / `hash`), the `help_opened` / `help_searched` event types, and makes `guide_event.guide_id` nullable for those two types only (a CHECK constraint; the foreign keys stay). |
-| `013_data_lifecycle.sql` | Deletion policies: `app_owner_org_ids()` (a new session variable, owners only) with `organization_owner_delete`, `organization_platform_delete`, and `application_app_admin_delete`. Nothing new is readable. |
-| `014_forget_visitor.sql` | "Forget this visitor": policies to delete one visitor's `guide_event` rows and read/delete their `user_guide_state` rows (scoped to app admins here; narrowed to managers in 017). |
-| `015_org_roles_enum.sql` / `016_org_roles_convert.sql` | One organization-wide role per person: adds `manager` / `editor` / `viewer` to `org_role`, converts `admin` → manager and `member` → editor (anyone with an editing grant on any app) or viewer, empties `app_member`, adds CHECK constraints, and lets every member see every app of their org (`application_select` on `app_org_ids()`). |
-| `019_shown_state.sql` | Adds `shown` to `user_guide_status`: an automatic guide shows once per visitor; `/guides` skips guides the visitor has already seen, like finished ones, until a newer version. |
-| `017_manager_rls.sql` | The editor / manager split in the database: `app_manager_app_ids()` (apps of the orgs where the user is a manager or owner) replaces `app_admin_app_ids()` in the forget-visitor policies, the per-app delete policy from 013 is dropped (`application_delete` on `app_admin_org_ids()` already covers managers), and the `application_guard_keys` trigger refuses a change to `public_key` / `signing_secret` from anyone but a manager (or the maintenance scope used by `encrypt-secrets`). |
-| `018_guide_activation.sql` | `guide_version.activation` (`auto` / `manual`, CHECK-limited; `manual` requires a help listing) on the version and the `active_guide` view. The agent's `/guides` serves only `auto` versions. |
-| `020_visitor_tags.sql` | `guide_version.visitor_tags` (null = every visitor, else 1–100 tags) on the version and the `active_guide` view. `/guides` and `/help` serve a tagged guide only to visitors whose tags overlap. |
-| `021_environments.sql` | `app_environment`, `guide_release`, `guide_release_event` with their RLS; `guide_event.environment_id`; `user_guide_state` keyed per environment; `active_guide` rebuilt on releases. Every existing app gets one *Production* environment with its websites, its live versions become Production releases (with a log entry each), and its events and visitor state are filed under it. |
+| `001_schema.sql` | The whole schema: types, the session-variable helpers RLS reads, every table with its constraints and indexes, the `application_guard_keys` trigger, the `active_guide` view, every RLS policy (enabled and forced), and the kill-switch row. |
+
+The 21 migrations written during development were squashed into `001_schema.sql` before the first
+deployment (they had only run on development databases); [How the schema got
+here](docs/architecture.md#53-how-the-schema-got-here) keeps their design history. From here on,
+a schema change is a new numbered file, and an applied file is never edited.
 
 ---
 
@@ -878,7 +867,7 @@ npm test --workspace=apps/studio          # Studio components and services
 
 | Suite | Tests | Covers |
 |---|---|---|
-| **Backend** | 258 | self-serve orgs; apps and settings; the role matrix; invitations; members; saved pages; platform admins and support access (consent, read-only, logging, RLS); secrets at rest, the shared rate limiter, retention (events and agent errors), production boot checks; the agent script's ETag / 304 / cache headers and the version endpoint; the security headers (and that the agent surface keeps only nosniff); agent error reports (validation, the hourly cap, the Studio list, RLS isolation, platform counts); org/app isolation through the API **and directly in RLS** (including replaying the owner bootstrap and forging memberships); the agent API (origins, keys, identity modes, account targeting, kill switches, events and per-visitor state, preview); the guide lifecycle; sanitization; stable step ids; analytics; OIDC (a local JWKS server, algorithm confusion); migration 005's data conversion; concurrent migration runs (the advisory lock); and the pending-migrations boot check |
+| **Backend** | 275 | self-serve orgs; apps and settings; the role matrix; invitations; members; saved pages; platform admins and support access (consent, read-only, logging, RLS); secrets at rest, the shared rate limiter, retention (events and agent errors), production boot checks; the agent script's ETag / 304 / cache headers and the version endpoint; the security headers (and that the agent surface keeps only nosniff); agent error reports (validation, the hourly cap, the Studio list, RLS isolation, platform counts); org/app isolation through the API **and directly in RLS** (including replaying the owner bootstrap and forging memberships); the agent API (origins, keys, identity modes, account targeting, kill switches, events and per-visitor state, preview); the guide lifecycle; sanitization; stable step ids; analytics; OIDC (a local JWKS server, algorithm confusion); environments, releases, promote / revert and per-environment analytics; concurrent migration runs (the advisory lock); and the pending-migrations boot check |
 | **Core** | 102 | includes the help widget (search, keyboard, safe rendering), help launches (same page, other page, arrival, shared links) and error reporting (sampling, the per-page cap, never throwing) |
 | **Agent** | 8 | includes `openHelp` queued before load and the build-time version |
 | **Studio** | 45 | guide list and editor (saved pages), Pages, app settings (including the agent-error list), the Administration page |

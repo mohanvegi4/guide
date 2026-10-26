@@ -33,7 +33,7 @@ const idSchema = z.string().trim().min(1).max(256);
 export const VISITOR_TAG_PATTERN = /^[A-Za-z0-9_.:/-]{1,100}$/;
 export const visitorTagSchema = z.string().regex(VISITOR_TAG_PATTERN, 'letters, digits and _ . : / - only (max 100)');
 
-/** Tags a guide version may list (routes/studio/guides.ts, migration 020's CHECK). */
+/** Tags a guide version may list (routes/studio/guides.ts, and chk_guide_version_visitor_tags). */
 export const MAX_GUIDE_TAGS = 100;
 /**
  * Tags a visitor may carry. Generous, because a host application may derive

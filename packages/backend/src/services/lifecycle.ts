@@ -290,8 +290,8 @@ export function exportFilename(orgName: string, now = new Date()): string {
  * Deletes an organization and everything in it: apps, guides and their
  * versions, saved pages, events, visitor state, agent errors, memberships,
  * invitations and the support access log. One statement: every child table
- * cascades from its parent (migration 013 explains why that is the safe
- * route under RLS). Studio user accounts stay.
+ * cascades from its parent (migrations/001_schema.sql explains why that
+ * is the safe route under RLS). Studio user accounts stay.
  *
  * Throws 404 when the session may not delete it (not an owner, not a
  * platform admin, or no such organization): the policies simply match no row.

@@ -11,12 +11,12 @@ export const pool = new Pool({
 //
 // Every query against an org/app-scoped table runs inside one of the helpers
 // below. Each opens a transaction and sets session variables (transaction-
-// local) that the Row-Level Security policies in migration 005 read. The
-// variables are derived ONLY from verified credentials — a Studio user id
+// local) that the Row-Level Security policies read (migrations/001_schema.sql).
+// The variables are derived ONLY from verified credentials — a Studio user id
 // from a verified token, or an app resolved from its public key — never from
 // request input. Unscoped sessions match no rows (fail closed).
 //
-// Above the organization level (migration 009):
+// Above the organization level:
 //   withPlatformSession  a platform admin running the service: organizations,
 //                        apps, members, counts — never guide content
 //   withSupportSession   a platform admin reading ONE organization that has
@@ -30,7 +30,7 @@ export const pool = new Pool({
 
 /**
  * One role per person per organization, for every one of its sites:
- *   owner > manager > editor > viewer  (migrations 015/016)
+ *   owner > manager > editor > viewer
  */
 export type OrgRole = 'owner' | 'manager' | 'editor' | 'viewer';
 const ORG_ROLE_RANK: Record<OrgRole, number> = { viewer: 0, editor: 1, manager: 2, owner: 3 };
@@ -123,7 +123,7 @@ export async function resolveStudioContext(client: PoolClient, userId: string): 
   );
   // Sites where destructive actions (delete, rotate keys, forget visitors) are
   // allowed: managers and owners. The API checks this (requireAppManager) and
-  // so do the policies and the key-guard trigger (migration 017).
+  // so do the policies and the key-guard trigger (application_guard_keys).
   await setVar(
     client,
     'app.manager_app_ids',

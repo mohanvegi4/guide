@@ -8,7 +8,7 @@ nav_order: 4
 This guide explains, part by part, how Guide Engine works inside: what runs where, what each piece
 stores, how a request is authorized, and how a guide gets from the Studio onto a visitor's screen.
 It is written for engineers who will run, extend or review the system, and it describes the code
-as it is on `main` (version 0.3.0, migrations 001 to 021). Where the code and the intent differ, the
+as it is on `main` (version 0.3.0, schema `001_schema.sql`). Where the code and the intent differ, the
 guide says so in [Known gaps and quirks](#16-known-gaps-and-quirks).
 
 For *using* the product, read the [Guide Engine reference](../README.md) and the
@@ -334,7 +334,7 @@ has RLS **enabled and forced**, so even the table owner is subject to it.
 | `agent_rate_limit` | Rate-limit windows (unscoped) | `(bucket, window_start)`, `count` |
 | `schema_migrations` | Applied migrations (unscoped) | `filename`, `applied_at` |
 
-Two leftovers exist: `app_member` (per-app roles, emptied in 016 and unused) and `step` (an early
+Two leftovers exist: `app_member` (per-app roles, empty since the organization-wide role and unused) and `step` (an early
 normalized steps table that was never used). Neither is read by the code.
 
 **Constraints that encode rules.** A few business rules live in the schema, not only in code:
@@ -377,7 +377,7 @@ WHERE g.enabled = TRUE
   AND (gv.end_at   IS NULL OR gv.end_at   >= now());
 ```
 
-One row per guide **per environment it is released to** (since migration 021); every reader
+One row per guide **per environment it is released to**; every reader
 filters on `environment_id`. A release only ever points at a published version, and the view
 checks `published_at` again as a backstop.
 
@@ -387,7 +387,10 @@ live guide on it at once, with no republish.
 
 ### 5.3 How the schema got here
 
-The migrations tell the design history. In short:
+The schema is one file, `packages/backend/migrations/001_schema.sql`: the 21 migrations written
+during development were squashed into it before the first deployment, and a dump of the squashed
+schema matched the chain's object for object. The old files are in git history (before the commit
+"Squash the database migrations into one"). They tell the design history; in short:
 
 | Migration | Change | Why |
 |---|---|---|
@@ -1129,8 +1132,7 @@ analytics.
 
 All analytics are SQL over `guide_event` at request time. There is no rollup table. Every view
 reads **one environment** (`?environment=<id>`, else production; an id of another app is a 404) and
-returns its `environmentId`; numbers are never added up across environments. Events recorded
-before migration 021 were filed under each app's *Production* environment, and events of a deleted
+returns its `environmentId`; numbers are never added up across environments. Events of a deleted
 environment keep `environment_id` null, so they appear in no view (they still count for the
 visitor export and retention).
 
@@ -1367,9 +1369,9 @@ Things that are true of the code today and worth knowing before you rely on or c
 
 | If you are changing… | Start here |
 |---|---|
-| What a Studio user may do | [`routes/studio/context.ts`](../packages/backend/src/routes/studio/context.ts), [`db.ts`](../packages/backend/src/db.ts), migrations 005, 016, 017 |
-| A database rule | A **new** file in [`migrations/`](../packages/backend/migrations); never edit an applied one |
-| Which guides a visitor gets | [`routes/agent.ts`](../packages/backend/src/routes/agent.ts) (`/guides`, `/help`), the `active_guide` view (migration 021) |
+| What a Studio user may do | [`routes/studio/context.ts`](../packages/backend/src/routes/studio/context.ts), [`db.ts`](../packages/backend/src/db.ts), the policies in `001_schema.sql` |
+| A database rule | A **new** numbered file in [`migrations/`](../packages/backend/migrations) after `001_schema.sql`; never edit an applied one |
+| Which guides a visitor gets | [`routes/agent.ts`](../packages/backend/src/routes/agent.ts) (`/guides`, `/help`), the `active_guide` view in `001_schema.sql` |
 | Environments, releases, promote and revert | [`services/environments.ts`](../packages/backend/src/services/environments.ts), [`routes/studio/environments.ts`](../packages/backend/src/routes/studio/environments.ts), the release routes in `routes/studio/guides.ts` |
 | Visitor identity | [`auth/visitor.ts`](../packages/backend/src/auth/visitor.ts), [Signed identity](integration/signed-identity.md) |
 | Studio sign-in | [`auth/oidc.ts`](../packages/backend/src/auth/oidc.ts), [`auth/studio.ts`](../packages/backend/src/auth/studio.ts), [`auth/config.ts`](../packages/backend/src/auth/config.ts), Studio [`core/auth.service.ts`](../apps/studio/src/app/core/auth.service.ts) |

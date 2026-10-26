@@ -37,7 +37,7 @@ import {
  *   editor     + create guides, save drafts, mint preview links
  *   publisher  + publish, enable/disable, roll back
  *
- * Isolation: RLS (migration 005) only shows guides of apps in the session's
+ * Isolation: RLS only shows guides of apps in the session's
  * app set; every query here also filters by app_id explicitly.
  */
 export const guidesRouter = Router({ mergeParams: true });

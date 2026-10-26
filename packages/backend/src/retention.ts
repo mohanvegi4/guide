@@ -8,8 +8,8 @@ const logInfo = (msg: string) => logger.info(msg);
 /**
  * Keeps the database from growing forever:
  *  - guide_event rows older than EVENT_RETENTION_DAYS are deleted in batches
- *    (the only code path allowed to delete events — migration 010);
- *  - agent_error rows age out on the same schedule (migration 011);
+ *    (through the guide_event_retention_* policies);
+ *  - agent_error rows age out on the same schedule;
  *  - spent agent_rate_limit windows are swept.
  * Runs daily inside the backend (scheduleRetention) and on demand
  * (`npm run retention -- --days 400`). Several replicas may run it at once:

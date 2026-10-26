@@ -11,7 +11,7 @@ import { idParam, requireAppManager, studio } from './context';
  * Customers are the controllers for their end users, and they identify them
  * by the visitor id their own site passed to guideEngine.initialize(). When
  * an end user asks "what do you hold about me?" or "forget me", the app's
- * admin answers from here (app_admin role; policies in migration 014):
+ * admin answers from here (app_admin role; the *_manager_* policies):
  *   GET     everything keyed by that visitor id, as a JSON download
  *   DELETE  the same rows, gone in one transaction ("forget this visitor")
  * Agent error reports carry no visitor id, so they are not involved.
