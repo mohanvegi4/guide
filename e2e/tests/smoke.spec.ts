@@ -167,6 +167,9 @@ test('sign in with SSO, create an org and an app, publish a guide, see it on the
       await expect(page.getByRole('radio', { name: 'A custom route' })).toBeChecked();
       await expect(page.getByRole('combobox', { name: 'Route match' })).toHaveValue('exact');
       await expect(page.getByRole('textbox', { name: 'Path', exact: true })).toHaveValue('/');
+      // New guides start as help-center topics; this one should pop up on the page.
+      await expect(page.getByRole('radio', { name: /^Only from the help center/ })).toBeChecked();
+      await page.getByRole('radio', { name: /^Automatically/ }).check();
       await expect(page.getByRole('radio', { name: /^Automatically/ })).toBeChecked();
       // One step, no anchor: it shows as a centered card.
       await expect(page.getByLabel('Anchor (data-guide-id)')).toHaveValue('');
