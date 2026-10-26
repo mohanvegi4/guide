@@ -146,8 +146,11 @@ test('sign in with SSO, create an org and an app, publish a guide, see it on the
       appKey = key ?? '';
       // The snippet is for this app: the key is the one shown in the header.
       await expect(page.getByText(`Public key ${appKey}`)).toBeVisible();
-      // Guides only load on the website we gave the app.
-      await expect(page.getByRole('textbox', { name: 'Websites, one per line' })).toHaveValue(SITE_ORIGIN);
+      // Guides only load on the website we gave the app, which belongs to its
+      // one environment, Production.
+      await expect(page.getByRole('textbox', { name: 'Websites of Production, one per line' })).toHaveValue(
+        SITE_ORIGIN,
+      );
     });
 
     await test.step('Create a guide: one centered card on the home page', async () => {
