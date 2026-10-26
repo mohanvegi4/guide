@@ -54,4 +54,5 @@ nav_order: 5
 ```
 
 Link to it from `index.md` as `<name>.md`; the build turns that into `<name>.html`. Pages under
-`docs/legal/` set `parent: Legal templates` to nest under the legal section.
+`docs/legal/` set `parent: Legal templates` to nest under the legal section, and pages under
+`docs/wise/` set `parent: WISE integration`.

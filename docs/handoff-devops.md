@@ -18,6 +18,9 @@ Background reading, all optional:
 - [DevOps quick guide](devops.md): everyday commands for the `deploy/` stack
 - [Go-live checklist](../README.md#go-live-checklist) in the reference
 - [How Guide Engine is built](architecture.md)
+- [WISE integration](wise/index.md): the [integration and production TODO](wise/integration.md),
+  the [signed identity spec for the WISE API](wise/signed-identity.md) and the
+  [project handbook](wise/handbook.md) (projects, hosts, configuration files)
 
 ---
 
@@ -203,9 +206,9 @@ curl -s https://API_HOST/agent/v1/version       # {"version":"…","hash":"…"}
 
 | Who | What |
 |---|---|
-| Guide Engine integration | Create the production "WISE Staff console" and "WISE OPAC" applications in the Studio, with the real site origins in their websites list, and re-create the guides with their permission tags. |
+| Guide Engine integration | Create the production "WISE Staff console" and "WISE OPAC" applications in the Studio, with the real site origins in their websites list, and re-create the guides with their permission tags (the [guide catalogue](wise/integration.md#13-studio-content-and-the-guide-catalogue)). |
 | WISE frontend | Merge the two `poc/guide-engine` branches through the normal review. Put the production API host and app keys in each app's `environment.prod.ts` (today `null`, so guides are off). |
-| WISE API team | Build the two signed-identity endpoints ([Signed identity](integration/signed-identity.md)). They need each app's signing secret from the Studio, stored in the WISE backend configuration per environment: a secret for DevOps to manage. |
+| WISE API team | Build the two signed-identity endpoints ([Signed identity for the WISE API](wise/signed-identity.md), on top of the generic [Signed identity](integration/signed-identity.md) contract). They need each app's signing secret from the Studio, stored in the WISE backend configuration per environment: a secret for DevOps to manage. |
 | Product, legal | Privacy notice wording for patrons and the event retention period. |
 
 ---

@@ -56,6 +56,17 @@ an **organization** owns any number of **applications**, and everyone in it has 
 - [Legal templates](legal/index.md): terms of service, privacy policy, data processing addendum
   and a subprocessor list to adapt before offering Guide Engine as a hosted service.
 
+**Teams integrating Guide Engine into WISE**
+
+- [WISE integration](wise/index.md): Guide Engine in the WISE staff console and the OPAC.
+- [Integration and production TODO](wise/integration.md): what was built, how the two apps are
+  wired, the guide catalogue with the visitor tags each guide needs, running it locally, and what
+  remains before production.
+- [Signed identity for the WISE API](wise/signed-identity.md): the two identity endpoints the WISE
+  API team builds, the staff and patron tag rules, rollout and acceptance.
+- [Project handbook](wise/handbook.md): every project, tool, host, Docker and configuration file,
+  and DevOps in short.
+
 ## Where the content comes from
 
 The reference pages are the repository's `README.md` and `apps/studio/README.md`, assembled at

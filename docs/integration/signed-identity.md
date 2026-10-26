@@ -155,4 +155,5 @@ and decode both at the terminal (`echo <token> | cut -d. -f2 | base64 -d`).
 - Switching the mode and generating or rotating the secret: **Install & settings → Signed
   identity** in the Studio ([Studio reference](../reference/studio.md#install--settings-editors-the-danger-zone-needs-a-manager)).
 - The agent API and its error codes: [Agent API](../reference/README.md#agent-api-public-app-key-cors-for-the-apps-websites).
+- The WISE staff console and OPAC endpoints built on this contract: [Signed identity for the WISE API](../wise/signed-identity.md).
 - The security model as a whole: [Identity, roles and security](../reference/README.md#identity-roles-and-security).
