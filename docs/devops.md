@@ -65,6 +65,9 @@ All in `deploy/` on the server:
    ./render-realm.sh
    docker compose up -d --wait
    ```
+   The backend creates the database schema on its first start (one file, `001_schema.sql`, plus
+   any later numbered files). Start with an empty `guide_engine` database: one left over from an
+   image older than the squashed schema can't be upgraded, so drop and recreate it.
 6. Create the first user in Keycloak at `https://AUTH_HOST/admin` (realm **guide-engine** →
    **Users → Add user**, tick **Email verified**, set a password on **Credentials**).
 7. That person signs in to the Studio and creates the first organization.

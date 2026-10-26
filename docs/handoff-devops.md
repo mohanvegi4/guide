@@ -45,6 +45,28 @@ Engine is still worth having, to try Guide Engine upgrades and restores before p
 A ready-made single-host stack is in this repository under `deploy/` (compose file, Caddyfile,
 backup and restore scripts, alert rules). Use it as is, or as the reference for your platform.
 
+**The database schema.** The backend creates and upgrades the `guide_engine` schema itself; there
+is no separate schema tool or SQL to run by hand. The schema lives in
+`packages/backend/migrations/` (inside the backend image):
+
+| File | What it is |
+|---|---|
+| `001_schema.sql` | The whole schema: tables, constraints, indexes, the row-level security policies, the one view and the kill-switch row. The development history was squashed into this one file before this first deployment. |
+| `002_drop_leftovers.sql` | Removes unused development-era tables and values. |
+
+- On start (or `node packages/backend/dist/migrate.js` as a release step, with
+  `RUN_MIGRATIONS=false` on the containers), the backend applies the files its
+  `schema_migrations` table hasn't recorded, in order, each in its own transaction, under an
+  advisory lock, so several replicas can start together.
+- **Start from an empty `guide_engine` database.** A database created by an image older than the
+  release in section 8 (a trial deployment, say) recorded the pre-squash file names and can't be
+  upgraded: drop and recreate it. Production has never run them, so this only concerns trials.
+- Later schema changes arrive as new numbered files (`003_…`) in a new image and apply on its
+  first start. Take a backup before every deploy. The backend refuses to start in production while
+  a file is unapplied, and names it.
+- The `guide_engine` role must own the schema it creates, and must not be a superuser or have
+  `BYPASSRLS` (section 4).
+
 **Who calls what**
 
 | Caller | Calls | Must be reachable from |
@@ -171,8 +193,10 @@ values to provide per environment.
 4. **Keycloak realm.** Run `deploy/render-realm.sh` with the environment's settings: it produces the
    production realm (no test users, brute-force protection on, redirect URIs set to the Studio
    host). Keycloak imports it on first start only.
-5. **Start** PostgreSQL, Keycloak, backend, Studio and the ingress. The backend migrates the
-   database on its first start.
+5. **Start** PostgreSQL, Keycloak, backend, Studio and the ingress. The backend creates the schema
+   in the empty `guide_engine` database on its first start (`001_schema.sql`, then
+   `002_drop_leftovers.sql`; see section 1). Check with
+   `SELECT filename FROM schema_migrations;` (two rows).
 6. **First user.** In the Keycloak admin console, realm `guide-engine`: add a user, tick *Email
    verified*, set a password. Also create a permanent admin in the `master` realm and turn on its
    brute-force detection.
@@ -220,9 +244,9 @@ curl -s https://API_HOST/agent/v1/version       # {"version":"…","hash":"…"}
 
 ## 8. Status and known limits
 
-- **Release to deploy.** Commit `12d6144` on `main`. CI published its images as
-  `ghcr.io/mohanvegi4/guide/backend:12d6144fa1f1de40d18c39ec910055029bb3fc4f` and
-  `ghcr.io/mohanvegi4/guide/studio:12d6144fa1f1de40d18c39ec910055029bb3fc4f`. Deploy by that tag,
+- **Release to deploy.** Commit `a1e77d5` on `main`. CI published its images as
+  `ghcr.io/mohanvegi4/guide/backend:a1e77d5fd58576aca3f1a4d7f493cf99079f6dbe` and
+  `ghcr.io/mohanvegi4/guide/studio:a1e77d5fd58576aca3f1a4d7f493cf99079f6dbe`. Deploy by that tag,
   not `latest`, so every environment runs the same build.
 - **Graceful shutdown.** The backend does not drain requests on `SIGTERM`. Take an instance out of
   the load balancer (readiness) before stopping it during a rolling deploy.
