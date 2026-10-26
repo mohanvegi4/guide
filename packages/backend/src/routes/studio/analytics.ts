@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { asyncHandler } from '../../asyncHandler';
+import { analyticsEnvironmentId } from '../../services/environments';
 import { idParam, parseBody, requireAppRole, studio } from './context';
 
 /**
@@ -50,9 +51,13 @@ export function toRange(q: { from?: string; to?: string }): AnalyticsRange {
 }
 
 /** The per-guide analytics query string: an optional window, and an optional breakdown. */
+/** ?environment= — whose numbers; omitted, production's. Analytics are never mixed across environments. */
+export const environmentQuerySchema = z.object({ environment: z.string().uuid().optional() });
+
 export const guideAnalyticsQuerySchema = z
   .object({
     by: z.enum(['account']).optional(),
+    environment: z.string().uuid().optional(),
     from: isoDateOrTime.optional(),
     to: isoDateOrTime.optional(),
   })
@@ -92,8 +97,10 @@ analyticsRouter.get(
   '/apps/:appId/analytics',
   asyncHandler(async (req, res) => {
     const appId = idParam(req, 'appId');
+    const query = parseBody(environmentQuerySchema, req.query);
     const stats = await studio(req, async (client, ctx) => {
       requireAppRole(ctx, appId, 'viewer');
+      const environmentId = await analyticsEnvironmentId(client, appId, query.environment);
       // LEFT JOIN so guides without events still appear (with zeros): the
       // list page shows one row per guide. Events are joined on app_id too,
       // so the (app_id, guide_id) index serves the lookup.
@@ -109,21 +116,22 @@ analyticsRouter.get(
                 COUNT(e.id) FILTER (WHERE e.event_type = 'guide_completed')::int AS completed,
                 COUNT(e.id) FILTER (WHERE e.event_type = 'guide_dismissed')::int AS dismissed
          FROM guide g
-         LEFT JOIN guide_event e ON e.guide_id = g.id AND e.app_id = g.app_id
+         LEFT JOIN guide_event e ON e.guide_id = g.id AND e.app_id = g.app_id AND e.environment_id = $2
          WHERE g.app_id = $1
          GROUP BY g.id, g.name
          ORDER BY shown DESC, g.name`,
-        [appId],
+        [appId, environmentId],
       );
       // COUNT(DISTINCT account_id) skips NULLs: anonymous visitors count as
       // visitors but not as an account.
       const reach = await client.query<{ visitors: number; accounts: number }>(
         `SELECT COUNT(DISTINCT visitor_id)::int AS visitors, COUNT(DISTINCT account_id)::int AS accounts
          FROM guide_event
-         WHERE app_id = $1 AND occurred_at >= now() - make_interval(days => $2)`,
-        [appId, REACH_WINDOW_DAYS],
+         WHERE app_id = $1 AND environment_id = $3 AND occurred_at >= now() - make_interval(days => $2)`,
+        [appId, REACH_WINDOW_DAYS, environmentId],
       );
       return {
+        environmentId,
         guides: guides.rows.map((g) => ({
           guideId: g.guide_id,
           name: g.name,

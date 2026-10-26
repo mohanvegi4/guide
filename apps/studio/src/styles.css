@@ -66,6 +66,15 @@ button.link { border: none; background: none; color: var(--primary); padding: 2p
 .versions li { display: flex; justify-content: space-between; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--border); }
 .versions li.current strong { color: var(--primary); }
 .version-actions { display: flex; flex-direction: column; align-items: flex-end; }
+/* Environments (release stages): settings card, the editor's releases panel, the analytics picker. */
+.environments { list-style: none; margin: 0; padding: 0; }
+.environments > li.card.nested { margin: 0 0 12px; }
+.releases li { flex-direction: column; }
+.release-row { display: flex; justify-content: space-between; gap: 8px; }
+.release-pick { margin: 4px 0 0; }
+.release-history { margin: 4px 0 0; padding-left: 18px; }
+.release-chip { display: inline-block; margin: 0 8px 0 0; white-space: nowrap; }
+.environment-select { flex-direction: row; align-items: center; gap: 6px; margin: 0; }
 .num { text-align: right; width: 48px; font-variant-numeric: tabular-nums; }
 .bar-cell { width: 45%; }
 .bar { height: 10px; background: var(--primary); border-radius: 4px; min-width: 2px; }

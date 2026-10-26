@@ -36,12 +36,12 @@ visitorsRouter.get(
     const data = await studio(req, async (client, ctx) => {
       requireAppManager(ctx, appId);
       const events = await client.query(
-        `SELECT guide_id, guide_version_id, step_id, account_id, session_id, event_type, occurred_at, metadata
+        `SELECT guide_id, guide_version_id, step_id, environment_id, account_id, session_id, event_type, occurred_at, metadata
          FROM guide_event WHERE app_id = $1 AND visitor_id = $2 ORDER BY occurred_at`,
         [appId, visitorId],
       );
       const state = await client.query(
-        `SELECT guide_id, status, last_seen_version, updated_at
+        `SELECT guide_id, environment_id, status, last_seen_version, updated_at
          FROM user_guide_state WHERE app_id = $1 AND visitor_id = $2 ORDER BY updated_at`,
         [appId, visitorId],
       );

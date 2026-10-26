@@ -19,6 +19,15 @@ import { guideAnalyticsQuerySchema, rangeSql, toRange } from './analytics';
 import { findPage } from './pages';
 import { MAX_GUIDE_TAGS, visitorTagSchema } from '../../auth/visitor';
 import { toVersionResponse, versionColumns } from '../../services/versions';
+import {
+  analyticsEnvironmentId,
+  firstEnvironmentId,
+  listEnvironments,
+  productionEnvironmentId,
+  releasesOf,
+  revertRelease,
+  setRelease,
+} from '../../services/environments';
 
 /**
  * Authoring routes for one application's guides: /v1/apps/:appId/guides/...
@@ -278,7 +287,15 @@ guidesRouter.get(
       const result = await client.query(
         `SELECT g.id, g.name, g.type, g.status, g.enabled, g.current_version_id,
                 gv.version_number AS current_version_number, gv.activation, g.created_at, g.updated_at,
-                p.id AS page_id, p.name AS page_name
+                p.id AS page_id, p.name AS page_name,
+                COALESCE((
+                  SELECT json_agg(json_build_object('environmentId', r.environment_id,
+                                                    'versionNumber', rv.version_number)
+                                  ORDER BY e.position)
+                  FROM guide_release r
+                  JOIN app_environment e ON e.id = r.environment_id
+                  JOIN guide_version rv ON rv.id = r.version_id
+                  WHERE r.guide_id = g.id), '[]') AS releases
          FROM guide g
          LEFT JOIN guide_version gv ON gv.id = g.current_version_id
          LEFT JOIN app_page p ON p.id = gv.page_id
@@ -393,9 +410,11 @@ guidesRouter.put(
 );
 
 // ------------------------------------------------------------
-// POST /:id/publish — promote a version to live.
-//  - With a body: saves it as the draft, then promotes that draft (one step).
-//  - With no body: promotes the existing draft as-is (what was previewed is
+// POST /:id/publish — turn the draft into a published version and release
+// it to the app's first environment (the only one, for a single-stage app,
+// so it goes live right away). Later stages get it by promotion.
+//  - With a body: saves it as the draft, then publishes that draft (one step).
+//  - With no body: publishes the existing draft as-is (what was previewed is
 //    exactly what ships).
 // Published versions are immutable from then on (enforced by RLS).
 // ------------------------------------------------------------
@@ -428,18 +447,21 @@ guidesRouter.post(
          RETURNING ${VERSION_COLUMNS}`,
         [draftId],
       );
-      await client.query(
-        `UPDATE guide SET current_version_id = $1, status = 'published', updated_at = now()
-         WHERE id = $2 AND app_id = $3`,
-        [promoted.rows[0].id, id, appId],
-      );
+      await setRelease(client, {
+        appId,
+        guideId: id,
+        environmentId: await firstEnvironmentId(client, appId),
+        versionId: promoted.rows[0].id,
+        actor: ctx.userId,
+      });
       return promoted.rows[0];
     });
     res.status(201).json(toVersionResponse(row));
   }),
 );
 
-// POST /:id/rollback/:versionNumber — make an older published version live
+// POST /:id/rollback/:versionNumber — make an older published version live in
+// production (the last environment). Other stages: POST /:id/releases.
 guidesRouter.post(
   '/:id/rollback/:versionNumber',
   asyncHandler(async (req, res) => {
@@ -457,14 +479,108 @@ guidesRouter.post(
         [id, versionNumber.data],
       );
       if (target.rows.length === 0) throw notFound();
-      const result = await client.query(
-        `UPDATE guide SET current_version_id = $1, updated_at = now() WHERE id = $2 AND app_id = $3
-         RETURNING id, current_version_id`,
-        [target.rows[0].id, id, appId],
-      );
-      return result.rows[0];
+      await setRelease(client, {
+        appId,
+        guideId: id,
+        environmentId: await productionEnvironmentId(client, appId),
+        versionId: target.rows[0].id,
+        actor: ctx.userId,
+      });
+      return { id, current_version_id: target.rows[0].id };
     });
     res.json(updated);
+  }),
+);
+
+// ------------------------------------------------------------
+// Releases per environment.
+//  GET  /:id/releases                     what each environment runs, and its log
+//  POST /:id/releases {environmentId, versionId | null}
+//                                         release a published version there (null withdraws)
+//  POST /:id/promote {from}               give the next stage what `from` runs
+//  POST /:id/releases/:environmentId/revert
+//                                         undo that environment's latest release change
+// Releasing is publishing in all but name, so it needs the publisher role.
+// ------------------------------------------------------------
+guidesRouter.get(
+  '/:id/releases',
+  asyncHandler(async (req, res) => {
+    const appId = idParam(req, 'appId');
+    const id = idParam(req, 'id');
+    const releases = await studio(req, async (client, ctx) => {
+      requireAppRole(ctx, appId, 'viewer');
+      const exists = await client.query(`SELECT 1 FROM guide WHERE id = $1 AND app_id = $2`, [id, appId]);
+      if (exists.rows.length === 0) throw notFound();
+      return releasesOf(client, appId, id);
+    });
+    res.json(releases);
+  }),
+);
+
+guidesRouter.post(
+  '/:id/releases',
+  asyncHandler(async (req, res) => {
+    const appId = idParam(req, 'appId');
+    const id = idParam(req, 'id');
+    const body = parseBody(
+      z.object({ environmentId: z.string().uuid(), versionId: z.string().uuid().nullable() }),
+      req.body,
+    );
+    const releases = await studio(req, async (client, ctx) => {
+      requireAppRole(ctx, appId, 'publisher');
+      await lockGuide(client, appId, id);
+      await setRelease(client, { appId, guideId: id, ...body, actor: ctx.userId });
+      return releasesOf(client, appId, id);
+    });
+    res.json(releases);
+  }),
+);
+
+guidesRouter.post(
+  '/:id/promote',
+  asyncHandler(async (req, res) => {
+    const appId = idParam(req, 'appId');
+    const id = idParam(req, 'id');
+    const body = parseBody(z.object({ from: z.string().uuid() }), req.body);
+    const releases = await studio(req, async (client, ctx) => {
+      requireAppRole(ctx, appId, 'publisher');
+      await lockGuide(client, appId, id);
+      const environments = await listEnvironments(client, appId);
+      const index = environments.findIndex((e) => e.id === body.from);
+      if (index < 0) throw notFound();
+      const next = environments[index + 1];
+      if (!next) throw new HttpError(409, 'already_in_production');
+      const source = await client.query<{ version_id: string }>(
+        `SELECT version_id FROM guide_release WHERE guide_id = $1 AND environment_id = $2`,
+        [id, body.from],
+      );
+      if (source.rows.length === 0) throw new HttpError(409, 'nothing_to_promote');
+      await setRelease(client, {
+        appId,
+        guideId: id,
+        environmentId: next.id,
+        versionId: source.rows[0].version_id,
+        actor: ctx.userId,
+      });
+      return releasesOf(client, appId, id);
+    });
+    res.json(releases);
+  }),
+);
+
+guidesRouter.post(
+  '/:id/releases/:environmentId/revert',
+  asyncHandler(async (req, res) => {
+    const appId = idParam(req, 'appId');
+    const id = idParam(req, 'id');
+    const environmentId = idParam(req, 'environmentId');
+    const releases = await studio(req, async (client, ctx) => {
+      requireAppRole(ctx, appId, 'publisher');
+      await lockGuide(client, appId, id);
+      await revertRelease(client, { appId, guideId: id, environmentId, actor: ctx.userId });
+      return releasesOf(client, appId, id);
+    });
+    res.json(releases);
   }),
 );
 
@@ -528,30 +644,32 @@ guidesRouter.get(
     const appId = idParam(req, 'appId');
     const id = idParam(req, 'id');
     const query = parseBody(guideAnalyticsQuerySchema, req.query);
-    // Every query below starts with (app_id, guide_id) = ($1, $2).
-    const range = rangeSql(toRange(query), 3);
-    const params = [appId, id, ...range.params];
+    // Every query below starts with (app_id, guide_id, environment_id) = ($1, $2, $3).
+    const range = rangeSql(toRange(query), 4);
     const stats = await studio(req, async (client, ctx) => {
       requireAppRole(ctx, appId, 'viewer');
       const exists = await client.query(`SELECT 1 FROM guide WHERE id = $1 AND app_id = $2`, [id, appId]);
       if (exists.rows.length === 0) throw notFound();
+      const environmentId = await analyticsEnvironmentId(client, appId, query.environment);
+      const params = [appId, id, environmentId, ...range.params];
       const counts = await client.query(
         `SELECT event_type, COUNT(*)::int AS count FROM guide_event
-         WHERE app_id = $1 AND guide_id = $2 ${range.sql} GROUP BY event_type`,
+         WHERE app_id = $1 AND guide_id = $2 AND environment_id = $3 ${range.sql} GROUP BY event_type`,
         params,
       );
       // Step ids are stable across versions, so a step's numbers accumulate
       // through edits instead of resetting on each publish.
       const steps = await client.query(
         `SELECT step_id, event_type, COUNT(*)::int AS count FROM guide_event
-         WHERE app_id = $1 AND guide_id = $2 AND step_id IS NOT NULL ${range.sql}
+         WHERE app_id = $1 AND guide_id = $2 AND environment_id = $3 AND step_id IS NOT NULL ${range.sql}
          GROUP BY step_id, event_type`,
         params,
       );
       // How often the guide was started on demand from the help center.
       const help = await client.query<{ n: number }>(
         `SELECT COUNT(*)::int AS n FROM guide_event
-         WHERE app_id = $1 AND guide_id = $2 AND event_type = 'guide_shown' AND metadata ->> 'source' = 'help'
+         WHERE app_id = $1 AND guide_id = $2 AND environment_id = $3
+           AND event_type = 'guide_shown' AND metadata ->> 'source' = 'help'
            ${range.sql}`,
         params,
       );
@@ -573,7 +691,7 @@ guidesRouter.get(
                   COUNT(*) FILTER (WHERE event_type = 'guide_dismissed')::int AS dismissed,
                   COUNT(DISTINCT visitor_id)::int AS visitors
            FROM guide_event
-           WHERE app_id = $1 AND guide_id = $2 ${range.sql}
+           WHERE app_id = $1 AND guide_id = $2 AND environment_id = $3 ${range.sql}
            GROUP BY account_id
            ORDER BY shown DESC, account_id ASC NULLS LAST
            LIMIT ${TOP_ACCOUNTS}`,
@@ -588,6 +706,7 @@ guidesRouter.get(
         }));
       }
       return {
+        environmentId,
         counts: counts.rows,
         steps: steps.rows,
         startedFromHelp: help.rows[0].n,

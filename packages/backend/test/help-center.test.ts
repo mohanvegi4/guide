@@ -428,6 +428,7 @@ describe('help-center analytics', () => {
     expect(res.status).toBe(200);
     expect(res.body).toEqual({
       days: 30,
+      environmentId: expect.any(String),
       opens: 2,
       searches: 4,
       guidesStarted: 1,

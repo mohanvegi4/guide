@@ -1,6 +1,7 @@
 import { Component, computed, effect, inject, input, signal, untracked } from '@angular/core';
 import { ApiService, describeError } from '../core/api.service';
 import { AccountAnalytics, StepPayload } from '../core/models';
+import { EnvironmentSelectComponent } from './environment-select.component';
 
 /** Funnel order for display; event types not listed here are appended after. */
 const FUNNEL = [
@@ -36,11 +37,13 @@ interface AccountRow extends AccountAnalytics {
 /** Simple counts table + CSS bar chart — no chart library needed for v1. */
 @Component({
   selector: 'app-analytics',
+  imports: [EnvironmentSelectComponent],
   template: `
     <section class="card">
       <div class="section-head">
         <h2>Analytics</h2>
         <div class="toolbar">
+          <app-environment-select [appId]="appId()" [(value)]="environment" />
           <label class="switch">
             <input
               type="checkbox"
@@ -157,6 +160,8 @@ export class AnalyticsComponent {
   protected readonly error = signal<string | null>(null);
   /** Whether to ask the backend for the per-account breakdown (an extra query; off by default). */
   protected readonly byAccount = signal(false);
+  /** Which environment's numbers ('' = production); they are never added up across environments. */
+  protected readonly environment = signal('');
   private readonly accounts = signal<AccountAnalytics[]>([]);
 
   protected readonly accountRows = computed<AccountRow[]>(() => {
@@ -218,6 +223,7 @@ export class AnalyticsComponent {
     effect(() => {
       this.appId();
       this.guideId();
+      this.environment();
       untracked(() => this.refresh());
     });
   }
@@ -229,7 +235,8 @@ export class AnalyticsComponent {
   }
 
   refresh(): void {
-    this.api.analytics(this.appId(), this.guideId(), { byAccount: this.byAccount() }).subscribe({
+    const options = { byAccount: this.byAccount(), environmentId: this.environment() || undefined };
+    this.api.analytics(this.appId(), this.guideId(), options).subscribe({
       next: (res) => {
         this.error.set(null);
         this.accounts.set(res.accounts ?? []);

@@ -292,6 +292,7 @@
     </form>
 
     <aside>
+      <app-releases [appId]="appId()" [guide]="g" [canPublish]="canPublish()" (changed)="reload(false)" />
       <app-version-history
         [guide]="g"
         [busy]="busy()"

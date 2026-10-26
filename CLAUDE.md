@@ -63,6 +63,13 @@ deliberately for this project's scale and constraints:
   optional per-version `visitor_tags` list (migration 020) matched by overlap against the opaque
   `visitor.tags` the host passes or signs. Don't build metadata segments (attributes, rules,
   operators) unless explicitly asked.
+- **Environments are release stages inside one app (migration 021).** An app's environments
+  (e.g. Dev → Test → Accept → Prod, last = production) each own websites; the agent picks one
+  from the request Origin. Publishing releases to the first; promote / revert / withdraw move
+  `guide_release` rows and append to `guide_release_event`. `guide.current_version_id` mirrors
+  production. Show-once state and analytics are per environment, analytics never mixed across
+  environments, and each environment has an `analytics_enabled` flag (off = no `guide_event`
+  rows; visitor state is still recorded). One Studio and one backend serve every environment.
 - **No external analytics integration.** Events live in this repo's own Postgres tables.
 - **`data-guide-id` selector convention**, not raw CSS classes/selectors.
 - **Fail closed, fail silent.** The agent shows nothing when anything can't be verified, and

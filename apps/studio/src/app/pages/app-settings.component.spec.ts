@@ -4,7 +4,7 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { Router, provideRouter } from '@angular/router';
 import { AppSettingsComponent } from './app-settings.component';
 import { AuthService } from '../core/auth.service';
-import { AgentError, App, AppRole, HelpAnalytics } from '../core/models';
+import { AgentError, App, AppRole, Environment, HelpAnalytics } from '../core/models';
 
 const app: App = {
   id: 'a1',
@@ -25,8 +25,17 @@ const app: App = {
   snippet: "<script>…'ge_pk_0123'…</script>",
 };
 
+const production: Environment = {
+  id: 'env-prod',
+  name: 'Production',
+  position: 1,
+  websites: ['https://app.acme.test'],
+  analyticsEnabled: true,
+};
+
 const analytics: HelpAnalytics = {
   days: 30,
+  environmentId: 'env-prod',
   opens: 12,
   searches: 5,
   guidesStarted: 3,
@@ -70,6 +79,9 @@ describe('AppSettingsComponent', () => {
     http.expectOne('/api/v1/apps/a1').flush({ ...app, ...overrides });
     http.expectOne((r) => r.url === '/api/v1/apps/a1/errors').flush(errors);
     http.expectOne('/api/v1/apps/a1/help-analytics').flush(stats);
+    await fixture.whenStable();
+    // The Environments card and the help analytics' environment picker (app admins only).
+    http.match('/api/v1/apps/a1/environments').forEach((r) => r.flush([production]));
     await fixture.whenStable();
     lastFixture = fixture;
     return fixture.nativeElement as HTMLElement;
@@ -234,7 +246,7 @@ describe('AppSettingsComponent', () => {
   });
 
   it('says so when the help center has not been used', async () => {
-    const el = await render({}, [], { days: 30, opens: 0, searches: 0, guidesStarted: 0, topQueries: [] });
+    const el = await render({}, [], { days: 30, environmentId: 'env-prod', opens: 0, searches: 0, guidesStarted: 0, topQueries: [] });
     expect(el.querySelector('.help-analytics')!.textContent).toContain(
       'No help-center opens or searches recorded yet.',
     );

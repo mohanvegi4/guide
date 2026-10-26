@@ -238,12 +238,16 @@ side has.
 
 ### B. WISE applications
 
-10. ☐ **(you)** Create the two **production** applications in the production Studio (one per app; dev,
-    staging and production are separate applications with separate keys and secrets) with the real
-    site origins in their websites list; set `identityMode: required` on the console once
+10. ☐ **(you)** Create the two applications in the production Studio, one per product, each with
+    the [environments](../../README.md#environments-and-releases) **Dev → Test → Accept → Production**
+    holding that stage's WISE site origins (a website belongs to one stage). Every WISE environment
+    then uses the same key and signing secret per product: the page's origin tells Guide Engine
+    the stage, guides are published to Dev and promoted towards Production (with revert), and
+    analytics stay per stage (switch **Record analytics** off for Dev and Test if their numbers
+    aren't wanted). Set `identityMode: required` on the console once
     [section 4](#4-signed-identity-specified-not-built) is live.
-11. ☐ Fill `environment.prod.ts` in both apps with the production API origin and the production keys
-    (today `null` = guides off). Both apps are build-time configured; if you want per-deployment config,
+11. ☐ Fill `environment.prod.ts` (and the other WISE environment files) in both apps with the
+    production API origin and that product's key (today `null` = guides off). Both apps are build-time configured; if you want per-deployment config,
     add a field to `/restapi/opac/configuration` (OPAC) / an app-config endpoint (console) and read it in
     `GuideEngineService` — the natural runtime alternative.
 12. ☐ Implement the two [signed-identity endpoints](signed-identity.md) in the WISE REST API; wire the two

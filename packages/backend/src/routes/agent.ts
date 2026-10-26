@@ -8,6 +8,7 @@ import { asyncHandler } from '../asyncHandler';
 import { AgentApp, findAppByPublicKey, withAgentSession } from '../db';
 import { HttpError, notFound } from '../httpError';
 import { parseIdentityInput, resolveVisitor, Visitor } from '../auth/visitor';
+import { environmentForRequest } from '../services/environments';
 import { previewSecret, verifyPreviewToken } from '../preview';
 import { rateLimiterFromEnv } from '../rateLimit';
 import { RESOLVED_ROUTE_MATCH_SQL } from './studio/context';
@@ -231,7 +232,8 @@ function visitorFrom(req: Request, app: AgentApp): Visitor {
 
 // ------------------------------------------------------------
 // POST /v1/agent/:key/guides — one round trip: kill switches + every guide
-// this visitor should see right now (published, enabled, in its date window,
+// this visitor should see right now in the environment the page belongs to
+// (released there, enabled, in its date window,
 // their account allowed, at least one of their tags listed when the guide
 // names tags, not already shown or finished at this version or later, and
 // starting automatically — on-demand guides only come through /help).
@@ -244,19 +246,22 @@ agentApiRouter.post(
     const visitor = visitorFrom(req, app);
     const body = await inApp(req, async (client, scoped) => {
       if (!(await engineEnabled(client, scoped))) return { enabled: false, guides: [] };
+      const environment = await environmentForRequest(client, scoped.id, req.header('origin'));
+      if (!environment) return { enabled: false, guides: [] };
       const rows = await client.query(
         `SELECT a.id, a.app_id, a.name, a.type, a.version_id, a.steps, a.route_match
          FROM active_guide a
          WHERE a.app_id = $1
+           AND a.environment_id = $5
            AND a.activation = 'auto'
            AND ${audienceSql('$3', '$4')}
            AND NOT EXISTS (
              SELECT 1 FROM user_guide_state s
-             WHERE s.app_id = $1 AND s.visitor_id = $2 AND s.guide_id = a.id
+             WHERE s.app_id = $1 AND s.environment_id = $5 AND s.visitor_id = $2 AND s.guide_id = a.id
                AND s.status IN ('shown', 'dismissed', 'completed')
                AND s.last_seen_version >= a.version_number
            )`,
-        [scoped.id, visitor.visitorId, visitor.accountId, visitor.tags],
+        [scoped.id, visitor.visitorId, visitor.accountId, visitor.tags, environment.id],
       );
       return {
         enabled: true,
@@ -301,13 +306,15 @@ agentApiRouter.post(
       );
       const s = settings.rows[0];
       if (!s?.help_enabled || !(await engineEnabled(client, scoped))) return { enabled: false, guides: [] };
+      const environment = await environmentForRequest(client, scoped.id, req.header('origin'));
+      if (!environment) return { enabled: false, guides: [] };
       const rows = await client.query(
         `SELECT a.id, a.name, a.type, a.version_id, a.steps, a.route_match, a.help, a.page_start_path
          FROM active_guide a
-         WHERE a.app_id = $1 AND a.help IS NOT NULL
+         WHERE a.app_id = $1 AND a.environment_id = $4 AND a.help IS NOT NULL
            AND ${audienceSql('$2', '$3')}
          ORDER BY a.help ->> 'title'`,
-        [scoped.id, visitor.accountId, visitor.tags],
+        [scoped.id, visitor.accountId, visitor.tags, environment.id],
       );
       return {
         enabled: true,
@@ -422,28 +429,38 @@ agentApiRouter.post(
       const knownIds = new Set(known.rows.map((r) => r.id));
       const events = parsed.data.events.filter((e) => !isGuideEvent(e) || knownIds.has(e.guideId));
       if (events.length === 0) return 0;
+      const environment = await environmentForRequest(client, scoped.id, req.header('origin'));
+      if (!environment) return 0;
 
-      // Batch insert via UNNEST — one round trip regardless of batch size.
-      await client.query(
-        `INSERT INTO guide_event
-           (app_id, guide_id, guide_version_id, step_id, visitor_id, account_id, session_id, event_type, occurred_at, metadata)
-         SELECT $1, e.guide_id, e.version_id, e.step_id, $2, $3, e.session_id, e.event_type, e.occurred_at, e.metadata
-         FROM UNNEST($4::uuid[], $5::uuid[], $6::uuid[], $7::text[], $8::guide_event_type[], $9::timestamptz[], $10::jsonb[])
-           AS e(guide_id, version_id, step_id, session_id, event_type, occurred_at, metadata)`,
-        [
-          scoped.id,
-          visitor.visitorId,
-          visitor.accountId,
-          events.map((e) => (isGuideEvent(e) ? e.guideId : null)),
-          events.map((e) => (isGuideEvent(e) ? e.guideVersionId : null)),
-          events.map((e) => (isGuideEvent(e) ? (e.stepId ?? null) : null)),
-          events.map((e) => e.sessionId),
-          events.map((e) => e.eventType),
-          events.map((e) => e.occurredAt),
-          events.map((e) => JSON.stringify(e.metadata ?? {})),
-        ],
-      );
-      await recordFinishedGuides(client, scoped.id, visitor.visitorId, events.filter(isGuideEvent));
+      // Analytics are recorded per environment, and only where switched on.
+      // Visitor state below is recorded either way: it is what makes an
+      // automatic guide show once, not a statistic.
+      if (environment.analyticsEnabled) {
+        // Batch insert via UNNEST — one round trip regardless of batch size.
+        await client.query(
+          `INSERT INTO guide_event
+             (app_id, environment_id, guide_id, guide_version_id, step_id, visitor_id, account_id, session_id,
+              event_type, occurred_at, metadata)
+           SELECT $1, $11, e.guide_id, e.version_id, e.step_id, $2, $3, e.session_id, e.event_type, e.occurred_at,
+                  e.metadata
+           FROM UNNEST($4::uuid[], $5::uuid[], $6::uuid[], $7::text[], $8::guide_event_type[], $9::timestamptz[], $10::jsonb[])
+             AS e(guide_id, version_id, step_id, session_id, event_type, occurred_at, metadata)`,
+          [
+            scoped.id,
+            visitor.visitorId,
+            visitor.accountId,
+            events.map((e) => (isGuideEvent(e) ? e.guideId : null)),
+            events.map((e) => (isGuideEvent(e) ? e.guideVersionId : null)),
+            events.map((e) => (isGuideEvent(e) ? (e.stepId ?? null) : null)),
+            events.map((e) => e.sessionId),
+            events.map((e) => e.eventType),
+            events.map((e) => e.occurredAt),
+            events.map((e) => JSON.stringify(e.metadata ?? {})),
+            environment.id,
+          ],
+        );
+      }
+      await recordFinishedGuides(client, scoped.id, environment.id, visitor.visitorId, events.filter(isGuideEvent));
       return events.length;
     });
     res.status(202).json({ accepted });
@@ -459,6 +476,7 @@ agentApiRouter.post(
 async function recordFinishedGuides(
   client: PoolClient,
   appId: string,
+  environmentId: string,
   visitorId: string,
   events: GuideEvent[],
 ) {
@@ -472,11 +490,11 @@ async function recordFinishedGuides(
   const guideIds = [...latest.keys()];
   // The JOIN ignores a version that doesn't belong to that guide.
   await client.query(
-    `INSERT INTO user_guide_state (app_id, visitor_id, guide_id, status, last_seen_version, updated_at)
-     SELECT $1, $2, e.guide_id, e.status::user_guide_status, gv.version_number, now()
+    `INSERT INTO user_guide_state (app_id, environment_id, visitor_id, guide_id, status, last_seen_version, updated_at)
+     SELECT $1, $6, $2, e.guide_id, e.status::user_guide_status, gv.version_number, now()
      FROM UNNEST($3::uuid[], $4::uuid[], $5::text[]) AS e(guide_id, version_id, status)
      JOIN guide_version gv ON gv.id = e.version_id AND gv.guide_id = e.guide_id
-     ON CONFLICT (app_id, visitor_id, guide_id) DO UPDATE
+     ON CONFLICT (app_id, environment_id, visitor_id, guide_id) DO UPDATE
        SET status = CASE
              WHEN EXCLUDED.status = 'shown'
                   AND user_guide_state.status IN ('dismissed', 'completed')
@@ -491,6 +509,7 @@ async function recordFinishedGuides(
       guideIds,
       guideIds.map((id) => latest.get(id)!.versionId),
       guideIds.map((id) => latest.get(id)!.status),
+      environmentId,
     ],
   );
 }

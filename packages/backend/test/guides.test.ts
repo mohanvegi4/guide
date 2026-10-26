@@ -64,7 +64,8 @@ describe('lifecycle', () => {
       [appId, guideId],
     );
     await adminPool.query(
-      `INSERT INTO user_guide_state (app_id, visitor_id, guide_id, status) VALUES ($1, 'v-1', $2, 'completed')`,
+      `INSERT INTO user_guide_state (app_id, environment_id, visitor_id, guide_id, status)
+       SELECT $1, id, 'v-1', $2, 'completed' FROM app_environment WHERE app_id = $1`,
       [appId, guideId],
     );
 

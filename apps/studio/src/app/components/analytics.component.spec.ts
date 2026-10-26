@@ -26,6 +26,7 @@ describe('AnalyticsComponent', () => {
     fixture.detectChanges();
     await fixture.whenStable();
     http.expectOne('/api/v1/apps/a1/guides/g1/analytics').flush({ guideId: 'g1', counts: [], steps: [] });
+    http.expectOne('/api/v1/apps/a1/environments').flush([]);
 
     auth.token.set('t2'); // e.g. silent token renewal
     fixture.detectChanges();
@@ -51,6 +52,7 @@ describe('AnalyticsComponent', () => {
       steps: [],
       startedFromHelp: 0,
     });
+    http.expectOne('/api/v1/apps/a1/environments').flush([]);
     await fixture.whenStable();
     const el = fixture.nativeElement as HTMLElement;
     expect(el.textContent).not.toContain('No account');

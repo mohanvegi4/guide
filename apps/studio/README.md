@@ -59,8 +59,8 @@ staff) also see **Administration**; see below.
 | Role | What you can do |
 |---|---|
 | **viewer** | read guides, pages, versions and analytics in every app; the **Install** page (snippet and anchor instructions, read-only) |
-| **editor** | + create guides, save drafts, make preview links, publish, enable / disable, roll back, delete guides; create, edit and move pages; **Install & settings** (websites, routing, require signed identity, help center, app on / off) |
-| **manager** | + create apps; rotate the public key, generate or rotate the signing secret, delete apps, export or forget visitors; manage members and invitations |
+| **editor** | + create guides, save drafts, make preview links, publish, promote, release, revert and withdraw per environment, enable / disable, roll back, delete guides; create, edit and move pages; **Install & settings** (environments and their websites, routing, require signed identity, help center, app on / off) |
+| **manager** | + create apps; delete environments; rotate the public key, generate or rotate the signing secret, delete apps, export or forget visitors; manage members and invitations |
 | **owner** | + grant or remove ownership (an org always keeps one owner); support access; export or delete the organization; create new organizations |
 | **platform admin** (Guide Engine staff, not a customer role) | the Administration page: every organization's usage, suspension, the kill switch, other admins; a customer's content only under support access, read-only |
 
@@ -120,8 +120,15 @@ after that, grants happen here.
 - **Install:** the exact `<head>` snippet for this app, with a copy button. Replace `USER_ID` /
   `ACCOUNT_ID` with your signed-in user's ids. SPAs need nothing else. After a later login, call
   `guideEngine.identify(...)`.
-- **Websites:** the only origins where guides load. Include your development URL if you test
-  locally.
+- **Environments & websites:** the app's release stages in promotion order, for example Dev →
+  Test → Accept → Production; the last one (marked *production*) is what end users see. Each has
+  a name, its **websites** (the only origins where guides load; each website belongs to one
+  environment, which is how a page's environment is known) and a **Record analytics** switch
+  (off: no events are stored for it; guides still show once per visitor). **Save** each one
+  separately. **Add before production** creates a stage in front of production; the ↑ / ↓ arrows
+  reorder them (moving a stage to the end makes it production, after a confirmation). **Delete**
+  (managers and owners; type its name) removes the stage with its releases. Every app starts with
+  one environment, *Production*.
 - **Routing:** how your app addresses pages: **Path** (`/settings/team`, the default) or
   **Hash** (`/#/settings/team`). It decides which part of the URL guides are matched on; page
   URLs are written the same way in both cases. Saved on change.
@@ -135,7 +142,8 @@ after that, grants happen here.
   dialog follows it). It
   also shows the code for using your own button: `initialize({ helpButton: false })` +
   `guideEngine.openHelp()`.
-  - **Help center analytics** (same card, last 30 days): how often the panel was opened, how
+  - **Help center analytics** (same card, last 30 days, for one environment: production unless
+    you pick another): how often the panel was opened, how
     many searches were made, how many guides were started from it, and the top 20 search
     queries with the average number of topics each found. A query that finds nothing is marked
     in red: a topic worth adding.
@@ -185,14 +193,25 @@ for that id).
 5. **Save draft** stores one working draft per guide. **Preview** saves it and gives a 15-minute
    link to the app's first website. That version renders with a "Preview" badge and no
    analytics.
-6. **Publish new version** makes it live as the next version. Published versions never change.
-7. **Delete guide** (editors; the red button at the bottom of the editor, and on the guide list) removes the guide with
+6. **Publish new version** saves it as the next version and releases it to the app's **first**
+   environment. Published versions never change. With a single environment, that is production.
+7. **Environments** (the panel beside the form) shows what each stage runs, newest release first:
+   - **Promote to *next*** gives the next stage the version this one runs.
+   - **Release** puts any published version (picked in the list) in that environment directly.
+   - **Revert** undoes that environment's latest change and restores what it ran before; click
+     again to keep going back. **History** lists every change, with who made it and whether it
+     was reverted.
+   - **Withdraw** takes the guide out of that environment only.
+
+   Anything that changes production asks first. Visitors' show-once state is kept per
+   environment, so testing a tour in Accept doesn't use it up in production.
+8. **Delete guide** (editors; the red button at the bottom of the editor, and on the guide list) removes the guide with
    all its versions, analytics and visitor state after a confirmation. There is no undo; to pause
    a guide instead, switch it off.
-8. **Enabled** is the guide's on/off switch. Nothing shows until a version is published **and**
-   the guide is enabled.
-9. **Versions:** **Roll back to this** makes an older version live; **Load into editor** starts
-   from any version.
+9. **Enabled** is the guide's on/off switch, in every environment. Nothing shows until a version
+   is released in the page's environment **and** the guide is enabled.
+10. **Versions:** **Roll back to this** makes an older version live in production; **Load into
+    editor** starts from any version. The *live* badge marks the production version.
 
 When a visitor dismisses or completes a guide, they don't see it again until you publish a
 **newer** version. Rolling back doesn't re-show it.
@@ -210,6 +229,10 @@ them.
   to another page or a custom route first.
 
 ### Analytics
+
+Analytics are kept per environment and never added up: every analytics view (this panel, the
+overview on the Guides page, help center analytics) shows production unless you pick another
+environment in its **Environment** list, which appears once the app has more than one.
 
 Event totals (shown, step viewed, step completed, completed, dismissed, errors), plus a
 **per-step** table: views, done and dismissed. Step ids survive edits, so their numbers carry
@@ -232,15 +255,18 @@ src/app/
     login, auth-callback   sign-in
     onboarding             first org + first app
     apps                   an org's applications; create app
-    app-settings           install snippet, websites, signed identity, key rotation, app switch, delete app
+    app-settings           install snippet, environments, signed identity, key rotation, app switch, delete app
     members                members and roles, invite links, support access, export / delete org (owners)
     operator               Guide Engine administration: organizations, suspension, deletion, kill switch, admins
     invite                 accept an invitation
-    guide-list             an app's guides, create, enable toggle (optimistic)
+    guide-list             an app's guides with their version per environment, create, enable toggle (optimistic)
     guide-editor           form editor: saved page or custom route, audience, help, draft / preview / publish
     pages                  an app's saved pages: create, edit (guides follow), delete when unused
   components/
     version-history        versions, rollback, preview, load into editor
+    releases               per environment: what runs, promote, release, revert, withdraw, history
+    environments           app settings card: stages, their websites, analytics switch, order, delete
+    environment-select     the Environment picker on analytics views ('' = production)
     analytics              totals + per-step funnel (CSS bars, no chart library)
   app.ts / app.html        top bar: org + app switchers, section links
   app.routes.ts            /welcome, /invite/:token, /o/:orgId/{apps,members}, /o/:orgId/apps/:appId/{guides,guides/:id,pages,settings}

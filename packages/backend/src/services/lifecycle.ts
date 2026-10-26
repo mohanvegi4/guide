@@ -48,6 +48,7 @@ export interface OrganizationExport {
     routeMode: string;
     suspendedAt: string | null;
     createdAt: string;
+    environments: Array<{ id: string; name: string; position: number; websites: string[]; analyticsEnabled: boolean }>;
     pages: Array<{
       id: string;
       name: string;
@@ -69,6 +70,7 @@ export interface OrganizationExport {
       /** Lifetime totals. Raw events are not exported: they identify end users. */
       analytics: { shown: number; completed: number; dismissed: number };
       versions: Array<VersionResponse & { createdAt: string }>;
+      releases: Array<{ environmentId: string; versionId: string; releasedAt: string }>;
     }>;
   }>;
   notes: string[];
@@ -174,6 +176,23 @@ export async function exportOrganization(client: PoolClient, orgId: string): Pro
     [appIds],
   );
 
+  const environments = await client.query<{
+    id: string;
+    app_id: string;
+    name: string;
+    position: number;
+    origins: string[];
+    analytics_enabled: boolean;
+  }>(
+    `SELECT id, app_id, name, position, origins, analytics_enabled FROM app_environment
+     WHERE app_id = ANY($1::uuid[]) ORDER BY app_id, position`,
+    [appIds],
+  );
+  const releases = await client.query<{ guide_id: string; environment_id: string; version_id: string; released_at: string }>(
+    `SELECT guide_id, environment_id, version_id, released_at FROM guide_release WHERE app_id = ANY($1::uuid[])`,
+    [appIds],
+  );
+
   return {
     format: 'guide-engine-organization',
     formatVersion: 1,
@@ -207,6 +226,15 @@ export async function exportOrganization(client: PoolClient, orgId: string): Pro
       routeMode: a.route_mode,
       suspendedAt: a.suspended_at,
       createdAt: a.created_at,
+      environments: environments.rows
+        .filter((e) => e.app_id === a.id)
+        .map((e) => ({
+          id: e.id,
+          name: e.name,
+          position: e.position,
+          websites: e.origins,
+          analyticsEnabled: e.analytics_enabled,
+        })),
       pages: pages.rows
         .filter((p) => p.app_id === a.id)
         .map((p) => ({
@@ -233,6 +261,9 @@ export async function exportOrganization(client: PoolClient, orgId: string): Pro
           versions: versions.rows
             .filter((v) => v.guide_id === g.id)
             .map((v) => ({ ...toVersionResponse(v), createdAt: v.created_at })),
+          releases: releases.rows
+            .filter((r) => r.guide_id === g.id)
+            .map((r) => ({ environmentId: r.environment_id, versionId: r.version_id, releasedAt: r.released_at })),
         })),
     })),
     notes: [

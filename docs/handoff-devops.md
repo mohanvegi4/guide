@@ -26,7 +26,12 @@ Background reading, all optional:
 
 ## 1. What runs
 
-One Guide Engine service per environment, shared by the console and the OPAC.
+One **production** Guide Engine service, shared by the console and the OPAC, serves every WISE
+environment. Dev, Test, Accept and Prod are release stages *inside* each Studio application: each
+stage lists its own WISE websites, authors publish to the first stage and promote guides towards
+production (with revert), and analytics are kept apart per stage and can be switched off per stage.
+So the WISE environments do not each need their own Guide Engine. A separate **staging** Guide
+Engine is still worth having, to try Guide Engine upgrades and restores before production.
 
 | Component | Image | Notes |
 |---|---|---|
@@ -106,7 +111,7 @@ completed or dismissed, kept for `EVENT_RETENTION_DAYS` (400 by default). As a r
 | # | Decision | Options | Our suggestion |
 |---|---|---|---|
 | 1 | Where it runs | Our `deploy/` compose stack on VMs, or your platform (Kubernetes, ECS…) | Your standard platform; `deploy/` shows every piece it needs |
-| 2 | Environments | Staging and production at least | Staging first, same setup as production |
+| 2 | Environments | Staging and production at least | Staging first, same setup as production. Staging is for Guide Engine's own changes; production serves every WISE environment |
 | 3 | Hostnames per environment | Three names: Studio, API, auth | e.g. `guides-studio.…`, `guides-api.…`, `guides-auth.…` under an OCLC domain |
 | 4 | TLS | Caddy with Let's Encrypt, or your certificates and ingress | Your ingress and certificates |
 | 5 | PostgreSQL | Container with nightly dumps, or managed Postgres | Managed, with point-in-time recovery |
@@ -206,9 +211,9 @@ curl -s https://API_HOST/agent/v1/version       # {"version":"…","hash":"…"}
 
 | Who | What |
 |---|---|
-| Guide Engine integration | Create the production "WISE Staff console" and "WISE OPAC" applications in the Studio, with the real site origins in their websites list, and re-create the guides with their permission tags (the [guide catalogue](wise/integration.md#13-studio-content-and-the-guide-catalogue)). |
-| WISE frontend | Merge the two `poc/guide-engine` branches through the normal review. Put the production API host and app keys in each app's `environment.prod.ts` (today `null`, so guides are off). |
-| WISE API team | Build the two signed-identity endpoints ([Signed identity for the WISE API](wise/signed-identity.md), on top of the generic [Signed identity](integration/signed-identity.md) contract). They need each app's signing secret from the Studio, stored in the WISE backend configuration per environment: a secret for DevOps to manage. |
+| Guide Engine integration | Create the "WISE Staff console" and "WISE OPAC" applications in the production Studio, each with environments Dev, Test, Accept and Production holding that stage's WISE site origins, and re-create the guides with their permission tags (the [guide catalogue](wise/integration.md#13-studio-content-and-the-guide-catalogue)). |
+| WISE frontend | Merge the two `poc/guide-engine` branches through the normal review. Every WISE environment points at the production Guide Engine API with the same app key per product (in the `environment.*` files; `environment.prod.ts` is `null` today, so guides are off). The page's origin tells Guide Engine which stage it is. |
+| WISE API team | Build the two signed-identity endpoints ([Signed identity for the WISE API](wise/signed-identity.md), on top of the generic [Signed identity](integration/signed-identity.md) contract). They need each app's signing secret from the Studio, stored in the WISE backend configuration: one secret per product, the same in every WISE environment, for DevOps to manage. |
 | Product, legal | Privacy notice wording for patrons and the event retention period. |
 
 ---

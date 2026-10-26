@@ -4,7 +4,8 @@ import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { ApiService, describeError } from '../core/api.service';
 import { AuthService } from '../core/auth.service';
-import { AppAnalytics, GUIDE_TYPES, GuideSummary, GuideType, appRoleAtLeast } from '../core/models';
+import { AppAnalytics, Environment, GUIDE_TYPES, GuideSummary, GuideType, appRoleAtLeast } from '../core/models';
+import { EnvironmentSelectComponent } from '../components/environment-select.component';
 
 interface OverviewRow {
   guideId: string;
@@ -19,7 +20,7 @@ interface OverviewRow {
 
 @Component({
   selector: 'app-guide-list',
-  imports: [RouterLink, ReactiveFormsModule, DatePipe],
+  imports: [RouterLink, ReactiveFormsModule, DatePipe, EnvironmentSelectComponent],
   template: `
     <div class="page-header">
       <div>
@@ -31,10 +32,13 @@ interface OverviewRow {
       <section class="card">
         <div class="section-head">
           <h2>Analytics</h2>
-          <span class="muted small">
-            Last {{ o.windowDays }} days: {{ o.visitors }} visitor{{ o.visitors === 1 ? '' : 's' }},
-            {{ o.accounts }} account{{ o.accounts === 1 ? '' : 's' }}
-          </span>
+          <div class="toolbar">
+            <span class="muted small">
+              Last {{ o.windowDays }} days: {{ o.visitors }} visitor{{ o.visitors === 1 ? '' : 's' }},
+              {{ o.accounts }} account{{ o.accounts === 1 ? '' : 's' }}
+            </span>
+            <app-environment-select [appId]="appId()" [(value)]="analyticsEnvironment" />
+          </div>
         </div>
         @if (overviewRows().length === 0) {
           <p class="muted small">No events recorded yet.</p>
@@ -105,7 +109,7 @@ interface OverviewRow {
             <th>Status</th>
             <th>Page</th>
             <th>Starts</th>
-            <th>Live version</th>
+            <th>{{ environments().length > 1 ? 'Live versions' : 'Live version' }}</th>
             <th>Updated</th>
             <th>Enabled</th>
             <th></th>
@@ -125,7 +129,18 @@ interface OverviewRow {
               <td>
                 {{ g.activation === 'manual' ? 'From help center' : g.activation ? 'Automatically' : '—' }}
               </td>
-              <td>{{ g.current_version_number ? 'v' + g.current_version_number : '—' }}</td>
+              <td>
+                @if (environments().length > 1) {
+                  <!-- Every stage, in promotion order: where each guide has got to. -->
+                  @for (e of environments(); track e.id) {
+                    <span class="release-chip" [class.muted]="!versionIn(g, e)">
+                      {{ e.name }} {{ versionIn(g, e) ? 'v' + versionIn(g, e) : '—' }}
+                    </span>
+                  }
+                } @else {
+                  {{ g.current_version_number ? 'v' + g.current_version_number : '—' }}
+                }
+              </td>
               <td>{{ g.updated_at | date: 'short' }}</td>
               <td>
                 <label
@@ -179,6 +194,10 @@ export class GuideListComponent {
   );
 
   protected readonly guides = signal<GuideSummary[]>([]);
+  /** The app's release stages, labelling the per-environment versions. */
+  protected readonly environments = signal<Environment[]>([]);
+  /** Which environment the analytics card reads ('' = production). */
+  protected readonly analyticsEnvironment = signal('');
   /** Null until loaded; the card is hidden (not an error) if the rollup fails. */
   protected readonly overview = signal<AppAnalytics | null>(null);
   /** Guides that were shown at least once, most-shown first (the backend's order). */
@@ -211,14 +230,30 @@ export class GuideListComponent {
       const appId = this.appId();
       untracked(() => this.load(appId));
     });
+    effect(() => {
+      const appId = this.appId();
+      const environmentId = this.analyticsEnvironment();
+      untracked(() => this.loadOverview(appId, environmentId));
+    });
+  }
+
+  protected versionIn(guide: GuideSummary, environment: Environment): number | null {
+    return guide.releases?.find((r) => r.environmentId === environment.id)?.versionNumber ?? null;
+  }
+
+  private loadOverview(appId: string, environmentId: string): void {
+    // The rollup is a nice-to-have on this page: failures just hide the card.
+    this.api.appAnalytics(appId, environmentId || undefined).subscribe({
+      next: (o) => this.overview.set(o),
+      error: () => this.overview.set(null),
+    });
   }
 
   private load(appId: string): void {
     this.loading.set(true);
-    // The rollup is a nice-to-have on this page: failures just hide the card.
-    this.api.appAnalytics(appId).subscribe({
-      next: (o) => this.overview.set(o),
-      error: () => this.overview.set(null),
+    this.api.listEnvironments(appId).subscribe({
+      next: (list) => this.environments.set(list),
+      error: () => this.environments.set([]),
     });
     this.api.listGuides(appId).subscribe({
       next: (guides) => {

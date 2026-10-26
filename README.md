@@ -30,6 +30,7 @@ hosted service (terms, privacy policy, DPA, subprocessors) are in [`docs/legal/`
 3. [Quick start (local)](#quick-start-local)
 4. [Installing Guide Engine on a website](#installing-guide-engine-on-a-website)
 5. [Using the Studio](#using-the-studio)
+   - [Environments and releases](#environments-and-releases)
    - [Saved pages](#saved-pages)
    - [Help center](#help-center)
 6. [How a guide is chosen and shown](#how-a-guide-is-chosen-and-shown)
@@ -340,8 +341,8 @@ Full guide: [`apps/studio/README.md`](apps/studio/README.md).
     | Role | Can |
     |---|---|
     | viewer | read guides, pages, versions and analytics on every app; see the install snippet |
-    | editor | + create, publish, enable / disable and roll back guides; create, edit and move pages; app settings (websites, signed identity, help center, app on / off) |
-    | manager | + create apps; rotate keys, delete apps, forget visitors; manage members and invitations |
+    | editor | + create, publish, enable / disable, promote, revert and roll back guides; create, edit and move pages; app settings (environments and their websites, signed identity, help center, app on / off) |
+    | manager | + create apps; delete environments; rotate keys, delete apps, forget visitors; manage members and invitations |
     | owner | + grant or remove ownership; support access; export or delete the organization |
 
   - Managers and owners manage members; only owners can grant or remove ownership, and every org
@@ -358,13 +359,47 @@ Full guide: [`apps/studio/README.md`](apps/studio/README.md).
     carrying any of the listed [visitor tags](#1-add-the-snippet). Both rules apply.
   - **Steps:** each has a type, anchor, position, HTML content, and buttons (`next`, `dismiss`,
     `complete`).
-  - **Workflow:** save a draft, preview, publish, enable. **Versions** lists the history, with
-    rollback.
-  - **Analytics:** event totals, plus a per-step funnel that carries across versions (step ids
+  - **Workflow:** save a draft, preview, publish, enable. Publishing releases the version to the
+    app's first [environment](#environments-and-releases); **Environments** promotes it stage by
+    stage, reverts or withdraws it. **Versions** lists the history, with rollback (in production).
+  - **Analytics:** per [environment](#environments-and-releases) (production unless you pick
+    another), never mixed: event totals, plus a per-step funnel that carries across versions (step ids
     stay stable). **By account** adds the 50 accounts shown the guide most (shown, done,
     dismissed, distinct visitors; "No account" is unidentified visitors). The **Guides** page
     starts with an overview: shown, completed and completion rate per guide, and distinct
     visitors and accounts over the last 30 days.
+
+### Environments and releases
+
+An app's **environments** are its release stages in promotion order, for example
+Dev → Test → Accept → Production. The last one is production. Every app starts with one,
+*Production*, holding the websites it was created with; add the others in **Install & settings →
+Environments & websites** (they go in front of production; reorder with the arrows).
+
+- **Each environment owns its websites.** The agent tells which environment a page belongs to
+  from the page's `Origin` (which CORS already checks), so every environment uses the same
+  snippet and key. A website belongs to one environment only (`409 website_in_use`). A request
+  without an `Origin` (not a browser) counts as production.
+- **Releases.** A guide runs at most one published version per environment. **Publish** releases
+  the new version to the first environment; in the guide editor's **Environments** panel,
+  **Promote to …** gives the next stage what this one runs, **Release** puts any published
+  version in one environment directly, and **Withdraw** takes the guide out of one environment.
+  Drafts are never released anywhere. Changes to production ask for confirmation.
+- **Revert** undoes an environment's latest release change and restores what it ran before (a
+  version, or nothing). Reverting again keeps walking back that environment's release log, which
+  the panel shows under **History**.
+- **Production is what "live" means elsewhere.** The guide list's *Live versions* column shows
+  every stage; the guide's `current_version_id`, page usage, the export and **Roll back** all
+  refer to production.
+- **Show-once state is per environment**, so a tester finishing a tour in Accept still gets it in
+  production.
+- **Analytics are per environment and can be switched off per environment** (*Record
+  analytics*). With it off, no events are stored for that environment at all; show-once state
+  still is, since it is what keeps an automatic guide from showing twice. Every analytics view
+  (the guide's, the guide list's overview, the help center's) reads one environment, production
+  by default, with a picker when the app has several.
+- The guide's **enabled** switch, dates and audience apply in every environment; a release
+  decides *which version* each environment runs.
 
 ### Saved pages
 
@@ -463,10 +498,12 @@ packages they're `GuideService.openHelp()` (Angular), `useGuideEngine().openHelp
 3. **One request** returns everything needed: `POST /v1/agent/<key>/guides` with the visitor's
    identity returns `{ enabled, guides }`. The server checks:
    - the global kill switch and the app's own switch;
+   - the [environment](#environments-and-releases) the page's `Origin` belongs to, and the
+     version released there (a guide with no release in it isn't served);
    - published, enabled and in the date window;
    - the account allowlist and the visitor tags;
    - that this visitor hasn't already seen, dismissed or completed this version or a newer one
-     (automatic guides show once; the help center lets them be replayed).
+     in this environment (automatic guides show once; the help center lets them be replayed).
 
    `enabled: false` stops the agent for the rest of the page's life. Any other failure shows
    nothing for that navigation (fail closed).
@@ -675,7 +712,7 @@ plain `visitor` and `account`, and anything else sent beside it is ignored. Tags
 | Method & path | Body → response |
 |---|---|
 | `POST /v1/agent/:key/guides` | identity → `{ enabled, routeMode, guides: [{ id, versionId, name, type, steps, routeMatch }] }`. `routeMode` is `path` or `hash`. |
-| `POST /v1/agent/:key/events` | identity + `{ events: [{ guideId, guideVersionId, stepId?, sessionId, eventType, occurredAt, metadata? }] }` (1–100) → `202 { accepted }`. Help-center events (`help_opened`, `help_searched`) carry no `guideId` / `guideVersionId`; a `help_searched` event's `metadata` is `{ query, results }` (the query is cut to 200 characters; other keys are dropped). |
+| `POST /v1/agent/:key/events` | identity + `{ events: [{ guideId, guideVersionId, stepId?, sessionId, eventType, occurredAt, metadata? }] }` (1–100) → `202 { accepted }`. Stored under the environment of the page's `Origin`; when that environment's analytics are off, the events update show-once state only and are not stored. Help-center events (`help_opened`, `help_searched`) carry no `guideId` / `guideVersionId`; a `help_searched` event's `metadata` is `{ query, results }` (the query is cut to 200 characters; other keys are dropped). |
 | `POST /v1/agent/:key/preview` | `{ token }` → the previewed guide with `preview: true` |
 | `POST /v1/agent/:key/errors` | `{ message (1–500 chars), stack? (≤ 4000), url? (≤ 2000), agentVersion? }` → `202 { accepted }`. `accepted: false` once the app already has 1000 reports in the last hour. |
 | `POST /v1/agent/:key/help` | identity → `{ enabled, routeMode, button: { label, color, position }, guides: [{ …guide, help: { title, description, keywords, startPath } }] }`. The help-center list; not route-filtered, and includes guides the visitor already finished. Account and tag rules still apply. |
@@ -702,8 +739,12 @@ plain `visitor` and `account`, and anything else sent beside it is ignored. Tags
 | `GET /orgs/:orgId/export` | owner | The organization's data as a JSON download (`Content-Disposition: attachment; filename="guide-engine-<org-slug>-<date>.json"`): `{ format, formatVersion, exportedAt, organization, members[], invitations[], apps: [{ …, pages[], guides: [{ …, analytics: { shown, completed, dismissed }, versions[] }] }], notes[] }`. Never signing secrets, invitation tokens or raw events. |
 | `DELETE /orgs/:orgId` | owner | `{ confirmName }` must equal the organization's name (`400 confirmation_mismatch`). Deletes the organization and everything in it; `204`. |
 | `GET` / `POST /orgs/:orgId/apps` | viewer / manager | Every member sees every app of the organization. |
-| `GET` / `PATCH /apps/:appId` | viewer / editor | `GET` includes `snippet`. `PATCH` takes `{ name?, websites?, identityMode?, enabled?, helpEnabled?, helpButtonLabel?, helpButtonColor?, helpPosition?, routeMode? }`; the color must be hex, the position one of `bottom-right`, `bottom-left`, `top-right`, `top-left`, `center`, the route mode `path` or `hash` (returned as `route_mode`). |
-| `GET /apps/:appId/help-analytics` | viewer | Help-center usage over the last 30 days: `{ days, opens, searches, guidesStarted, topQueries: [{ query, count, avgResults }] }` (top 20 queries, normalized to lower case). |
+| `GET` / `PATCH /apps/:appId` | viewer / editor | `GET` includes `snippet`. `PATCH` takes `{ name?, websites?, identityMode?, enabled?, helpEnabled?, helpButtonLabel?, helpButtonColor?, helpPosition?, routeMode? }`; the color must be hex, the position one of `bottom-right`, `bottom-left`, `top-right`, `top-left`, `center`, the route mode `path` or `hash` (returned as `route_mode`). `websites` edits the app's only environment; with several, `400 websites_per_environment` (edit each environment instead). |
+| `GET` / `POST /apps/:appId/environments` | viewer / editor | `[{ id, name, position, websites, analyticsEnabled }]` in promotion order (the last is production). `POST` takes `{ name, websites?, analyticsEnabled?, last? }` and adds it in front of production unless `last`. Names are unique per app ignoring case (`409 environment_name_taken`); a website belongs to one environment (`409 website_in_use`, `details.websites`). |
+| `PATCH /apps/:appId/environments/:environmentId` | editor | `{ name?, websites?, analyticsEnabled? }` |
+| `PUT /apps/:appId/environments/order` | editor | `{ ids }`: every environment id, in the new order (`400 order_must_list_every_environment`). The last becomes production. |
+| `DELETE /apps/:appId/environments/:environmentId` | manager | `{ confirmName }`. Removes its releases and visitor state; its events stay, without an environment. `409 last_environment`. |
+| `GET /apps/:appId/help-analytics` | viewer | Help-center usage over the last 30 days in one environment (`?environment=<id>`, default production): `{ days, environmentId, opens, searches, guidesStarted, topQueries: [{ query, count, avgResults }] }` (top 20 queries, normalized to lower case). |
 | `POST /apps/:appId/rotate-key` | manager | New public key; old snippets stop working. |
 | `GET` / `DELETE /apps/:appId/visitors/:visitorId` | manager | Data-subject requests for one end user: `GET` downloads their events and guide state as JSON; `DELETE` ("forget this visitor") removes them → `{ visitorId, events, guideState }`. |
 | `DELETE /apps/:appId` | manager | `{ confirmName }` must equal the app's name. Deletes the app with its guides, pages, events, visitor state, agent errors and grants; `204`. |
@@ -714,16 +755,20 @@ plain `visitor` and `account`, and anything else sent beside it is ignored. Tags
 | `GET` / `POST /orgs/:orgId/invitations` | manager | `POST` takes `{ email?, orgRole: manager\|editor\|viewer }` (default viewer; owners are promoted, never invited) → `{ …, token, emailSent }`. With an `email` and mail configured, the link is emailed; `emailSent` is false when it wasn't (no mail set up, or sending failed — the request still succeeds). |
 | `DELETE /orgs/:orgId/invitations/:id` | manager | revoke |
 | `GET /invitations/:token`, `POST /invitations/:token/accept` | the link holder | |
-| `GET` / `POST /apps/:appId/guides` | viewer / editor | |
+| `GET` / `POST /apps/:appId/guides` | viewer / editor | Each listed guide carries `releases: [{ environmentId, versionNumber }]` in environment order. |
 | `GET /apps/:appId/guides/:id` | viewer | Guide + `versions[]`. The version with `published_at: null` is the draft. |
 | `PUT /apps/:appId/guides/:id/draft` | editor | `VersionBody` |
 | `POST /apps/:appId/guides/:id/publish` | editor | `VersionBody`, or empty to publish the draft as-is. |
 | `PATCH /apps/:appId/guides/:id/flag` | editor | `{ enabled }` |
 | `DELETE /apps/:appId/guides/:id` | editor | Deletes the guide with its versions, analytics events and visitor state; `204`. No undo. |
-| `POST /apps/:appId/guides/:id/rollback/:n` | editor | Published versions only. |
+| `POST /apps/:appId/guides/:id/rollback/:n` | editor | Releases published version `n` in production → `{ id, current_version_id }`. |
+| `GET /apps/:appId/guides/:id/releases` | viewer | Per environment, in order: `[{ environmentId, name, position, versionId, versionNumber, releasedAt, canRevert, history: [{ action, versionNumber, at, by, reverted }] }]`. |
+| `POST /apps/:appId/guides/:id/releases` | editor | `{ environmentId, versionId }` releases a published version there (`400 version_not_published`); `versionId: null` withdraws the guide from it. Returns the releases. |
+| `POST /apps/:appId/guides/:id/promote` | editor | `{ from }`: the next environment gets what `from` runs (`409 nothing_to_promote` / `already_in_production`). Returns the releases. |
+| `POST /apps/:appId/guides/:id/releases/:environmentId/revert` | editor | Undoes that environment's latest release change, restoring the state before it; repeat to walk further back (`409 nothing_to_revert`). Returns the releases. |
 | `POST /apps/:appId/guides/:id/preview-token` | editor | `{ versionId }` → `{ token, url, expiresAt }` |
-| `GET /apps/:appId/guides/:id/analytics` | viewer | `{ counts[], steps[], startedFromHelp, accounts? }`. `?from=` / `?to=` (ISO date or timestamp; `from` inclusive, a date `to` covers that whole day, a timestamp `to` is exclusive; `400` when `to` isn't after `from`). `?by=account` adds `accounts: [{ accountId \| null, shown, completed, dismissed, visitors }]`: the 50 accounts shown the guide most, most first. |
-| `GET /apps/:appId/analytics` | viewer | `{ guides: [{ guideId, name, shown, completed, dismissed, completionRate }], visitors, accounts, windowDays }`. Lifetime totals per guide (`completionRate` is `completed / shown`, 0–1), ordered by `shown`; `visitors` / `accounts` are distinct over the last `windowDays` (30). |
+| `GET /apps/:appId/guides/:id/analytics` | viewer | `{ environmentId, counts[], steps[], startedFromHelp, accounts? }` for one environment: `?environment=<id>`, default production. `?from=` / `?to=` (ISO date or timestamp; `from` inclusive, a date `to` covers that whole day, a timestamp `to` is exclusive; `400` when `to` isn't after `from`). `?by=account` adds `accounts: [{ accountId \| null, shown, completed, dismissed, visitors }]`: the 50 accounts shown the guide most, most first. |
+| `GET /apps/:appId/analytics` | viewer | `{ guides: [{ guideId, name, shown, completed, dismissed, completionRate }], visitors, accounts, windowDays, environmentId }` for one environment (`?environment=<id>`, default production). Lifetime totals per guide (`completionRate` is `completed / shown`, 0–1), ordered by `shown`; `visitors` / `accounts` are distinct over the last `windowDays` (30). |
 | `GET` / `POST /apps/:appId/pages` | viewer / editor | List (by name, with `usage: { guides, live }`) or create `{ name, routeMatch: { type, value }, startPath? }`. A pattern needs `startPath`. Names are unique per app, ignoring case. |
 | `GET /apps/:appId/pages/:pageId` | viewer | The page + `guides: [{ id, name, live, draft }]` (live versions and drafts on it). |
 | `PUT /apps/:appId/pages/:pageId` | editor | Same body as `POST`. Guides on the page follow at once. |
@@ -757,11 +802,11 @@ A `VersionBody` is:
 
 | Status | Codes |
 |---|---|
-| 400 | `invalid_body`, `empty_content_after_sanitize`, `no_draft_to_publish`, `signing_secret_required`, `unknown_app`, `unknown_page`, `unknown_user`, `cannot_revoke_self`, `confirmation_mismatch` |
+| 400 | `invalid_body`, `empty_content_after_sanitize`, `no_draft_to_publish`, `signing_secret_required`, `unknown_app`, `unknown_page`, `unknown_user`, `cannot_revoke_self`, `confirmation_mismatch`, `version_not_published`, `websites_per_environment`, `order_must_list_every_environment` |
 | 401 | `missing_auth`, `invalid_token`, `visitor_required`, `signed_identity_required`, `identity_invalid` |
 | 403 | `forbidden`, `origin_not_allowed`, `invalid_preview_token`, `invitation_email_mismatch` |
 | 404 | `not_found`, including other organizations' resources and unknown keys |
-| 409 | `last_owner`, `already_member`, `page_name_taken`, `page_in_use` |
+| 409 | `last_owner`, `already_member`, `page_name_taken`, `page_in_use`, `environment_name_taken`, `website_in_use`, `last_environment`, `nothing_to_promote`, `already_in_production`, `nothing_to_revert` |
 | 410 | `invitation_used`, `invitation_expired` |
 | 413 | `payload_too_large` |
 | 429 | `rate_limited` |
@@ -774,18 +819,21 @@ A `VersionBody` is:
 | Table | Purpose |
 |---|---|
 | `organization` | A customer workspace (`created_by`), plus `suspended_at` and the support window (`support_access_until`, `support_access_granted_by`). |
-| `application` | `public_key`, `allowed_origins`, `identity_mode`, `signing_secret`, `enabled` (the app switch), `route_mode` (`path` or `hash`), and the help center: `help_enabled`, `help_button_label`, `help_button_color`, `help_position`. |
+| `application` | `public_key`, `allowed_origins` (the union of its environments' websites, kept in sync by the API; the CORS check reads it), `identity_mode`, `signing_secret`, `enabled` (the app switch), `route_mode` (`path` or `hash`), and the help center: `help_enabled`, `help_button_label`, `help_button_color`, `help_position`. |
 | `studio_user` | People who use the Studio, keyed by (`oidc_issuer`, `oidc_sub`); created on first sign-in. `platform_admin` marks Guide Engine staff. |
 | `support_access_log` | Every request a platform admin made under an organization's support access (who, when, method, path). |
 | `org_member` | One role per person per organization (viewer / editor / manager / owner), applying to every app. `app_member` (per-app grants) is empty since migration 016 and no longer read. |
 | `invitation` | Invite links: hashed token, role, expiry, single use. |
 | `app_page` | Saved pages per app: `name`, `match_type`, `match_value`, `start_path`. |
+| `app_environment` | An app's release stages: `name`, `position` (promotion order; the highest is production), `origins` (its websites) and `analytics_enabled`. |
+| `guide_release` | What each environment runs: one published `version_id` per (guide, environment). `guide.current_version_id` mirrors the production row. |
+| `guide_release_event` | The release log per (guide, environment): `release` (a version) or `withdraw`, who and when, and `reverted_at` / `reverted_by` once undone. Revert walks it back. |
 | `guide` / `guide_version` | Guides per app. Numbered versions hold steps (JSONB), `page_id` (a saved page) and/or `route_match` (a custom route, or the page's route snapshot), dates, `account_ids`, `visitor_tags`, `help` (the help-center listing) and `activation` (`auto`: pops up on its page; `manual`: help center only). `published_at IS NULL` means the draft, at most one per guide. Published rows are immutable. |
-| `guide_event` | Analytics: app, guide, version, step, `visitor_id`, `account_id`. Help-center events (`help_opened`, `help_searched`) have no guide; a CHECK ties a NULL `guide_id` to exactly those two types. |
+| `guide_event` | Analytics: app, `environment_id`, guide, version, step, `visitor_id`, `account_id`. Help-center events (`help_opened`, `help_searched`) have no guide; a CHECK ties a NULL `guide_id` to exactly those two types. |
 | `agent_error` | Exceptions the agent reported from an app's pages: `message`, `stack`, `agent_version`, `url`, `occurred_at`. Written by the agent, read by the app's members and platform admins, deleted by retention. Free text: only ever rendered as text. |
-| `user_guide_state` | Per (app, visitor, guide): shown, dismissed or completed, plus `last_seen_version`. A later `shown` never downgrades dismissed / completed at the same version. |
+| `user_guide_state` | Per (app, environment, visitor, guide): shown, dismissed or completed, plus `last_seen_version`. A later `shown` never downgrades dismissed / completed at the same version. |
 | `system_config` | The global kill switch (`guide_engine_enabled`). |
-| `active_guide` (view) | Published, enabled guides inside their date window, with `route_match` resolved through the saved page when there is one (`security_invoker`). |
+| `active_guide` (view) | One row per guide per environment it is released to (`environment_id`): the released version, enabled and inside its date window, with `route_match` resolved through the saved page when there is one (`security_invoker`). |
 
 Every table under an organization references its parent with `ON DELETE CASCADE`, so deleting
 an `organization` (or one `application`) removes everything beneath it in one statement.
@@ -814,6 +862,7 @@ pending files and the others wait, then find nothing to do.
 | `017_manager_rls.sql` | The editor / manager split in the database: `app_manager_app_ids()` (apps of the orgs where the user is a manager or owner) replaces `app_admin_app_ids()` in the forget-visitor policies, the per-app delete policy from 013 is dropped (`application_delete` on `app_admin_org_ids()` already covers managers), and the `application_guard_keys` trigger refuses a change to `public_key` / `signing_secret` from anyone but a manager (or the maintenance scope used by `encrypt-secrets`). |
 | `018_guide_activation.sql` | `guide_version.activation` (`auto` / `manual`, CHECK-limited; `manual` requires a help listing) on the version and the `active_guide` view. The agent's `/guides` serves only `auto` versions. |
 | `020_visitor_tags.sql` | `guide_version.visitor_tags` (null = every visitor, else 1–100 tags) on the version and the `active_guide` view. `/guides` and `/help` serve a tagged guide only to visitors whose tags overlap. |
+| `021_environments.sql` | `app_environment`, `guide_release`, `guide_release_event` with their RLS; `guide_event.environment_id`; `user_guide_state` keyed per environment; `active_guide` rebuilt on releases. Every existing app gets one *Production* environment with its websites, its live versions become Production releases (with a log entry each), and its events and visitor state are filed under it. |
 
 ---
 

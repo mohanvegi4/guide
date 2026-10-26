@@ -90,6 +90,12 @@ export async function seedWelcomeTour(
      VALUES ($1, 1, $2, '{"type": "exact", "value": "/dashboard"}', $3, $4, now()) RETURNING id`,
     [guide.rows[0].id, JSON.stringify(steps), page.rows[0].id, JSON.stringify(help)],
   );
+  // Live in every environment of the app (a seeded app has just one).
+  await client.query(
+    `INSERT INTO guide_release (guide_id, environment_id, app_id, version_id)
+     SELECT $1, e.id, e.app_id, $2 FROM app_environment e WHERE e.app_id = $3`,
+    [guide.rows[0].id, version.rows[0].id, appId],
+  );
   await client.query(`UPDATE guide SET current_version_id = $1 WHERE id = $2`, [
     version.rows[0].id,
     guide.rows[0].id,

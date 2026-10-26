@@ -4,7 +4,15 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { provideRouter } from '@angular/router';
 import { GuideListComponent } from './guide-list.component';
 import { AuthService } from '../core/auth.service';
-import { AppAnalytics, AppRole, GuideSummary } from '../core/models';
+import { AppAnalytics, AppRole, Environment, GuideSummary } from '../core/models';
+
+const production: Environment = {
+  id: 'env-prod',
+  name: 'Production',
+  position: 1,
+  websites: ['https://app.acme.test'],
+  analyticsEnabled: true,
+};
 
 const guide: GuideSummary = {
   id: 'g1',
@@ -18,6 +26,7 @@ const guide: GuideSummary = {
   updated_at: '2026-10-07T00:00:00Z',
   page_id: 'p1',
   page_name: 'Team settings',
+  releases: [{ environmentId: 'env-prod', versionNumber: 1 }],
 };
 
 const noEvents: AppAnalytics = {
@@ -25,6 +34,7 @@ const noEvents: AppAnalytics = {
   visitors: 0,
   accounts: 0,
   windowDays: 30,
+  environmentId: 'env-prod',
 };
 
 describe('GuideListComponent', () => {
@@ -56,8 +66,12 @@ describe('GuideListComponent', () => {
     fixture.componentRef.setInput('appId', 'a1');
     fixture.detectChanges();
     await fixture.whenStable();
+    http.expectOne('/api/v1/apps/a1/environments').flush([production]);
     http.expectOne('/api/v1/apps/a1/guides').flush([guide]);
     http.expectOne('/api/v1/apps/a1/analytics').flush(analytics);
+    await fixture.whenStable();
+    // The analytics card's environment picker (hidden with one environment).
+    http.match('/api/v1/apps/a1/environments').forEach((r) => r.flush([production]));
     await fixture.whenStable();
     return fixture;
   }
@@ -120,6 +134,7 @@ describe('GuideListComponent', () => {
       visitors: 5,
       accounts: 2,
       windowDays: 30,
+      environmentId: 'env-prod',
     });
     const el = fixture.nativeElement as HTMLElement;
     const card = el.querySelector('section.card')!;
@@ -145,6 +160,7 @@ describe('GuideListComponent', () => {
     fixture.componentRef.setInput('appId', 'a1');
     fixture.detectChanges();
     await fixture.whenStable();
+    http.expectOne('/api/v1/apps/a1/environments').flush([production]);
     http.expectOne('/api/v1/apps/a1/guides').flush([guide]);
     http
       .expectOne('/api/v1/apps/a1/analytics')
@@ -153,6 +169,38 @@ describe('GuideListComponent', () => {
     const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
     expect(text).toContain('Welcome');
     expect(text).not.toContain('No events recorded yet.');
+  });
+
+  it('shows each guide\'s version per environment once the app has several', async () => {
+    setup('viewer');
+    const fixture = TestBed.createComponent(GuideListComponent);
+    fixture.componentRef.setInput('orgId', 'o1');
+    fixture.componentRef.setInput('appId', 'a1');
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const test: Environment = { ...production, id: 'env-test', name: 'Test', position: 1, websites: [] };
+    const prod: Environment = { ...production, position: 2 };
+    http.expectOne('/api/v1/apps/a1/environments').flush([test, prod]);
+    http
+      .expectOne('/api/v1/apps/a1/guides')
+      .flush([{ ...guide, releases: [{ environmentId: 'env-test', versionNumber: 2 }, ...guide.releases] }]);
+    http.expectOne('/api/v1/apps/a1/analytics').flush(noEvents);
+    await fixture.whenStable();
+    http.match('/api/v1/apps/a1/environments').forEach((r) => r.flush([test, prod]));
+    await fixture.whenStable();
+    const el = fixture.nativeElement as HTMLElement;
+    expect([...el.querySelectorAll('.release-chip')].map((c) => c.textContent?.trim())).toEqual([
+      'Test v2',
+      'Production v1',
+    ]);
+
+    // The analytics card can switch environments; production is the default.
+    const select = el.querySelector<HTMLSelectElement>('select[aria-label="Environment"]')!;
+    expect(select.value).toBe('');
+    select.value = 'env-test';
+    select.dispatchEvent(new Event('change'));
+    await fixture.whenStable();
+    http.expectOne('/api/v1/apps/a1/analytics?environment=env-test').flush(noEvents);
   });
 
   it('is read-only for viewers: no create form, no enable toggle', async () => {

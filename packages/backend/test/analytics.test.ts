@@ -146,13 +146,14 @@ describe('GET /apps/:appId/analytics', () => {
       visitors: 4,
       accounts: 2,
       windowDays: 30,
+      environmentId: expect.any(String),
     });
   });
 
   it('is empty, not an error, for an app without guides', async () => {
     const fresh = await signUp('zed');
     const res = await get(`/v1/apps/${fresh.appId}/analytics`, 'zed');
-    expect(res.body).toEqual({ guides: [], visitors: 0, accounts: 0, windowDays: 30 });
+    expect(res.body).toEqual({ guides: [], visitors: 0, accounts: 0, windowDays: 30, environmentId: expect.any(String) });
   });
 });
 

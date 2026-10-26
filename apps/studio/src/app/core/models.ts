@@ -209,6 +209,42 @@ export interface GuideSummary {
   /** The saved page the live version shows on (null = custom route / nothing live). */
   page_id: string | null;
   page_name: string | null;
+  /** What each environment runs, in promotion order (environments running nothing are left out). */
+  releases: Array<{ environmentId: string; versionNumber: number }>;
+}
+
+/**
+ * GET /v1/apps/:appId/environments — the app's release stages in promotion
+ * order (e.g. Test → Accept → Production). The last one is production. Each
+ * owns its websites: that is how the agent tells which one a page belongs to.
+ */
+export interface Environment {
+  id: string;
+  name: string;
+  position: number;
+  websites: string[];
+  /** Off: no analytics events are stored for it (show-once state still is). */
+  analyticsEnabled: boolean;
+}
+
+/** GET /v1/apps/:appId/guides/:id/releases — what one environment runs, and its release log. */
+export interface GuideRelease {
+  environmentId: string;
+  name: string;
+  position: number;
+  versionId: string | null;
+  versionNumber: number | null;
+  releasedAt: string | null;
+  /** There is a release change left to undo. */
+  canRevert: boolean;
+  /** Newest first. */
+  history: Array<{
+    action: 'release' | 'withdraw';
+    versionNumber: number | null;
+    at: string;
+    by: string | null;
+    reverted: boolean;
+  }>;
 }
 
 export interface StepAction {
@@ -310,6 +346,8 @@ export interface PreviewLink {
 
 export interface AnalyticsResponse {
   guideId: string;
+  /** The environment the numbers are from (production unless one was asked for). */
+  environmentId: string;
   counts: Array<{ event_type: string; count: number }>;
   steps: Array<{ step_id: string; event_type: string; count: number }>;
   /** Times the guide was started on demand from the help center. */
@@ -343,11 +381,13 @@ export interface AppAnalytics {
   visitors: number;
   accounts: number;
   windowDays: number;
+  environmentId: string;
 }
 
 /** GET /v1/apps/:appId/help-analytics — how the help center was used over the last `days`. */
 export interface HelpAnalytics {
   days: number;
+  environmentId: string;
   opens: number;
   searches: number;
   /** Guides started from the help center (guide_shown with source = help). */

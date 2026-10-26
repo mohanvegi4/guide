@@ -59,18 +59,19 @@ export function toPageResponse(row: PageRow) {
 }
 
 /**
- * Guides whose live version or working draft is on the page. Older published
- * versions don't count: they only matter again after a rollback, and they
- * keep a snapshot of the route to fall back on.
+ * Guides with a version released in any environment, or a working draft, on
+ * the page. Other published versions don't count: they only matter again
+ * after a rollback, and they keep a snapshot of the route to fall back on.
  */
 async function pageUsage(client: PoolClient, appId: string, pageId: string) {
   const result = await client.query<{ id: string; name: string; live: boolean; draft: boolean }>(
     `SELECT g.id, g.name,
-            bool_or(gv.id = g.current_version_id AND g.status = 'published' AND g.enabled) AS live,
+            bool_or(gv.published_at IS NOT NULL AND g.enabled) AS live,
             bool_or(gv.published_at IS NULL) AS draft
      FROM guide g
      JOIN guide_version gv ON gv.guide_id = g.id
-     WHERE g.app_id = $1 AND gv.page_id = $2 AND (gv.id = g.current_version_id OR gv.published_at IS NULL)
+     WHERE g.app_id = $1 AND gv.page_id = $2
+       AND (gv.published_at IS NULL OR EXISTS (SELECT 1 FROM guide_release r WHERE r.version_id = gv.id))
      GROUP BY g.id, g.name
      ORDER BY g.name`,
     [appId, pageId],
@@ -109,10 +110,11 @@ pagesRouter.get(
         `SELECT ${PAGE_COLUMNS},
                 COUNT(DISTINCT g.id)::int AS guide_count,
                 COUNT(DISTINCT g.id) FILTER (
-                  WHERE gv.id = g.current_version_id AND g.status = 'published' AND g.enabled)::int AS live_count
+                  WHERE gv.published_at IS NOT NULL AND g.enabled)::int AS live_count
          FROM app_page p
          LEFT JOIN guide_version gv ON gv.page_id = p.id
-         LEFT JOIN guide g ON g.id = gv.guide_id AND (gv.id = g.current_version_id OR gv.published_at IS NULL)
+           AND (gv.published_at IS NULL OR EXISTS (SELECT 1 FROM guide_release r WHERE r.version_id = gv.id))
+         LEFT JOIN guide g ON g.id = gv.guide_id
          WHERE p.app_id = $1
          GROUP BY p.id
          ORDER BY lower(p.name)`,

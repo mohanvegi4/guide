@@ -8,7 +8,9 @@ import {
   AppAnalytics,
   AppPage,
   AppRole,
+  Environment,
   GuideDetail,
+  GuideRelease,
   GuideSummary,
   GuideType,
   HelpAnalytics,
@@ -77,8 +79,45 @@ export class ApiService {
     return this.http.patch<App>(`${this.base}/apps/${appId}`, patch);
   }
 
-  helpAnalytics(appId: string): Observable<HelpAnalytics> {
-    return this.http.get<HelpAnalytics>(`${this.base}/apps/${appId}/help-analytics`);
+  helpAnalytics(appId: string, environmentId?: string): Observable<HelpAnalytics> {
+    return this.http.get<HelpAnalytics>(`${this.base}/apps/${appId}/help-analytics`, {
+      params: environmentParams(environmentId),
+    });
+  }
+
+  // ---- environments (release stages) ----
+  private environments(appId: string): string {
+    return `${this.base}/apps/${appId}/environments`;
+  }
+
+  listEnvironments(appId: string): Observable<Environment[]> {
+    return this.http.get<Environment[]>(this.environments(appId));
+  }
+
+  /** Added in front of production, which stays the last stage. */
+  createEnvironment(
+    appId: string,
+    body: { name: string; websites: string[]; analyticsEnabled?: boolean },
+  ): Observable<Environment> {
+    return this.http.post<Environment>(this.environments(appId), body);
+  }
+
+  updateEnvironment(
+    appId: string,
+    environmentId: string,
+    patch: { name?: string; websites?: string[]; analyticsEnabled?: boolean },
+  ): Observable<Environment> {
+    return this.http.patch<Environment>(`${this.environments(appId)}/${environmentId}`, patch);
+  }
+
+  /** Every environment id, in the new promotion order; the last becomes production. */
+  reorderEnvironments(appId: string, ids: string[]): Observable<Environment[]> {
+    return this.http.put<Environment[]>(`${this.environments(appId)}/order`, { ids });
+  }
+
+  /** Irreversible: its releases go with it; the backend requires the exact name. */
+  deleteEnvironment(appId: string, environmentId: string, confirmName: string): Observable<void> {
+    return this.http.delete<void>(`${this.environments(appId)}/${environmentId}`, { body: { confirmName } });
   }
 
   rotateKey(appId: string): Observable<App> {
@@ -299,16 +338,46 @@ export class ApiService {
     return this.http.post(`${this.guides(appId)}/${id}/rollback/${versionNumber}`, {});
   }
 
-  analytics(appId: string, id: string, options: { byAccount?: boolean } = {}): Observable<AnalyticsResponse> {
+  // ---- releases per environment ----
+  releases(appId: string, id: string): Observable<GuideRelease[]> {
+    return this.http.get<GuideRelease[]>(`${this.guides(appId)}/${id}/releases`);
+  }
+
+  /** Makes a published version live in one environment; null withdraws the guide from it. */
+  setRelease(appId: string, id: string, environmentId: string, versionId: string | null): Observable<GuideRelease[]> {
+    return this.http.post<GuideRelease[]>(`${this.guides(appId)}/${id}/releases`, { environmentId, versionId });
+  }
+
+  /** Gives the next stage what `from` runs. */
+  promote(appId: string, id: string, from: string): Observable<GuideRelease[]> {
+    return this.http.post<GuideRelease[]>(`${this.guides(appId)}/${id}/promote`, { from });
+  }
+
+  /** Undoes the environment's latest release change. */
+  revertRelease(appId: string, id: string, environmentId: string): Observable<GuideRelease[]> {
+    return this.http.post<GuideRelease[]>(`${this.guides(appId)}/${id}/releases/${environmentId}/revert`, {});
+  }
+
+  /** Analytics are per environment; without one, the backend answers for production. */
+  analytics(
+    appId: string,
+    id: string,
+    options: { byAccount?: boolean; environmentId?: string } = {},
+  ): Observable<AnalyticsResponse> {
     return this.http.get<AnalyticsResponse>(`${this.guides(appId)}/${id}/analytics`, {
-      params: options.byAccount ? { by: 'account' } : {},
+      params: { ...(options.byAccount ? { by: 'account' } : {}), ...environmentParams(options.environmentId) },
     });
   }
 
-  appAnalytics(appId: string): Observable<AppAnalytics> {
-    return this.http.get<AppAnalytics>(`${this.base}/apps/${appId}/analytics`);
+  appAnalytics(appId: string, environmentId?: string): Observable<AppAnalytics> {
+    return this.http.get<AppAnalytics>(`${this.base}/apps/${appId}/analytics`, {
+      params: environmentParams(environmentId),
+    });
   }
 }
+
+const environmentParams = (environmentId?: string): Record<string, string> =>
+  environmentId ? { environment: environmentId } : {};
 
 const MESSAGES: Record<string, string> = {
   preview_not_configured: 'Preview is not configured on the backend (PREVIEW_TOKEN_SECRET).',
@@ -327,6 +396,13 @@ const MESSAGES: Record<string, string> = {
   unknown_user: 'No one with that email has signed in to the Studio yet. Ask them to sign in first.',
   cannot_revoke_self: "You can't remove your own admin access — ask another platform admin.",
   confirmation_mismatch: "The name you typed doesn't match. Nothing was deleted.",
+  environment_name_taken: 'This app already has an environment with that name.',
+  last_environment: 'An app needs at least one environment.',
+  websites_per_environment: 'This app has several environments: edit the websites of each one instead.',
+  version_not_published: 'Only published versions can be released. Publish the draft first.',
+  nothing_to_promote: 'That environment runs nothing to promote.',
+  already_in_production: 'This is the last stage (production); there is nowhere to promote to.',
+  nothing_to_revert: 'There is no release change left to revert in that environment.',
 };
 
 /** Human-readable message from a backend error response. */
@@ -337,6 +413,13 @@ export function describeError(err: unknown): string {
       details?: { fieldErrors?: Record<string, string[]>; formErrors?: string[] };
     } | null;
     if (err.status === 0) return 'Cannot reach the backend. Is it running on :3000?';
+    if (body?.error === 'website_in_use') {
+      const clashes = (body.details as { websites?: Array<{ website: string; environment: string }> } | undefined)
+        ?.websites;
+      return `Each website belongs to one environment: ${
+        clashes?.map((c) => `${c.website} is in ${c.environment}`).join(', ') ?? 'one is already in use'
+      }.`;
+    }
     if (body?.error === 'page_in_use') {
       const names = (body.details as { guides?: Array<{ name: string }> } | undefined)?.guides?.map(
         (g) => g.name,

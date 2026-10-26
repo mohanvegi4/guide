@@ -4,6 +4,8 @@ import { asyncHandler } from '../../asyncHandler';
 import { StudioRequest } from '../../auth/studio';
 import { HttpError, notFound } from '../../httpError';
 import { generatePublicKey, generateSigningSecret } from '../../keys';
+import { analyticsEnvironmentId, listEnvironments } from '../../services/environments';
+import { environmentQuerySchema } from './analytics';
 import { sanitizePlainText } from '../../sanitize';
 import { encryptSecret, getSecretsKey } from '../../secrets';
 import { requestLogger } from '../../logging';
@@ -252,6 +254,16 @@ orgsRouter.patch(
         // Requiring signed identity without a secret would lock every visitor out.
         if (!has.rows[0]?.has) throw new HttpError(400, 'signing_secret_required');
       }
+      if (body.websites) {
+        // Websites belong to environments. With one environment (the default)
+        // this edits it; with several, each environment's own settings do.
+        const environments = await listEnvironments(client, appId);
+        if (environments.length !== 1) throw new HttpError(400, 'websites_per_environment');
+        await client.query(`UPDATE app_environment SET origins = $2 WHERE id = $1`, [
+          environments[0].id,
+          body.websites,
+        ]);
+      }
       const result = await client.query<AppRow>(
         `UPDATE application SET
            name = COALESCE($2, name),
@@ -319,8 +331,10 @@ orgsRouter.get(
   '/apps/:appId/help-analytics',
   asyncHandler(async (req, res) => {
     const appId = idParam(req, 'appId');
+    const query = parseBody(environmentQuerySchema, req.query);
     const stats = await studio(req, async (client, ctx) => {
       requireAppRole(ctx, appId, 'viewer');
+      const environmentId = await analyticsEnvironmentId(client, appId, query.environment);
       const since = new Date(Date.now() - HELP_ANALYTICS_DAYS * 86_400_000).toISOString();
       const totals = await client.query<{ opens: number; searches: number; guides_started: number }>(
         `SELECT COUNT(*) FILTER (WHERE event_type = 'help_opened')::int AS opens,
@@ -328,9 +342,9 @@ orgsRouter.get(
                 COUNT(*) FILTER (WHERE event_type = 'guide_shown' AND metadata ->> 'source' = 'help')::int
                   AS guides_started
          FROM guide_event
-         WHERE app_id = $1 AND occurred_at >= $2
+         WHERE app_id = $1 AND environment_id = $3 AND occurred_at >= $2
            AND event_type IN ('help_opened', 'help_searched', 'guide_shown')`,
-        [appId, since],
+        [appId, since, environmentId],
       );
       // Queries are grouped case-insensitively and trimmed, so "Invite" and
       // "invite " count as one. A result count that isn't a number (older
@@ -341,15 +355,16 @@ orgsRouter.get(
                 ROUND(AVG(CASE WHEN jsonb_typeof(metadata -> 'results') = 'number'
                                THEN (metadata ->> 'results')::numeric END), 1)::float AS avg_results
          FROM guide_event
-         WHERE app_id = $1 AND occurred_at >= $2 AND event_type = 'help_searched'
+         WHERE app_id = $1 AND environment_id = $3 AND occurred_at >= $2 AND event_type = 'help_searched'
            AND trim(metadata ->> 'query') <> ''
          GROUP BY 1
          ORDER BY count DESC, query
          LIMIT 20`,
-        [appId, since],
+        [appId, since, environmentId],
       );
       const t = totals.rows[0];
       return {
+        environmentId,
         days: HELP_ANALYTICS_DAYS,
         opens: t.opens,
         searches: t.searches,

@@ -8,7 +8,7 @@ nav_order: 4
 This guide explains, part by part, how Guide Engine works inside: what runs where, what each piece
 stores, how a request is authorized, and how a guide gets from the Studio onto a visitor's screen.
 It is written for engineers who will run, extend or review the system, and it describes the code
-as it is on `main` (version 0.3.0, migrations 001 to 020). Where the code and the intent differ, the
+as it is on `main` (version 0.3.0, migrations 001 to 021). Where the code and the intent differ, the
 guide says so in [Known gaps and quirks](#16-known-gaps-and-quirks).
 
 For *using* the product, read the [Guide Engine reference](../README.md) and the
@@ -125,18 +125,22 @@ app, guide and version. The Studio opens the customer's site with `?guidePreview
 agent sees the parameter, sends the token to `/v1/agent/<key>/preview`, and shows exactly that
 version to that browser only, recording nothing.
 
-**4. The author publishes and enables it.** Publishing stamps `published_at` on the draft, which
-makes the row immutable in the database, and points `guide.current_version_id` at it. Enabling
-flips `guide.enabled`. From now on the `active_guide` view includes it.
+**4. The author publishes, enables and promotes it.** Publishing stamps `published_at` on the
+draft, which makes the row immutable in the database, and releases it to the app's first
+environment (a `guide_release` row). Enabling flips `guide.enabled`. From now on the
+`active_guide` view includes it for that environment. The author then promotes it stage by stage,
+for example Test → Accept → Production; the production release is mirrored into
+`guide.current_version_id`.
 
 **5. A visitor loads a page.** The snippet defines a tiny `window.guideEngine` queue, injects
 `guides.js`, and queues `initialize({ visitor, account })`. The agent loads, finds its own script
 tag to learn the API host and app key, replays the queue, and calls `POST /v1/agent/<key>/guides`.
 
 **6. The backend decides what this visitor may get.** It checks the app key, the page's Origin
-against the app's websites, and the rate limit. It checks the kill switches. Then one query returns
-every guide that is published, enabled, inside its date window, automatic, open to this account,
-and not yet seen by this visitor at this version.
+against the app's websites, and the rate limit. It checks the kill switches. The Origin also names
+the environment the page belongs to. Then one query returns every guide released in that
+environment that is enabled, inside its date window, automatic, open to this account and these
+tags, and not yet seen by this visitor at this version in this environment.
 
 **7. The agent decides what to show now.** It matches each guide's route against the current
 path, puts walkthroughs before single tips, and starts the first one. It finds the step's element
@@ -145,11 +149,13 @@ card in a Shadow DOM, and records `guide_shown`.
 
 **8. The visitor clicks through.** Each step records `guide_step_viewed` and
 `guide_step_completed`; the end records `guide_completed`, a close records `guide_dismissed`.
-Events go out in batches. The backend stores them and updates the visitor's state for that guide,
-so the guide does not show again until a newer version is published.
+Events go out in batches. The backend stores them under the page's environment (unless that
+environment's analytics are switched off) and updates the visitor's state for that guide in that
+environment, so the guide does not show again there until a newer version is released.
 
 **9. The author reads the results.** The Studio's analytics run aggregate queries over
-`guide_event`: shown, completed, dismissed, per step, per account, and help-center searches.
+`guide_event` for one environment at a time (production by default): shown, completed, dismissed,
+per step, per account, and help-center searches.
 
 **10. Time passes.** A daily job deletes events older than the retention period (400 days by
 default in production). A manager can export or forget one visitor's data. An owner can export or
@@ -313,12 +319,15 @@ has RLS **enabled and forced**, so even the table owner is subject to it.
 | `organization` | Customers | `name`, `created_by`, `suspended_at`, `support_access_until`, `support_access_granted_by` |
 | `org_member` | Memberships | `(org_id, user_id)` primary key, `role` in owner, manager, editor, viewer |
 | `invitation` | Pending invitations | `email`, `org_role` (never owner), `token_hash` (SHA-256 only), `expires_at`, `accepted_at`, `accepted_by` |
-| `application` | Apps | `org_id`, `name`, `public_key` (unique), `allowed_origins[]`, `identity_mode`, `signing_secret` (encrypted), `enabled`, help button settings, `route_mode`, `suspended_at` |
+| `application` | Apps | `org_id`, `name`, `public_key` (unique), `allowed_origins[]` (the union of its environments' websites, kept in sync by the API), `identity_mode`, `signing_secret` (encrypted), `enabled`, help button settings, `route_mode`, `suspended_at` |
 | `guide` | Guides | `app_id`, `name`, `type`, `status`, `enabled`, `current_version_id`, `created_by` |
 | `guide_version` | Drafts and published versions | `guide_id`, `version_number`, `steps` (JSONB), `route_match` (JSONB), `page_id`, `start_at`, `end_at`, `account_ids[]`, `visitor_tags[]`, `help` (JSONB), `activation`, `published_at` |
 | `app_page` | Saved pages | `app_id`, `name` (unique per app, case-insensitive), `match_type`, `match_value`, `start_path` |
-| `guide_event` | Everything visitors did | `BIGSERIAL id`, `app_id`, `guide_id`, `guide_version_id`, `step_id`, `visitor_id`, `account_id`, `session_id`, `event_type`, `occurred_at`, `metadata` |
-| `user_guide_state` | Per-visitor guide state | `(app_id, visitor_id, guide_id)` primary key, `status` (shown, dismissed, completed), `last_seen_version` |
+| `app_environment` | Release stages of an app | `app_id`, `name` (unique per app, case-insensitive), `position` (promotion order, unique per app, deferred; the highest is production), `origins[]` (its websites), `analytics_enabled` |
+| `guide_release` | What each environment runs | `(guide_id, environment_id)` primary key, `app_id`, `version_id`, `released_at`, `released_by` |
+| `guide_release_event` | The release log, walked back by revert | `BIGSERIAL id`, `guide_id`, `environment_id`, `app_id`, `version_id` (null for a withdraw), `action` (`release`, `withdraw`), `actor`, `occurred_at`, `reverted_at`, `reverted_by` |
+| `guide_event` | Everything visitors did | `BIGSERIAL id`, `app_id`, `environment_id`, `guide_id`, `guide_version_id`, `step_id`, `visitor_id`, `account_id`, `session_id`, `event_type`, `occurred_at`, `metadata` |
+| `user_guide_state` | Per-visitor guide state | `(app_id, environment_id, visitor_id, guide_id)` primary key, `status` (shown, dismissed, completed), `last_seen_version` |
 | `agent_error` | Error reports from browsers | `app_id`, `message`, `stack`, `agent_version`, `url` |
 | `support_access_log` | Every request a platform admin made under support access | `org_id`, `admin_user_id`, `admin_name`, `admin_email`, `method`, `path` |
 | `system_config` | Global settings (unscoped) | `guide_engine_enabled` is the global kill switch |
@@ -337,6 +346,7 @@ normalized steps table that was never used). Neither is read by the code.
 - Help events have no guide, guide events must have one (`chk_help_event_has_no_guide`).
 - The help button colour must be `#rrggbb`, because it is injected into the agent's stylesheet.
 - Invitations can never grant owner.
+- A release-log row carries a version exactly when it is a release: `(action = 'release') = (version_id IS NOT NULL)`.
 
 **Cascades.** Deleting an organization removes its apps, guides, versions, pages, events, visitor
 state, errors, members, invitations and support log through foreign keys. `studio_user` rows are
@@ -356,15 +366,20 @@ SELECT g.id, g.app_id, g.name, g.type,
        gv.account_ids, gv.start_at, gv.end_at, gv.help,
        p.id AS page_id,
        COALESCE(p.start_path, CASE WHEN p.match_type = 'exact' THEN p.match_value END) AS page_start_path,
-       gv.activation, gv.visitor_tags
-FROM guide g
-JOIN guide_version gv ON gv.id = g.current_version_id
+       gv.activation, gv.visitor_tags,
+       r.environment_id
+FROM guide_release r
+JOIN guide g ON g.id = r.guide_id
+JOIN guide_version gv ON gv.id = r.version_id AND gv.published_at IS NOT NULL
 LEFT JOIN app_page p ON p.id = gv.page_id
 WHERE g.enabled = TRUE
-  AND g.status = 'published'
   AND (gv.start_at IS NULL OR gv.start_at <= now())
   AND (gv.end_at   IS NULL OR gv.end_at   >= now());
 ```
+
+One row per guide **per environment it is released to** (since migration 021); every reader
+filters on `environment_id`. A release only ever points at a published version, and the view
+checks `published_at` again as a backstop.
 
 It is created `WITH (security_invoker = true)`, so it runs with the caller's RLS rather than the
 view owner's. A guide on a saved page follows that page's *current* URL: editing a page moves every
@@ -394,6 +409,7 @@ The migrations tell the design history. In short:
 | 018 | `activation` auto or manual | Guides that only appear from the help center |
 | 019 | `shown` visitor state | An automatic guide shows once per visitor per version |
 | 020 | `visitor_tags` on versions | Target guides by what the visitor may do in the host application |
+| 021 | Environments, releases and the release log; events and visitor state per environment; `active_guide` on releases | Dev → Test → Accept → Prod promotion with revert, from one Studio and one key; analytics that never mix environments and can be switched off per environment. Existing apps got one *Production* environment |
 
 ---
 
@@ -454,6 +470,8 @@ In words, for the main tables. Policies of the same command are OR-ed together.
 | `guide_version` | Members of the app's org; the agent for its own app. **Never platform admins** | Insert: members. Update and delete: **only while `published_at IS NULL`** |
 | `guide_event` | Members; platform admins (for counts); the retention job | Insert: the agent for its own app. Delete: managers (forget visitor), the retention job. No update, ever |
 | `user_guide_state` | The agent for its own app; managers | The agent; managers may delete (forget visitor) |
+| `app_environment` | Members of the app's org; the agent for its own app; platform admins (counts) | Insert, update, delete: editor or above (`admin_app_ids`, like `application` updates); managers and owners also when creating an app. Deleting is limited to managers in code |
+| `guide_release`, `guide_release_event` | Members of the app's org; the agent reads its own app's releases | Members (role checks in code). The log is never deleted or rewritten except for its revert marks |
 | `support_access_log` | Managers and owners of that org, platform admins | Insert: platform admins |
 
 Two details are worth understanding:
@@ -634,7 +652,10 @@ bundle answers `503`. `GET /agent/v1/version` returns `{ version, hash }` uncach
    websites, else `403 origin_not_allowed`. An app with no websites refuses every browser. On
    success the response gets `Access-Control-Allow-Origin: <origin>` and `Vary: Origin`; no
    credentials are ever allowed. Requests with no Origin (servers, scripts) pass, which is what
-   signed identity is for.
+   signed identity is for. The app's websites are the union of its environments' websites; the
+   handlers then look up which environment the Origin belongs to (production when there is none,
+   and nothing is served when it belongs to none, for instance a website removed seconds ago and
+   still in the cache).
 3. **Preflight.** `OPTIONS` answers `204` with `POST` and `Content-Type` allowed, before rate
    limiting. The agent avoids preflights anyway by sending JSON as `text/plain`, which is a CORS
    "simple request" and also works with `keepalive` on page exit.
@@ -659,12 +680,13 @@ All are `POST`. `/guides`, `/help` and `/events` carry the identity fields descr
 SELECT a.id, a.app_id, a.name, a.type, a.version_id, a.steps, a.route_match
 FROM active_guide a
 WHERE a.app_id = $1                                            -- this app
+  AND a.environment_id = $5                                    -- released in the page's environment
   AND a.activation = 'auto'                                    -- not help-only
   AND (a.account_ids IS NULL OR $3::text = ANY(a.account_ids)) -- account audience
   AND (a.visitor_tags IS NULL OR a.visitor_tags && $4::text[])  -- visitor tags
   AND NOT EXISTS (                                             -- not seen at this version
     SELECT 1 FROM user_guide_state s
-    WHERE s.app_id = $1 AND s.visitor_id = $2 AND s.guide_id = a.id
+    WHERE s.app_id = $1 AND s.environment_id = $5 AND s.visitor_id = $2 AND s.guide_id = a.id
       AND s.status IN ('shown', 'dismissed', 'completed')
       AND s.last_seen_version >= a.version_number)
 ```
@@ -683,7 +705,9 @@ happens in the browser; there is no search endpoint.
 `guide_step_viewed`, `guide_step_completed`, `guide_dismissed`, `guide_completed`, `guide_error`).
 Help events (`help_opened`, `help_searched`) have no guide; a search query is cut to 200
 characters. Events for guides of other apps are silently dropped. Accepted events are inserted in
-one statement, then the visitor's state is updated:
+one statement under the page's environment, unless that environment's `analytics_enabled` is off,
+in which case nothing is stored. Either way the visitor's state in that environment is updated
+(show-once is behaviour, not a statistic):
 
 - `guide_shown` → `shown`, `guide_dismissed` → `dismissed`, `guide_completed` → `completed`;
 - the latest event per guide wins, except that a later `shown` at the same version (a help-center
@@ -966,11 +990,12 @@ Source: [`routes/studio/guides.ts`](../packages/backend/src/routes/studio/guides
 - A **guide** row holds the name, type, status, `enabled` flag and `current_version_id`. It starts
   as `draft` and disabled, with no versions.
 - The **draft** is the one version with `published_at` null. Saving updates it in place.
-- **Publishing** promotes the draft: `published_at = now()`, then
-  `guide.current_version_id = <it>` and `status = 'published'`. Publishing does not enable the guide;
+- **Publishing** promotes the draft: `published_at = now()`, then releases it to the app's
+  **first** environment and sets `status = 'published'`. Publishing does not enable the guide;
   enabling is a separate switch, so "published but off" is the normal state after a first publish.
 - **Version numbers** are `max + 1` across all versions of the guide and never reused.
-- **Rollback** points `current_version_id` at an older published version. Nothing is copied.
+- **Rollback** releases an older published version in **production**. Nothing is copied.
+- See [11.5](#115-environments-and-releases) for releases, promotion and revert.
 - **Delete** removes the guide with all versions, events and visitor state.
 - Concurrent saves are serialized with `SELECT … FOR UPDATE` on the guide row.
 
@@ -1013,6 +1038,33 @@ An editor asks for `POST …/guides/:id/preview-token { versionId }`. The backen
 characters and different from `JWT_SECRET`) for 15 minutes, and returns a URL on the app's first
 website: the help start path, else the exact route, else the literal start of the pattern, with
 `?guidePreview=<token>` added. The token is useless for any other app.
+
+### 11.5 Environments and releases
+
+Source: [`services/environments.ts`](../packages/backend/src/services/environments.ts) and
+[`routes/studio/environments.ts`](../packages/backend/src/routes/studio/environments.ts).
+
+- An app's **environments** are ordered by `position`; the last is production. Every app has at
+  least one (the API refuses to delete the last), and a new app starts with *Production* holding
+  the websites it was created with.
+- **Websites belong to environments.** `application.allowed_origins` is kept equal to the union of
+  every environment's `origins` (`syncAllowedOrigins`), because the CORS check reads it. A website
+  may belong to one environment of an app only (`409 website_in_use`), so an Origin always names at
+  most one environment.
+- **A release** is the one published version an environment runs (`guide_release`). Every change
+  appends a `guide_release_event` row with the state it set: a version, or nothing (`withdraw`).
+- **Promote** copies the source environment's release to the next position. **Release** sets any
+  published version directly; a draft is refused (`400 version_not_published`).
+- **Revert** marks the environment's newest non-reverted log row as reverted and applies the state
+  of the non-reverted row below it, or withdraws when there is none. Doing it again walks further
+  back; a new release starts a new top. Nothing is ever deleted from the log.
+- **`guide.current_version_id` mirrors production** (`syncCurrentVersion`, run after every release
+  change and after a reorder or delete changes which environment is last), so "live" in the guide
+  list, page usage, the export and rollback keep meaning live in production.
+- All of it runs under `lockGuide` (`SELECT … FOR UPDATE`), like publishing, so two people
+  promoting at once can't interleave.
+- The positions' unique constraint is `DEFERRABLE INITIALLY DEFERRED`, so a reorder can swap two
+  positions inside its transaction.
 
 ---
 
@@ -1075,7 +1127,12 @@ analytics.
 
 ### 13.1 Analytics
 
-All analytics are SQL over `guide_event` at request time. There is no rollup table.
+All analytics are SQL over `guide_event` at request time. There is no rollup table. Every view
+reads **one environment** (`?environment=<id>`, else production; an id of another app is a 404) and
+returns its `environmentId`; numbers are never added up across environments. Events recorded
+before migration 021 were filed under each app's *Production* environment, and events of a deleted
+environment keep `environment_id` null, so they appear in no view (they still count for the
+visitor export and retention).
 
 | View | Endpoint | What it computes |
 |---|---|---|
@@ -1264,6 +1321,19 @@ Things that are true of the code today and worth knowing before you rely on or c
   (read < edit < delete), it must emit one tag per level the person reaches, so a guide can list
   the lowest level it needs.
 
+**Environments**
+
+- A guide's `enabled` switch, dates and audience belong to the guide and its versions, so they apply
+  in every environment; only *which version* runs differs per environment. Turning a guide off for
+  production alone means withdrawing it there.
+- Releases (like publishing) are content writes: RLS lets any member write `guide_release`, and the
+  editor check is in code.
+- The agent's CORS check uses a 10-second app cache, the environment lookup does not. For up to
+  10 seconds after a website is moved out of every environment, its pages pass CORS and get
+  `{ enabled: false }`; a website moved *into* an environment may get `403` for as long.
+- Deleting an environment keeps its events, with `environment_id` null; no analytics view shows
+  them any more.
+
 **Agent and browser**
 
 - Event delivery retries once, and only a batch the browser refused as keepalive; a batch that
@@ -1299,7 +1369,8 @@ Things that are true of the code today and worth knowing before you rely on or c
 |---|---|
 | What a Studio user may do | [`routes/studio/context.ts`](../packages/backend/src/routes/studio/context.ts), [`db.ts`](../packages/backend/src/db.ts), migrations 005, 016, 017 |
 | A database rule | A **new** file in [`migrations/`](../packages/backend/migrations); never edit an applied one |
-| Which guides a visitor gets | [`routes/agent.ts`](../packages/backend/src/routes/agent.ts) (`/guides`, `/help`), the `active_guide` view (migration 018) |
+| Which guides a visitor gets | [`routes/agent.ts`](../packages/backend/src/routes/agent.ts) (`/guides`, `/help`), the `active_guide` view (migration 021) |
+| Environments, releases, promote and revert | [`services/environments.ts`](../packages/backend/src/services/environments.ts), [`routes/studio/environments.ts`](../packages/backend/src/routes/studio/environments.ts), the release routes in `routes/studio/guides.ts` |
 | Visitor identity | [`auth/visitor.ts`](../packages/backend/src/auth/visitor.ts), [Signed identity](integration/signed-identity.md) |
 | Studio sign-in | [`auth/oidc.ts`](../packages/backend/src/auth/oidc.ts), [`auth/studio.ts`](../packages/backend/src/auth/studio.ts), [`auth/config.ts`](../packages/backend/src/auth/config.ts), Studio [`core/auth.service.ts`](../apps/studio/src/app/core/auth.service.ts) |
 | Guide validation and publishing | [`routes/studio/guides.ts`](../packages/backend/src/routes/studio/guides.ts), [`sanitize.ts`](../packages/backend/src/sanitize.ts) |

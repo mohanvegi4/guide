@@ -33,6 +33,7 @@ import {
 } from '../core/models';
 import { VersionHistoryComponent } from '../components/version-history.component';
 import { AnalyticsComponent } from '../components/analytics.component';
+import { ReleasesComponent } from '../components/releases.component';
 
 type ActionForm = FormGroup<{ label: FormControl<string>; action: FormControl<StepActionType> }>;
 type StepForm = FormGroup<{
@@ -56,7 +57,14 @@ const SELECTOR_PATTERN = /^\[data-guide-id="([A-Za-z0-9_-]+)"\]$/;
  */
 @Component({
   selector: 'app-guide-editor',
-  imports: [ReactiveFormsModule, RouterLink, DatePipe, VersionHistoryComponent, AnalyticsComponent],
+  imports: [
+    ReactiveFormsModule,
+    RouterLink,
+    DatePipe,
+    VersionHistoryComponent,
+    ReleasesComponent,
+    AnalyticsComponent,
+  ],
   templateUrl: './guide-editor.component.html',
 })
 export class GuideEditorComponent {
@@ -488,7 +496,9 @@ export class GuideEditorComponent {
   }
 
   rollback(versionNumber: number): void {
-    if (!confirm(`Make v${versionNumber} the live version? End users will see it on their next page load.`))
+    if (
+      !confirm(`Make v${versionNumber} the live version in production? End users will see it on their next page load.`)
+    )
       return;
     this.run(this.api.rollback(this.appId(), this.guideId, versionNumber), () => {
       this.message.set(`Rolled back to v${versionNumber}.`);

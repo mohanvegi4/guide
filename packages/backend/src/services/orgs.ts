@@ -75,7 +75,14 @@ export async function createApp(
      RETURNING ${APP_COLUMNS}`,
     [orgId, input.name, generatePublicKey(), input.websites],
   );
-  return result.rows[0];
+  const app = result.rows[0];
+  // Every app has at least one environment; the first holds the websites given
+  // at creation. More stages (Dev, Test, Accept…) are added in its settings.
+  await client.query(`INSERT INTO app_environment (app_id, name, position, origins) VALUES ($1, 'Production', 1, $2)`, [
+    app.id,
+    input.websites,
+  ]);
+  return app;
 }
 
 /**

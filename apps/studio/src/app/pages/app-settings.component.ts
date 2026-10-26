@@ -7,13 +7,22 @@ import { ApiService, describeError } from '../core/api.service';
 import { runRequest } from '../core/request';
 import { saveResponseAsFile } from '../core/download';
 import { AuthService } from '../core/auth.service';
-import { AgentError, App, HELP_POSITIONS, HelpAnalytics, HelpPosition, ROUTE_MODES } from '../core/models';
-import { parseWebsites } from './websites';
+import {
+  AgentError,
+  App,
+  HELP_POSITIONS,
+  HelpAnalytics,
+  HelpPosition,
+  ROUTE_MODES,
+  isOrgManager,
+} from '../core/models';
+import { EnvironmentsComponent } from '../components/environments.component';
+import { EnvironmentSelectComponent } from '../components/environment-select.component';
 
 /**
  * Install + security settings for one app (app admins):
  *  - the <head> snippet with this app's public key
- *  - websites allowed to load guides
+ *  - environments (release stages) with the websites that belong to each
  *  - optional signed visitor identity (secret shown once)
  *  - how the app routes (path or hash), which decides what guides match on
  *  - the help center's button and placement, with its usage over the last 30 days
@@ -22,7 +31,7 @@ import { parseWebsites } from './websites';
  */
 @Component({
   selector: 'app-app-settings',
-  imports: [DatePipe, FormsModule],
+  imports: [DatePipe, FormsModule, EnvironmentsComponent, EnvironmentSelectComponent],
   template: `
     @if (app(); as a) {
       <div class="page-header">
@@ -83,14 +92,8 @@ import { parseWebsites } from './websites';
 
       @if (admin()) {
         <section class="card">
-          <h2>2. Websites</h2>
-          <p class="muted small">
-            Guides only load on these sites. Include your development URL if you test locally.
-          </p>
-          <textarea rows="3" [(ngModel)]="websites" aria-label="Websites, one per line"></textarea>
-          <div class="toolbar">
-            <button type="button" (click)="saveWebsites()" [disabled]="busy()">Save websites</button>
-          </div>
+          <h2>2. Environments &amp; websites</h2>
+          <app-environments [appId]="a.id" [canDelete]="manager()" />
           <div class="inline-form">
             <label>
               Routing
@@ -198,7 +201,10 @@ import { parseWebsites } from './websites';
           <div class="card nested help-analytics">
             <div class="section-head">
               <h3 class="subhead">Help center analytics</h3>
-              <button type="button" class="link" (click)="loadAnalytics()">Refresh</button>
+              <div class="toolbar">
+                <app-environment-select [appId]="a.id" [(value)]="analyticsEnvironment" />
+                <button type="button" class="link" (click)="loadAnalytics()">Refresh</button>
+              </div>
             </div>
             @if (analyticsError()) {
               <p class="error">{{ analyticsError() }}</p>
@@ -347,6 +353,8 @@ export class AppSettingsComponent {
   readonly appId = input.required<string>();
   /** Settings are app-admin work; everyone else gets the install instructions only. */
   protected readonly admin = computed(() => this.auth.appRole(this.appId()) === 'app_admin');
+  /** Managers and owners may delete environments (their releases go with them). */
+  protected readonly manager = computed(() => isOrgManager(this.auth.orgRole(this.app()?.org_id)));
 
   protected readonly app = signal<App | null>(null);
   protected readonly errors = signal<AgentError[]>([]);
@@ -357,8 +365,9 @@ export class AppSettingsComponent {
   protected readonly copied = signal<string | null>(null);
   protected readonly analytics = signal<HelpAnalytics | null>(null);
   protected readonly analyticsError = signal<string | null>(null);
+  /** Which environment the help-center numbers are from ('' = production). */
+  protected readonly analyticsEnvironment = signal('');
   protected readonly justCreated = inject(ActivatedRoute).snapshot.queryParamMap.has('new');
-  protected websites = '';
   protected confirmName = '';
   protected visitorId = '';
   protected helpLabel = 'Help';
@@ -394,15 +403,19 @@ const token = jwt.sign(
         this.api
           .listErrors(appId)
           .subscribe({ next: (list) => this.errors.set(list), error: () => undefined });
-        this.loadAnalytics(appId);
       });
+    });
+    effect(() => {
+      const appId = this.appId();
+      this.analyticsEnvironment();
+      untracked(() => this.loadAnalytics(appId));
     });
   }
 
   /** Help-center usage; its own error signal so a failure here doesn't hide the settings. */
   loadAnalytics(appId = this.appId()): void {
     this.analyticsError.set(null);
-    this.api.helpAnalytics(appId).subscribe({
+    this.api.helpAnalytics(appId, this.analyticsEnvironment() || undefined).subscribe({
       next: (s) => this.analytics.set(s),
       error: (err) => this.analyticsError.set(describeError(err)),
     });
@@ -410,7 +423,6 @@ const token = jwt.sign(
 
   private setApp(a: App): void {
     this.app.set(a);
-    this.websites = a.allowed_origins.join('\n');
     this.helpLabel = a.help_button_label;
     this.helpColor = a.help_button_color;
     this.helpPosition = a.help_position;
@@ -422,15 +434,6 @@ const token = jwt.sign(
       this.message.set('Saved.');
       void this.auth.refresh();
     });
-  }
-
-  saveWebsites(): void {
-    const parsed = parseWebsites(this.websites);
-    if (typeof parsed === 'string') {
-      this.error.set(parsed);
-      return;
-    }
-    this.save({ websites: parsed });
   }
 
   saveHelpButton(): void {

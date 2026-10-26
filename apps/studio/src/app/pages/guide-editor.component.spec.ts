@@ -92,6 +92,9 @@ describe('GuideEditorComponent', () => {
     http
       .match('/api/v1/apps/a1/guides/g1/analytics')
       .forEach((r) => r.flush({ guideId: 'g1', counts: [], steps: [], startedFromHelp: 0 }));
+    // So do the releases panel and the analytics' environment picker.
+    http.match('/api/v1/apps/a1/guides/g1/releases').forEach((r) => r.flush([]));
+    http.match('/api/v1/apps/a1/environments').forEach((r) => r.flush([]));
     http.verify();
   });
 
