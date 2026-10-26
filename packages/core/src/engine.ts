@@ -406,11 +406,57 @@ function finishedKey(guide: Guide): string {
 }
 
 /**
- * Query parameter that starts a help-center guide on page load:
- * ?guideEngine=<guide id> (a shareable link), or ?guideEngine=help:<id> when
- * the help center sent the visitor here. Like Pendo's guide permalinks.
+ * Query parameter that starts a guide on page load: ?guideEngine=<guide id>
+ * (a shareable link, like Pendo's guide permalinks). ?guideEngine=help:<id>
+ * is the help center's hand-off when session storage is unavailable.
  */
 export const LAUNCH_PARAM = 'guideEngine';
+
+/**
+ * How the help center hands "start guide X" to the page it sends the visitor
+ * to: an entry in this tab's session storage, not the URL, so nothing shows
+ * in the address bar and a host router that rewrites the URL on boot can't
+ * put it back. Scoped to the app key; expires so a hand-off whose page never
+ * loaded doesn't fire minutes later.
+ */
+export const LAUNCH_STORAGE_KEY = 'guideEngine.launch';
+const LAUNCH_TTL_MS = 60_000;
+
+/** Records a help hand-off. False when storage is unavailable: the caller falls back to the URL. */
+function storeHelpLaunch(appKey: string, guideId: string): boolean {
+  try {
+    window.sessionStorage.setItem(LAUNCH_STORAGE_KEY, JSON.stringify({ appKey, guideId, at: Date.now() }));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** This app's pending help hand-off, if one is fresh. Expired or malformed entries are cleared. */
+function readHelpLaunch(appKey: string): string | null {
+  try {
+    const raw = window.sessionStorage.getItem(LAUNCH_STORAGE_KEY);
+    if (!raw) return null;
+    const entry = JSON.parse(raw) as { appKey?: unknown; guideId?: unknown; at?: unknown };
+    const fresh = typeof entry.at === 'number' && Date.now() - entry.at < LAUNCH_TTL_MS;
+    if (!fresh || typeof entry.guideId !== 'string') {
+      clearHelpLaunch();
+      return null;
+    }
+    // Another app on the same site (another key) keeps its own hand-off.
+    return entry.appKey === appKey ? entry.guideId : null;
+  } catch {
+    return null;
+  }
+}
+
+function clearHelpLaunch(): void {
+  try {
+    window.sessionStorage.removeItem(LAUNCH_STORAGE_KEY);
+  } catch {
+    // never break the page
+  }
+}
 
 function readLaunchParam(): { guideId: string; source: 'help' | 'link' } | null {
   try {
@@ -486,8 +532,13 @@ export class GuideEngine {
   private identifyCalls = 0;
   /** What overlapping identify() calls asked for so far; a later partial call builds on it. */
   private requestedOptions: SdkInitOptions | null = null;
-  /** A help-center or shared-guide link this page was opened with, started once the help list arrives. */
-  private pendingLaunch: { guideId: string; source: 'help' | 'link' } | null = null;
+  /**
+   * A shared-guide link or help-center hand-off this page was opened with,
+   * started once the help list arrives. `handOff`: it came from session
+   * storage, so it only starts on the guide's own page (the hand-off may have
+   * landed on a redirect, such as a sign-in page).
+   */
+  private pendingLaunch: { guideId: string; source: 'help' | 'link'; handOff?: boolean } | null = null;
   /** identify(null): nobody is signed in, so nothing is fetched or shown until the next identify(). */
   private signedOut = false;
   private client: AgentClient | null = null;
@@ -549,9 +600,11 @@ export class GuideEngine {
       const previewToken = readPreviewToken();
       if (previewToken && (await this.startPreview(previewToken))) return;
 
-      // Arrived via a help-center / shared guide link: start that guide first,
-      // so automatic evaluation doesn't start it a second time.
-      const launch = readLaunchParam();
+      // Arrived via a shared guide link or a help-center hand-off: start that
+      // guide first, so automatic evaluation doesn't start it a second time.
+      const handedOff = readHelpLaunch(options.appKey);
+      const launch =
+        readLaunchParam() ?? (handedOff ? { guideId: handedOff, source: 'help' as const, handOff: true } : null);
       if (launch) {
         this.pendingLaunch = launch;
         stripLaunchParam();
@@ -602,12 +655,18 @@ export class GuideEngine {
     return currentRoutePath(this.routeMode);
   }
 
+  /** Whether `path` is where a help guide runs: its route, or its start page. */
+  private isGuidePage(item: HelpItem, path: string): boolean {
+    return matchesRoute(item.routeMatch, path) || this.isCurrentPage(item.help.startPath);
+  }
+
   /** Whether a help start page (a same-site path, maybe with a query) is the page the visitor is on. */
   private isCurrentPage(startPath: string): boolean {
     try {
       const target = new URL(startPath, window.location.origin);
-      const path =
-        this.routeMode === 'hash' ? stripQueryAndHash(target.hash.slice(1) || '/') : target.pathname;
+      // Start pages are written as routes in both modes (/reports/2026); a
+      // hash-mode one written with its fragment (/#/reports/2026) works too.
+      const path = this.routeMode === 'hash' && target.hash ? target.hash.slice(1) : target.pathname;
       return stripQueryAndHash(path) === this.currentPath();
     } catch {
       return false;
@@ -646,8 +705,9 @@ export class GuideEngine {
    * Starts a help-center guide for the visitor. On the guide's own page it
    * starts immediately (even if they finished it before: help is on demand).
    * Elsewhere, the visitor is asked first (the help UI's confirmation modal),
-   * then sent to the guide's start page with a launch parameter; the guide
-   * starts when that page loads.
+   * then sent to the guide's start page, with the guide handed over in session
+   * storage; it starts when that page loads (or, for a hash router, when the
+   * route changes).
    */
   launchHelpGuide(guideId: string): void {
     const item = this.helpItems.find((g) => g.id === guideId);
@@ -655,36 +715,48 @@ export class GuideEngine {
     // Start here when the guide's route matches, and also when its start page
     // IS this page (same path, query aside): asking "go to another page?" for
     // the page the visitor is on, then reloading it, helps nobody.
-    if (matchesRoute(item.routeMatch, this.currentPath()) || this.isCurrentPage(item.help.startPath)) {
+    if (this.isGuidePage(item, this.currentPath())) {
       this.helpUi?.close();
       this.startOnDemand(item, 'help');
       return;
     }
-    let target: string;
-    try {
-      if (this.routeMode === 'hash') {
-        // A hash router keeps the document where it is; the start page goes
-        // in the fragment. The launch parameter goes in the REAL query string
-        // (before the hash), where readLaunchParam() looks on any page.
-        const url = new URL(window.location.pathname, window.location.origin);
-        url.searchParams.set(LAUNCH_PARAM, `help:${item.id}`);
-        url.hash = item.help.startPath;
-        target = url.pathname + url.search + url.hash;
-      } else {
-        const url = new URL(item.help.startPath, window.location.origin);
-        if (url.origin !== window.location.origin) return; // help links never leave the site
-        url.searchParams.set(LAUNCH_PARAM, `help:${item.id}`);
-        target = url.pathname + url.search + url.hash;
-      }
-    } catch {
-      return; // malformed start page: do nothing rather than break the page
-    }
-    const go = () => this.navigate(target);
+    const target = this.startPageUrl(item, false);
+    if (target === null) return; // malformed or off-site start page: do nothing rather than break the page
+    const go = () => {
+      // The URL parameter is only the fallback, for a browser without session storage.
+      const url = storeHelpLaunch(this.options?.appKey ?? '', item.id) ? target : this.startPageUrl(item, true);
+      if (url !== null) this.navigate(url);
+    };
     if (this.helpUi?.confirmNavigation) {
       this.helpUi.confirmNavigation(item, go);
     } else {
       this.helpUi?.close();
       go();
+    }
+  }
+
+  /**
+   * Where a help guide's start page is, as a same-site URL; null when it is
+   * malformed or (for path routing) on another site. With `withParam`, it
+   * carries ?guideEngine=help:<id>, read wherever the document loads.
+   */
+  private startPageUrl(item: HelpItem, withParam: boolean): string | null {
+    try {
+      if (this.routeMode === 'hash') {
+        // A hash router keeps the document where it is; the start page goes
+        // in the fragment, and the launch parameter in the REAL query string
+        // (before the hash), where readLaunchParam() looks on any page.
+        const url = new URL(window.location.pathname + window.location.search, window.location.origin);
+        if (withParam) url.searchParams.set(LAUNCH_PARAM, `help:${item.id}`);
+        url.hash = item.help.startPath;
+        return url.pathname + url.search + url.hash;
+      }
+      const url = new URL(item.help.startPath, window.location.origin);
+      if (url.origin !== window.location.origin) return null; // help links never leave the site
+      if (withParam) url.searchParams.set(LAUNCH_PARAM, `help:${item.id}`);
+      return url.pathname + url.search + url.hash;
+    } catch {
+      return null;
     }
   }
 
@@ -735,7 +807,14 @@ export class GuideEngine {
     this.pendingLaunch = null;
     if (launch) {
       const item = items.find((g) => g.id === launch.guideId);
-      if (item) this.startOnDemand(item, launch.source);
+      if (item && launch.handOff) {
+        if (this.isGuidePage(item, this.currentPath())) {
+          clearHelpLaunch();
+          this.startOnDemand(item, 'help');
+        }
+      } else if (item) {
+        this.startOnDemand(item, launch.source);
+      }
     }
     this.pushHelpState();
   }
@@ -771,11 +850,29 @@ export class GuideEngine {
   async onRouteChange(newPath?: string): Promise<void> {
     if (this.disabled || this.previewMode || !this.client) return;
     try {
+      this.takeRouteHandOff(newPath === undefined ? this.currentPath() : stripQueryAndHash(newPath));
       await this.evaluateGuidesForRoute(newPath === undefined ? undefined : stripQueryAndHash(newPath));
     } catch (err) {
       // never throw into the host app's router hooks
       this.reportError(err, 'route');
     }
+  }
+
+  /**
+   * A help hand-off whose navigation didn't reload the document (a hash
+   * router only changes the fragment) is picked up on the route change that
+   * brings the visitor to the guide's page. Started first, like at page load,
+   * so automatic evaluation doesn't start it a second time; left alone on any
+   * other page, where it simply expires.
+   */
+  private takeRouteHandOff(path: string): void {
+    const guideId = this.options ? readHelpLaunch(this.options.appKey) : null;
+    if (!guideId) return;
+    const item = this.helpItems.find((g) => g.id === guideId);
+    if (!item) return;
+    if (!this.isGuidePage(item, path)) return;
+    clearHelpLaunch();
+    this.startOnDemand(item, 'help');
   }
 
   /**

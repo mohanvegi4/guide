@@ -173,7 +173,7 @@ WISE page (console / OPAC)                     Guide Engine backend
   step whose anchor never appears means the guide never shows.
 - **Help center.** The floating button appears when the app has at least one listed guide. A guide
   launched elsewhere than its page gets a "Go to another page?" confirmation and a normal page load to
-  its start page with `?guideEngine=help:<id>`.
+  its start page; the guide to start travels in session storage, so the URL stays clean.
 - **Analytics.** `guide_shown / step viewed / completed / dismissed / error`, help opens and searches,
   per guide and per account, in the Studio.
 

@@ -863,9 +863,12 @@ its source or use the snippet.
    anonymous id is used.
 2. **Preview?** If the URL has `?guidePreview=<token>` and the backend accepts it, show that guide
    and nothing else. No events, no help center, no route changes for the rest of the page.
-3. **Launch link?** If the URL has `?guideEngine=<id>` or `?guideEngine=help:<id>`, load the help
-   list, start that guide, and remove the parameter from the address bar so a reload doesn't
-   restart it.
+3. **Launch?** If the URL has `?guideEngine=<id>` (a shared link) or `?guideEngine=help:<id>`, or
+   the help center left a hand-off for this app key in session storage (`guideEngine.launch`, under
+   a minute old), load the help list and start that guide. The parameter is removed from the
+   address bar and the hand-off from storage, so a reload doesn't restart it. A hand-off only
+   starts on the guide's own page (route or start page); landing elsewhere (a sign-in redirect),
+   it waits for the route change that gets there, or expires.
 4. **Evaluate automatic guides** for the current route (below).
 5. **Load the help center** list and show the button if there is anything to list.
 
@@ -966,9 +969,11 @@ DOM: a floating button (label, colour and position from the app's settings), a p
 - Search runs locally over the list: every word must appear in the title, description or keywords;
   title matches rank first.
 - Choosing a guide whose start page is the current page starts it in place. Otherwise the panel asks
-  "Go to another page?", and on confirmation does a full page load of the start path with
-  `?guideEngine=help:<id>`, which step 3 of startup picks up. Help links never leave the site's
-  origin.
+  "Go to another page?", and on confirmation writes the hand-off to session storage and does a
+  full page load of the start path, which step 3 of startup picks up (a hash-routed app changes
+  only the fragment, and the route change picks it up). The URL carries
+  `?guideEngine=help:<id>` only when session storage is unavailable. Help links never leave the
+  site's origin.
 - Keyboard: arrows move through results, Enter starts one, Escape closes, Tab stays inside the
   panel.
 

@@ -1,5 +1,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { GuideEngine, HelpItem, HelpUi, createHelpWidget, currentRoutePath, displayRoutePath } from '../src';
+import {
+  GuideEngine,
+  HelpItem,
+  HelpUi,
+  LAUNCH_STORAGE_KEY,
+  createHelpWidget,
+  currentRoutePath,
+  displayRoutePath,
+} from '../src';
 import { R, baseOptions, callsTo, fakeRenderer, makeGuide, makeStep, mockFetch } from './helpers';
 
 const HELP = R.guides.replace(/\/guides$/, '/help');
@@ -8,6 +16,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
   document.body.innerHTML = '';
   window.history.replaceState({}, '', '/');
+  window.sessionStorage.clear();
 });
 
 /** A /guides responder for a hash-routed app. */
@@ -122,17 +131,24 @@ describe('hash-routed apps', () => {
     expect(navigate).not.toHaveBeenCalled();
   });
 
-  it('sends the visitor to /#<start page> with the launch parameter in the real query string', async () => {
+  it('sends the visitor to /#<start page> and starts the guide on the route change that follows', async () => {
     window.history.replaceState({}, '', '/app/?v=2#/dashboard');
     const item = helpItem('b', '/reports/*', '/reports/2026?tab=all');
-    mockFetch({ [R.guides]: servingHash(), [HELP]: helpBody('hash', item) });
+    mockFetch({ [R.guides]: servingHash(), [HELP]: helpBody('hash', item), [R.events]: () => ({ status: 202 }) });
+    const { renderer, rendered } = fakeRenderer();
     const engine = new GuideEngine();
-    const navigate = vi.fn();
+    const navigate = vi.fn((url: string) => window.history.replaceState({}, '', url));
     engine.navigate = navigate;
-    await engine.init(baseOptions, fakeRenderer().renderer, fakeHelpUi().ui);
+    await engine.init(baseOptions, renderer, fakeHelpUi().ui);
     engine.launchHelpGuide('b');
-    // The document stays where it is (/app/); the route goes in the fragment.
-    expect(navigate).toHaveBeenCalledWith('/app/?guideEngine=help%3Ab#/reports/2026?tab=all');
+    // The document stays where it is (/app/?v=2); the route goes in the fragment,
+    // and the guide in session storage. Only the fragment changes, so there is
+    // no page load: the hash router's route change picks the hand-off up.
+    expect(navigate).toHaveBeenCalledWith('/app/?v=2#/reports/2026?tab=all');
+    expect(window.sessionStorage.getItem(LAUNCH_STORAGE_KEY)).not.toBeNull();
+    await engine.onRouteChange();
+    expect(rendered.map((r) => r.guide.id)).toEqual(['b']);
+    expect(window.sessionStorage.getItem(LAUNCH_STORAGE_KEY)).toBeNull();
   });
 
   it('on arrival at /?guideEngine=help:<id>#<route>, starts the guide and removes only the parameter', async () => {

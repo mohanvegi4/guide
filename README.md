@@ -445,12 +445,15 @@ A floating **Help** button (bottom right by default; the corner is an app settin
 - **Anywhere else:** the list says so ("Opens on `/team`"), and choosing the topic first asks
   **"Go to another page?"** with *Take me there* / *Stay here*, since leaving is a page load that
   can drop unsaved work. *Stay here* (or Esc) returns to the list. On *Take me there* the visitor
-  gets a normal page load to the guide's **start page** with `?guideEngine=help:<guide id>`; the
-  agent starts the guide on arrival and removes the parameter. This is the same approach as
-  Pendo's guide permalinks, plus the confirmation.
+  gets a normal page load to the guide's **start page**, and the agent starts the guide on
+  arrival. Which guide to start travels in the tab's session storage (`guideEngine.launch`, for
+  this app key, valid for a minute), never in the URL: nothing shows in the address bar, and a
+  router that rewrites the URL as it boots can't bring it back. If the visitor lands elsewhere
+  first (a sign-in redirect), the guide starts once a route change brings them to its page. Only
+  a browser with session storage blocked falls back to `?guideEngine=help:<guide id>`.
 - **Hash-routed apps** (Routing set to *Hash* in the app's settings) show the start page as
-  `/#/team`, and the visitor is sent to `/?guideEngine=help:<guide id>#/team`: the route goes in
-  the fragment and the launch parameter stays in the real query string, where the agent reads it.
+  `/#/team`, and the visitor is sent to `#/team` on the same document: no page load, so the guide
+  starts on the route change.
 - A plain `?guideEngine=<guide id>` link (for example from support staff) does the same for any
   help-center guide.
 

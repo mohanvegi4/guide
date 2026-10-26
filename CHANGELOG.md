@@ -33,6 +33,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). How a rel
 
 ### Fixed
 
+- Choosing a help-center topic on another page (core) no longer puts `?guideEngine=help:<id>` in
+  the address bar. The guide to start is handed to the next page in session storage (per app
+  key, valid for a minute) and starts only on the guide's page, so a host router that rewrites
+  the URL on boot can't keep or restore the parameter, and a reload doesn't restart the guide.
+  The URL parameter remains the fallback when session storage is blocked, and plain
+  `?guideEngine=<id>` links work as before. Hash-routed apps also start the guide when its start
+  page, rather than its route, is the page the visitor lands on.
+
 - The help center's topic list (core) no longer fills the whole screen height when it opens in the
   center or on a phone: like the corner positions, it is at most 560px tall and the list scrolls
   inside it.

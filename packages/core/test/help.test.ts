@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { GuideEngine, HelpItem, HelpUi, createHelpWidget, filterHelpItems } from '../src';
+import { GuideEngine, HelpItem, HelpUi, LAUNCH_STORAGE_KEY, createHelpWidget, filterHelpItems } from '../src';
 import {
   R,
   baseOptions,
@@ -53,9 +53,15 @@ function fakeHelpUi() {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+  vi.useRealTimers();
   document.body.innerHTML = '';
   window.history.replaceState({}, '', '/');
+  window.sessionStorage.clear();
 });
+
+/** The help center's hand-off to the next page, as session storage holds it. */
+const handOff = () => JSON.parse(window.sessionStorage.getItem(LAUNCH_STORAGE_KEY) ?? 'null');
 
 describe('filterHelpItems', () => {
   const items = [
@@ -306,7 +312,9 @@ describe('engine help center', () => {
     expect(navigate).not.toHaveBeenCalled();
     expect(asked.map((a) => a.item.id)).toEqual(['b']);
     asked[0].go();
-    expect(navigate).toHaveBeenCalledWith('/reports?guideEngine=help%3Ab');
+    // The guide travels in session storage, not in the URL.
+    expect(navigate).toHaveBeenCalledWith('/reports');
+    expect(handOff()).toMatchObject({ appKey: baseOptions.appKey, guideId: 'b' });
 
     // A guide for the current page never asks.
     engine.launchHelpGuide('a');
@@ -321,7 +329,80 @@ describe('engine help center', () => {
     engine.navigate = navigate;
     await engine.init(baseOptions, fakeRenderer().renderer, fakeHelpUi().ui);
     engine.launchHelpGuide('b');
+    expect(navigate).toHaveBeenCalledWith('/reports/2026?tab=all');
+  });
+
+  it('falls back to ?guideEngine=help:<id> when session storage is unavailable', async () => {
+    const item = helpItem('b', 'Export', { startPath: '/reports/2026?tab=all' }, '/reports/*');
+    mockFetch({ [R.guides]: serving(), [HELP]: helpBody(item) });
+    const engine = new GuideEngine();
+    const navigate = vi.fn();
+    engine.navigate = navigate;
+    await engine.init(baseOptions, fakeRenderer().renderer, fakeHelpUi().ui);
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new Error('blocked');
+    });
+    engine.launchHelpGuide('b');
     expect(navigate).toHaveBeenCalledWith('/reports/2026?tab=all&guideEngine=help%3Ab');
+  });
+
+  it('on arrival with a hand-off in session storage, starts that guide once and leaves the URL alone', async () => {
+    window.history.replaceState({}, '', '/team?tab=1');
+    window.sessionStorage.setItem(
+      LAUNCH_STORAGE_KEY,
+      JSON.stringify({ appKey: baseOptions.appKey, guideId: 'a', at: Date.now() }),
+    );
+    const item = helpItem('a', 'Invite');
+    const fetchMock = mockFetch({
+      [R.guides]: serving(item),
+      [HELP]: helpBody(item),
+      [R.events]: () => ({ status: 202 }),
+    });
+    const { renderer, rendered } = fakeRenderer();
+    const engine = new GuideEngine();
+    await engine.init(baseOptions, renderer, fakeHelpUi().ui);
+
+    expect(rendered).toHaveLength(1); // not started again by automatic evaluation
+    expect(window.location.search).toBe('?tab=1');
+    expect(handOff()).toBeNull(); // used once: a reload doesn't start it again
+    engine.dismissGuide('a');
+    await vi.waitFor(() =>
+      expect(eventsSent(fetchMock).map((e) => e.metadata)).toContainEqual({ source: 'help' }),
+    );
+  });
+
+  it("keeps a hand-off that landed on another page (a sign-in redirect), and ignores stale or other apps' ones", async () => {
+    const item = helpItem('a', 'Invite');
+    const store = (entry: object) => window.sessionStorage.setItem(LAUNCH_STORAGE_KEY, JSON.stringify(entry));
+    const arrive = async (path: string) => {
+      window.history.replaceState({}, '', path);
+      mockFetch({ [R.guides]: serving(), [HELP]: helpBody(item), [R.events]: () => ({ status: 202 }) });
+      const { renderer, rendered } = fakeRenderer();
+      const engine = new GuideEngine();
+      await engine.init(baseOptions, renderer, fakeHelpUi().ui);
+      return { engine, rendered };
+    };
+
+    // Redirected to /login first: nothing starts there, and the hand-off waits...
+    store({ appKey: baseOptions.appKey, guideId: 'a', at: Date.now() });
+    const { engine, rendered } = await arrive('/login');
+    expect(rendered).toHaveLength(0);
+    expect(handOff()).not.toBeNull();
+    // ...for the route change that brings the visitor to the guide's page.
+    window.history.replaceState({}, '', '/team');
+    await engine.onRouteChange();
+    expect(rendered.map((r) => r.guide.id)).toEqual(['a']);
+    expect(handOff()).toBeNull();
+
+    // Another app on the same site: not ours to take.
+    store({ appKey: 'ge_pk_someone_else', guideId: 'a', at: Date.now() });
+    expect((await arrive('/team')).rendered).toHaveLength(0);
+    expect(handOff()).not.toBeNull();
+
+    // Older than a minute: dropped.
+    store({ appKey: baseOptions.appKey, guideId: 'a', at: Date.now() - 61_000 });
+    expect((await arrive('/team')).rendered).toHaveLength(0);
+    expect(handOff()).toBeNull();
   });
 
   it('never sends visitors off-site, even with a crafted start page', async () => {
