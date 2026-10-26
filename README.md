@@ -540,6 +540,14 @@ packages they're `GuideService.openHelp()` (Angular), `useGuideEngine().openHelp
    page scrolls the anchor away within moments of the step appearing (restoring a scroll
    position, bringing a table into view) it's scrolled back once — later scrolling is the
    visitor's. Every card has a **×** and closes on **Escape**, whatever buttons the author chose.
+
+   The guide **steps back while the visitor uses the element**, so it never hides what the
+   element shows them. With focus in it (or in a popup it owns through `aria-controls` /
+   `aria-owns`, such as options rendered at the end of `<body>`), or a pointer pressed on it, the
+   dim goes and the ring stays. While one of its popups is open (`aria-expanded="true"`), the card
+   also fades and lets clicks through, until the popup closes. A card for a control that opens a
+   list below itself (text fields, selects, comboboxes, `aria-haspopup` buttons) goes above it,
+   or beside it when there's no room above, unless the author chose a side other than below.
 7. **Events** are batched every 5 s or 20 events, sent as `text/plain` JSON (no CORS preflight),
    and flushed on `pagehide`. Dismiss and complete are sent immediately.
 8. **Errors.** Fail silent also means the agent reports what it swallowed: an exception in

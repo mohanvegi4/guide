@@ -3,6 +3,53 @@ import { DEFAULT_THEME_COLOR, GuideTheme, applyTheme } from './theme';
 
 const SPOTLIGHT_DIM = 'rgba(15, 23, 42, 0.3)';
 const SPOTLIGHT_PAD = 4;
+const SPOTLIGHT_RING = `0 0 0 3px var(--ge-primary, ${DEFAULT_THEME_COLOR})`;
+
+/**
+ * Controls that open a list or popup next to themselves when used: text
+ * fields (autocomplete, search-as-you-type), selects, comboboxes, menu
+ * buttons. Their popups open below them, so a card is better placed
+ * elsewhere, and the page must not be dimmed over the popup while it's open.
+ */
+const POPUP_CONTROL = [
+  'input:not([type="checkbox"]):not([type="radio"]):not([type="button"]):not([type="submit"])' +
+    ':not([type="reset"]):not([type="range"]):not([type="color"]):not([type="file"]):not([type="hidden"])',
+  'select',
+  'textarea',
+  '[role="combobox"]',
+  '[aria-haspopup]:not([aria-haspopup="false"])',
+  '[contenteditable=""]',
+  '[contenteditable="true"]',
+].join(', ');
+
+function isPopupControl(el: Element): boolean {
+  try {
+    return el.matches(POPUP_CONTROL) || el.querySelector(POPUP_CONTROL) !== null;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The popups `el` (or a control inside it) says it owns: aria-controls and
+ * aria-owns name them by id. Custom dropdowns render their options there,
+ * often at the end of <body> (an Angular CDK overlay, ng-select's
+ * appendTo="body"), far from the control itself.
+ */
+function ownedPopups(el: Element): Element[] {
+  const ids = [el, ...Array.from(el.querySelectorAll('[aria-controls], [aria-owns]'))].flatMap((e) =>
+    `${e.getAttribute('aria-controls') ?? ''} ${e.getAttribute('aria-owns') ?? ''}`.split(/\s+/),
+  );
+  return ids
+    .filter(Boolean)
+    .map((id) => document.getElementById(id))
+    .filter((p): p is HTMLElement => p !== null);
+}
+
+/** A popup of `el` is open: it, or a control inside it, says so (aria-expanded). */
+function isExpanded(el: Element): boolean {
+  return el.getAttribute('aria-expanded') === 'true' || el.querySelector('[aria-expanded="true"]') !== null;
+}
 
 /**
  * Minimal default renderer using Shadow DOM for style isolation from the
@@ -14,6 +61,15 @@ const SPOTLIGHT_PAD = 4;
  * scrolled into view (once per step, so we never fight their scrolling) and
  * spotlighted — a ring around it with the rest of the page dimmed. The
  * spotlight ignores pointer events, so the element stays clickable.
+ *
+ * Once the visitor uses the element, the guide steps back so it never hides
+ * what the element shows them (a dropdown's options, an autocomplete list):
+ *  - in use (focus inside it or in a popup it owns, or a pointer pressed on
+ *    it): the dim goes, the ring stays;
+ *  - a popup open (aria-expanded="true"): the card also fades and lets
+ *    clicks through, until the popup closes.
+ * And a card for a control that opens popups is placed above or beside it,
+ * not below, where they open (unless the author chose a side).
  */
 export function createDomRenderer(engine: {
   advanceStep(guideId: string): void;
@@ -33,7 +89,10 @@ export function createDomRenderer(engine: {
    * element into view, which animates over several frames — leaves them
    * where the element used to be, often off screen.
    */
-  const tracked = new Map<string, { step: Step; target: Element; renderedAt: number; rescrolled: boolean }>();
+  const tracked = new Map<
+    string,
+    { step: Step; target: Element; renderedAt: number; rescrolled: boolean; pressed: boolean }
+  >();
   let listening = false;
   let repositionScheduled = false;
   /** How long after rendering a step the page's own scrolling may still move the anchor away (ms). */
@@ -46,6 +105,7 @@ export function createDomRenderer(engine: {
       if (!hostEntry || !target.isConnected) continue;
       spotlightTarget(hostEntry.spotlight, target);
       positionNear(hostEntry.host, target, step.position);
+      stepBack(guideId);
       // Host pages often scroll right after a page renders (restoring a
       // position, bringing a results table into view). If that takes the
       // anchor off screen within moments of the step appearing, bring it back
@@ -73,8 +133,59 @@ export function createDomRenderer(engine: {
     if (!target) tracked.delete(guideId);
     else if (previous && previous.step === step && previous.target === target)
       return; // a re-render, not a new step
-    else tracked.set(guideId, { step, target, renderedAt: Date.now(), rescrolled: false });
+    else tracked.set(guideId, { step, target, renderedAt: Date.now(), rescrolled: false, pressed: false });
     syncListeners();
+  }
+
+  /** Whether the visitor is working with the target: focus in it or in a popup it owns, or a pointer pressed on it. */
+  function inUse(target: Element, pressed: boolean): boolean {
+    const active = document.activeElement;
+    if (pressed) return true;
+    if (!active || active === document.body) return false;
+    return target.contains(active) || ownedPopups(target).some((p) => p.contains(active));
+  }
+
+  /**
+   * Lifts the dim while the target is in use, and fades the card (letting
+   * clicks through) while one of its popups is open. Re-checked on every
+   * render (the engine re-renders on any DOM or attribute change, so a popup
+   * opening or aria-expanded flipping lands here), and on focus and pointer
+   * changes, which change no DOM.
+   */
+  function stepBack(guideId: string): void {
+    const entry = tracked.get(guideId);
+    const hostEntry = hosts.get(guideId);
+    if (!entry || !hostEntry) return;
+    const expanded = isExpanded(entry.target);
+    const using = expanded || inUse(entry.target, entry.pressed);
+    hostEntry.spotlight.style.boxShadow = using ? SPOTLIGHT_RING : `${SPOTLIGHT_RING}, 0 0 0 100vmax ${SPOTLIGHT_DIM}`;
+    hostEntry.host.style.opacity = expanded ? '0.25' : '';
+    hostEntry.host.style.pointerEvents = expanded ? 'none' : '';
+    if (expanded) hostEntry.host.setAttribute('data-guide-stepped-back', '');
+    else hostEntry.host.removeAttribute('data-guide-stepped-back');
+  }
+
+  function stepBackAll(): void {
+    for (const guideId of tracked.keys()) stepBack(guideId);
+  }
+
+  /** Focus landing outside a target releases a press on it (the visitor tabbed away). */
+  function onFocusIn(): void {
+    const active = document.activeElement;
+    for (const entry of tracked.values()) {
+      if (entry.pressed && active && !entry.target.contains(active)) entry.pressed = false;
+    }
+    stepBackAll();
+  }
+
+  /** A pointer pressed on the target engages it (a click on a non-focusable part gives it no focus); anywhere else releases it. */
+  function onPointerDown(e: PointerEvent): void {
+    const at = e.target instanceof Node ? e.target : null;
+    for (const entry of tracked.values()) {
+      entry.pressed =
+        at !== null && (entry.target.contains(at) || ownedPopups(entry.target).some((p) => p.contains(at)));
+    }
+    stepBackAll();
   }
   function untrack(guideId: string): void {
     tracked.delete(guideId);
@@ -85,10 +196,17 @@ export function createDomRenderer(engine: {
       // Capture: scroll events of inner scroll containers don't bubble.
       window.addEventListener('scroll', onViewportChange, { capture: true, passive: true });
       window.addEventListener('resize', onViewportChange, { passive: true });
+      // Focus moving changes no DOM, so the engine doesn't re-render for it.
+      document.addEventListener('focusin', onFocusIn, true);
+      document.addEventListener('focusout', stepBackAll, true);
+      document.addEventListener('pointerdown', onPointerDown, true);
       listening = true;
     } else if (tracked.size === 0 && listening) {
       window.removeEventListener('scroll', onViewportChange, { capture: true });
       window.removeEventListener('resize', onViewportChange);
+      document.removeEventListener('focusin', onFocusIn, true);
+      document.removeEventListener('focusout', stepBackAll, true);
+      document.removeEventListener('pointerdown', onPointerDown, true);
       listening = false;
     }
   }
@@ -100,6 +218,7 @@ export function createDomRenderer(engine: {
       host.setAttribute('data-guide-host', guideId);
       host.style.position = 'fixed';
       host.style.zIndex = '2147483000'; // stay above host app UI without going full max
+      host.style.transition = 'opacity .15s';
       // The spotlight is a sibling (the card host is transformed, which would
       // break position:fixed inside it). It carries data-guide-host too, so
       // the engine's target observer ignores its style writes like the card's.
@@ -112,8 +231,8 @@ export function createDomRenderer(engine: {
         zIndex: '2147482999', // just under the card
         pointerEvents: 'none',
         borderRadius: '6px',
-        boxShadow: `0 0 0 3px var(--ge-primary, ${DEFAULT_THEME_COLOR}), 0 0 0 100vmax ${SPOTLIGHT_DIM}`,
-        transition: 'top .15s, left .15s, width .15s, height .15s',
+        boxShadow: `${SPOTLIGHT_RING}, 0 0 0 100vmax ${SPOTLIGHT_DIM}`,
+        transition: 'top .15s, left .15s, width .15s, height .15s, box-shadow .15s',
         display: 'none',
       } satisfies Partial<CSSStyleDeclaration>);
       applyTheme(host, theme);
@@ -163,7 +282,7 @@ export function createDomRenderer(engine: {
     }
     const rect = targetEl.getBoundingClientRect();
     host.style.transform = '';
-    switch (position) {
+    switch (placementFor(host, targetEl, rect, position)) {
       case 'top':
         host.style.top = `${rect.top - 8}px`;
         host.style.left = `${rect.left}px`;
@@ -185,6 +304,31 @@ export function createDomRenderer(engine: {
         break;
     }
     keepOnScreen(host);
+  }
+
+  /**
+   * Where the card goes. The author's side, except the default (below) next
+   * to a control that opens popups below itself: then above, else beside it
+   * (right, then left), whichever fits; below only when nothing else does.
+   */
+  function placementFor(
+    host: HTMLElement,
+    targetEl: Element,
+    rect: DOMRect,
+    position: Step['position'],
+  ): Step['position'] {
+    if ((position && position !== 'bottom') || !isPopupControl(targetEl)) return position;
+    const card = host.getBoundingClientRect();
+    const gap = 8;
+    const margin = 8;
+    // Not laid out yet (the first render measures before the card is built):
+    // above when there's a reasonable amount of room, beside otherwise.
+    const height = card.height || 160;
+    const width = card.width || 320;
+    if (rect.top - gap - height >= margin) return 'top';
+    if (window.innerWidth - rect.right - gap - width >= margin) return 'right';
+    if (rect.left - gap - width >= margin) return 'left';
+    return 'bottom';
   }
 
   /**
@@ -222,6 +366,12 @@ export function createDomRenderer(engine: {
       spotlightTarget(spotlight, targetEl);
       positionNear(host, targetEl, step.position);
       track(guide.id, step, targetEl);
+      if (targetEl) stepBack(guide.id);
+      else {
+        // An untargeted step: full dim behind a centered card, nothing to step back from.
+        host.style.opacity = '';
+        host.style.pointerEvents = '';
+      }
 
       // The engine re-renders a step whenever the host page's DOM changes, so
       // the card can follow an element that moved or was re-mounted. That must
@@ -301,6 +451,8 @@ export function createDomRenderer(engine: {
         });
         actionsEl?.appendChild(btn);
       }
+      // Placed again now the card has its real size (which side fits depends on it).
+      positionNear(host, targetEl, step.position);
     },
 
     clear(guideId: string) {

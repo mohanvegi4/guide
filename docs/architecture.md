@@ -926,6 +926,22 @@ to `document.body`:
 - a **spotlight** sibling: a ring around the target whose huge box-shadow dims the rest of the
   page. It ignores pointer events, so the visitor can still click the highlighted element.
 
+**Stepping back.** Host-page popups (Bootstrap menus, ng-select, CDK overlays) sit below our
+layers, so a dimmed page or a card would hide a dropdown's options. The renderer re-checks on every
+render (the engine re-renders on any DOM or attribute change) and on `focusin`, `focusout` and
+`pointerdown`, which change no DOM:
+
+- *in use*: focus inside the target or inside a popup it names with `aria-controls` / `aria-owns`,
+  or a pointer pressed on it (released by a press elsewhere or focus landing outside). The dim is
+  dropped; the ring stays.
+- *expanded*: `aria-expanded="true"` on the target or inside it. The card also goes to 25 %
+  opacity with `pointer-events: none` (and `data-guide-stepped-back`), until it closes.
+
+Placement: with the default side (below) and a target that is or contains a popup-opening control
+(text-like inputs, `select`, `textarea`, `role="combobox"`, `aria-haspopup`, `contenteditable`), the
+card goes above, else right, else left, whichever fits its measured size; below only as the last
+resort. The card is placed again once built, since the side depends on its size.
+
 The card contains the step's HTML (sanitized when it was saved), a × close button, and the action
 buttons (Next, Back, Dismiss, Done), built with DOM APIs so labels can't inject markup. Back on the
 first step is disabled. Escape closes the guide while focus is in the card.
