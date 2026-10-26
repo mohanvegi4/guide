@@ -40,12 +40,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). How a rel
 
 ### Fixed
 
-- Guides no longer hide a dropdown's options (core renderer). While the visitor uses the
-  highlighted element (focus in it or in a popup it owns via `aria-controls` / `aria-owns`, or a
-  pointer pressed on it) the page isn't dimmed; while one of its popups is open
-  (`aria-expanded="true"`) the card also fades and lets clicks through. Cards next to controls
-  that open a list below themselves are placed above or beside them unless the author chose a
-  side.
+- Guides no longer hide a dropdown's options (core renderer). The spotlight is now only a ring
+  in the theme's color: the page is never dimmed, since the dim covered the host app's own
+  popups. Cards next to controls that open a list below themselves are placed above or beside
+  them unless the author chose a side, so they stay readable; only a card that would still cover
+  an open list (`aria-expanded="true"`, the list named by `aria-controls` / `aria-owns`) fades
+  and lets clicks through until it closes.
 
 - Choosing a help-center topic on another page (core) no longer puts `?guideEngine=help:<id>` in
   the address bar. The guide to start is handed to the next page in session storage (per app

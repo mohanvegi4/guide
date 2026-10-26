@@ -1,7 +1,6 @@
 import type { Guide, GuideRenderer, Step } from './engine';
 import { DEFAULT_THEME_COLOR, GuideTheme, applyTheme } from './theme';
 
-const SPOTLIGHT_DIM = 'rgba(15, 23, 42, 0.3)';
 const SPOTLIGHT_PAD = 4;
 const SPOTLIGHT_RING = `0 0 0 3px var(--ge-primary, ${DEFAULT_THEME_COLOR})`;
 
@@ -59,17 +58,16 @@ function isExpanded(el: Element): boolean {
  *
  * A targeted step also puts the visitor's focus on its element: it is
  * scrolled into view (once per step, so we never fight their scrolling) and
- * spotlighted — a ring around it with the rest of the page dimmed. The
- * spotlight ignores pointer events, so the element stays clickable.
+ * spotlighted with a ring in the theme's color. The page is never dimmed: a
+ * dimmed page hid the host app's own popups (a dropdown's options, an
+ * autocomplete list), which open below our layers. The spotlight ignores
+ * pointer events, so the element stays clickable.
  *
- * Once the visitor uses the element, the guide steps back so it never hides
- * what the element shows them (a dropdown's options, an autocomplete list):
- *  - in use (focus inside it or in a popup it owns, or a pointer pressed on
- *    it): the dim goes, the ring stays;
- *  - a popup open (aria-expanded="true"): the card also fades and lets
- *    clicks through, until the popup closes.
- * And a card for a control that opens popups is placed above or beside it,
- * not below, where they open (unless the author chose a side).
+ * So the card never hides those popups either, a card for a control that
+ * opens one is placed above or beside it, not below where it opens (unless
+ * the author chose a side), and if it would still cover an open popup
+ * (aria-expanded="true", no room elsewhere) it fades and lets clicks
+ * through until the popup closes.
  */
 export function createDomRenderer(engine: {
   advanceStep(guideId: string): void;
@@ -91,7 +89,7 @@ export function createDomRenderer(engine: {
    */
   const tracked = new Map<
     string,
-    { step: Step; target: Element; renderedAt: number; rescrolled: boolean; pressed: boolean }
+    { step: Step; target: Element; renderedAt: number; rescrolled: boolean }
   >();
   let listening = false;
   let repositionScheduled = false;
@@ -105,7 +103,7 @@ export function createDomRenderer(engine: {
       if (!hostEntry || !target.isConnected) continue;
       spotlightTarget(hostEntry.spotlight, target);
       positionNear(hostEntry.host, target, step.position);
-      stepBack(guideId);
+      fadeIfCovering(guideId);
       // Host pages often scroll right after a page renders (restoring a
       // position, bringing a results table into view). If that takes the
       // anchor off screen within moments of the step appearing, bring it back
@@ -133,60 +131,39 @@ export function createDomRenderer(engine: {
     if (!target) tracked.delete(guideId);
     else if (previous && previous.step === step && previous.target === target)
       return; // a re-render, not a new step
-    else tracked.set(guideId, { step, target, renderedAt: Date.now(), rescrolled: false, pressed: false });
+    else tracked.set(guideId, { step, target, renderedAt: Date.now(), rescrolled: false });
     syncListeners();
   }
 
-  /** Whether the visitor is working with the target: focus in it or in a popup it owns, or a pointer pressed on it. */
-  function inUse(target: Element, pressed: boolean): boolean {
-    const active = document.activeElement;
-    if (pressed) return true;
-    if (!active || active === document.body) return false;
-    return target.contains(active) || ownedPopups(target).some((p) => p.contains(active));
+  /** Whether the card covers part of an open popup of the target (by its aria-controls / aria-owns). */
+  function coversPopup(host: HTMLElement, target: Element): boolean {
+    const card = host.getBoundingClientRect();
+    return ownedPopups(target).some((popup) => {
+      const p = popup.getBoundingClientRect();
+      if (p.width === 0 || p.height === 0) return false; // closed or hidden
+      return card.left < p.right && p.left < card.right && card.top < p.bottom && p.top < card.bottom;
+    });
   }
 
   /**
-   * Lifts the dim while the target is in use, and fades the card (letting
-   * clicks through) while one of its popups is open. Re-checked on every
-   * render (the engine re-renders on any DOM or attribute change, so a popup
-   * opening or aria-expanded flipping lands here), and on focus and pointer
-   * changes, which change no DOM.
+   * Fades the card (letting clicks through) while it covers an open popup of
+   * the target. Re-checked on every render: the engine re-renders on any DOM
+   * or attribute change, so a popup opening or aria-expanded flipping lands
+   * here.
    */
-  function stepBack(guideId: string): void {
+  function fadeIfCovering(guideId: string): void {
     const entry = tracked.get(guideId);
     const hostEntry = hosts.get(guideId);
     if (!entry || !hostEntry) return;
-    const expanded = isExpanded(entry.target);
-    const using = expanded || inUse(entry.target, entry.pressed);
-    hostEntry.spotlight.style.boxShadow = using ? SPOTLIGHT_RING : `${SPOTLIGHT_RING}, 0 0 0 100vmax ${SPOTLIGHT_DIM}`;
-    hostEntry.host.style.opacity = expanded ? '0.25' : '';
-    hostEntry.host.style.pointerEvents = expanded ? 'none' : '';
-    if (expanded) hostEntry.host.setAttribute('data-guide-stepped-back', '');
+    // Normally the card sits above or beside the control and stays readable;
+    // only a card that ended up over the open options gets out of the way.
+    const fade = isExpanded(entry.target) && coversPopup(hostEntry.host, entry.target);
+    hostEntry.host.style.opacity = fade ? '0.25' : '';
+    hostEntry.host.style.pointerEvents = fade ? 'none' : '';
+    if (fade) hostEntry.host.setAttribute('data-guide-stepped-back', '');
     else hostEntry.host.removeAttribute('data-guide-stepped-back');
   }
 
-  function stepBackAll(): void {
-    for (const guideId of tracked.keys()) stepBack(guideId);
-  }
-
-  /** Focus landing outside a target releases a press on it (the visitor tabbed away). */
-  function onFocusIn(): void {
-    const active = document.activeElement;
-    for (const entry of tracked.values()) {
-      if (entry.pressed && active && !entry.target.contains(active)) entry.pressed = false;
-    }
-    stepBackAll();
-  }
-
-  /** A pointer pressed on the target engages it (a click on a non-focusable part gives it no focus); anywhere else releases it. */
-  function onPointerDown(e: PointerEvent): void {
-    const at = e.target instanceof Node ? e.target : null;
-    for (const entry of tracked.values()) {
-      entry.pressed =
-        at !== null && (entry.target.contains(at) || ownedPopups(entry.target).some((p) => p.contains(at)));
-    }
-    stepBackAll();
-  }
   function untrack(guideId: string): void {
     tracked.delete(guideId);
     syncListeners();
@@ -196,17 +173,10 @@ export function createDomRenderer(engine: {
       // Capture: scroll events of inner scroll containers don't bubble.
       window.addEventListener('scroll', onViewportChange, { capture: true, passive: true });
       window.addEventListener('resize', onViewportChange, { passive: true });
-      // Focus moving changes no DOM, so the engine doesn't re-render for it.
-      document.addEventListener('focusin', onFocusIn, true);
-      document.addEventListener('focusout', stepBackAll, true);
-      document.addEventListener('pointerdown', onPointerDown, true);
       listening = true;
     } else if (tracked.size === 0 && listening) {
       window.removeEventListener('scroll', onViewportChange, { capture: true });
       window.removeEventListener('resize', onViewportChange);
-      document.removeEventListener('focusin', onFocusIn, true);
-      document.removeEventListener('focusout', stepBackAll, true);
-      document.removeEventListener('pointerdown', onPointerDown, true);
       listening = false;
     }
   }
@@ -231,8 +201,8 @@ export function createDomRenderer(engine: {
         zIndex: '2147482999', // just under the card
         pointerEvents: 'none',
         borderRadius: '6px',
-        boxShadow: `${SPOTLIGHT_RING}, 0 0 0 100vmax ${SPOTLIGHT_DIM}`,
-        transition: 'top .15s, left .15s, width .15s, height .15s, box-shadow .15s',
+        boxShadow: SPOTLIGHT_RING,
+        transition: 'top .15s, left .15s, width .15s, height .15s',
         display: 'none',
       } satisfies Partial<CSSStyleDeclaration>);
       applyTheme(host, theme);
@@ -366,7 +336,7 @@ export function createDomRenderer(engine: {
       spotlightTarget(spotlight, targetEl);
       positionNear(host, targetEl, step.position);
       track(guide.id, step, targetEl);
-      if (targetEl) stepBack(guide.id);
+      if (targetEl) fadeIfCovering(guide.id);
       else {
         // An untargeted step: full dim behind a centered card, nothing to step back from.
         host.style.opacity = '';

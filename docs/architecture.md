@@ -923,19 +923,17 @@ to `document.body`:
 
 - a **card host** (`data-guide-host`, `position: fixed`, `z-index: 2147483000`) with an open
   **Shadow DOM**, so the host page's CSS can't restyle the card and the card's CSS can't leak out;
-- a **spotlight** sibling: a ring around the target whose huge box-shadow dims the rest of the
-  page. It ignores pointer events, so the visitor can still click the highlighted element.
+- a **spotlight** sibling: a ring (box-shadow) in the theme's color around the target. It ignores
+  pointer events, so the visitor can still click the highlighted element. It doesn't dim the rest
+  of the page: host-page popups (Bootstrap menus, ng-select, CDK overlays) sit below our layers,
+  and a dim would cover a dropdown's options.
 
-**Stepping back.** Host-page popups (Bootstrap menus, ng-select, CDK overlays) sit below our
-layers, so a dimmed page or a card would hide a dropdown's options. The renderer re-checks on every
-render (the engine re-renders on any DOM or attribute change) and on `focusin`, `focusout` and
-`pointerdown`, which change no DOM:
-
-- *in use*: focus inside the target or inside a popup it names with `aria-controls` / `aria-owns`,
-  or a pointer pressed on it (released by a press elsewhere or focus landing outside). The dim is
-  dropped; the ring stays.
-- *expanded*: `aria-expanded="true"` on the target or inside it. The card also goes to 25 %
-  opacity with `pointer-events: none` (and `data-guide-stepped-back`), until it closes.
+**Open popups.** The card mustn't hide them either. On every render (the engine re-renders on any
+DOM or attribute change, so a popup opening lands there), when `aria-expanded="true"` is on the
+target or inside it and the card's box overlaps one of the popups it names with `aria-controls` /
+`aria-owns`, the card goes to 25 % opacity with `pointer-events: none` (and
+`data-guide-stepped-back`) until the popup closes. A card placed above or beside the control (the
+usual case, see below) stays fully readable.
 
 Placement: with the default side (below) and a target that is or contains a popup-opening control
 (text-like inputs, `select`, `textarea`, `role="combobox"`, `aria-haspopup`, `contenteditable`), the

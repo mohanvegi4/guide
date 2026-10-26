@@ -532,8 +532,8 @@ packages they're `GuideService.openHelp()` (Angular), `useGuideEngine().openHelp
    the card moves onto the element the moment it appears — for anchors that only exist after the
    visitor acts, such as a field that appears once a record is selected.
 6. **Rendering** happens in a Shadow DOM card, so your styles don't leak in. A targeted step
-   puts the focus on its element: it's scrolled into view if off-screen, and **spotlighted**: a
-   ring around it with the rest of the page dimmed (the element stays clickable). Card and
+   puts the focus on its element: it's scrolled into view if off-screen, and **spotlighted** with
+   a ring in the theme's color (the element stays clickable; the page is never dimmed). Card and
    spotlight follow the element when the page scrolls, the window resizes or your framework
    re-creates the element; the card's DOM is built once per step (re-renders only move it, so
    a click never lands on a replaced button). Cards are kept inside the viewport, and if your
@@ -541,13 +541,13 @@ packages they're `GuideService.openHelp()` (Angular), `useGuideEngine().openHelp
    position, bringing a table into view) it's scrolled back once — later scrolling is the
    visitor's. Every card has a **×** and closes on **Escape**, whatever buttons the author chose.
 
-   The guide **steps back while the visitor uses the element**, so it never hides what the
-   element shows them. With focus in it (or in a popup it owns through `aria-controls` /
-   `aria-owns`, such as options rendered at the end of `<body>`), or a pointer pressed on it, the
-   dim goes and the ring stays. While one of its popups is open (`aria-expanded="true"`), the card
-   also fades and lets clicks through, until the popup closes. A card for a control that opens a
-   list below itself (text fields, selects, comboboxes, `aria-haspopup` buttons) goes above it,
-   or beside it when there's no room above, unless the author chose a side other than below.
+   The guide **never hides what the element shows the visitor**, such as a dropdown's options. A
+   card for a control that opens a list below itself (text fields, selects, comboboxes,
+   `aria-haspopup` buttons) goes above it, or beside it when there's no room above, unless the
+   author chose a side other than below, so it stays readable while the list is open. Only when
+   it would still cover an open list (`aria-expanded="true"`, the list named by `aria-controls` /
+   `aria-owns`, such as options rendered at the end of `<body>`) does the card fade and let clicks
+   through, until the list closes.
 7. **Events** are batched every 5 s or 20 events, sent as `text/plain` JSON (no CORS preflight),
    and flushed on `pagehide`. Dismiss and complete are sent immediately.
 8. **Errors.** Fail silent also means the agent reports what it swallowed: an exception in

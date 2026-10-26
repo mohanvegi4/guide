@@ -15,9 +15,8 @@ function setup(html: string, position?: 'bottom' | 'top' | 'left' | 'right') {
   const render = () => renderer.renderStep(guide, step, target);
   render();
   const [card, spotlight] = Array.from(document.querySelectorAll<HTMLElement>('[data-guide-host="g"]'));
-  const dimmed = () => spotlight.style.boxShadow.includes('100vmax');
   const faded = () => card.style.opacity === '0.25' && card.style.pointerEvents === 'none';
-  return { target, render, card, spotlight, dimmed, faded, renderer };
+  return { target, render, card, spotlight, faded, renderer };
 }
 
 /** Pretends `el` sits at this place on screen (jsdom has no layout). */
@@ -27,46 +26,36 @@ function placeAt(el: Element, rect: Partial<DOMRect>): void {
   el.getBoundingClientRect = () => ({ ...box, toJSON: () => box }) as DOMRect;
 }
 
-describe('the guide steps back while the visitor uses the element', () => {
-  it('lifts the dim while focus is in the element, and brings it back when focus leaves', () => {
-    const { target, dimmed, faded } = setup('<input id="target" data-guide-id="target" />');
-    expect(dimmed()).toBe(true);
+describe('the spotlight and open popups', () => {
+  it('rings the element and never dims the page, focused or not', () => {
+    const { target, spotlight } = setup('<input id="target" data-guide-id="target" />');
+    const dimmed = () => spotlight.style.boxShadow.includes('100vmax');
+    expect(spotlight.style.boxShadow).toContain('var(--ge-primary');
+    expect(dimmed()).toBe(false);
     target.focus();
     expect(dimmed()).toBe(false);
-    expect(faded()).toBe(false); // typing alone: the card stays readable
-    target.blur();
-    expect(dimmed()).toBe(true);
   });
 
-  it('fades the card and lets clicks through while a popup is open, and restores both when it closes', () => {
-    const { target, render, dimmed, faded } = setup(
-      '<button id="target" data-guide-id="target" aria-haspopup="listbox" aria-expanded="false">Branch</button>',
-    );
+  it('while a popup is open the card stays readable, fading only if it would cover the options', () => {
+    const { target, render, card, faded } = setup(`
+      <button id="target" data-guide-id="target" aria-haspopup="listbox" aria-expanded="false"
+        aria-controls="options">Branch</button>
+      <ul id="options" role="listbox"><li>Branch 1400</li></ul>`);
+    const options = document.getElementById('options')!;
+    placeAt(options, { top: 240, left: 100, width: 220, height: 120 }); // opens below the control
     target.setAttribute('aria-expanded', 'true');
+
+    placeAt(card, { top: 60, left: 100, width: 320, height: 140 }); // the card above it
     render(); // the engine re-renders on the attribute change
+    expect(faded()).toBe(false);
+
+    placeAt(card, { top: 200, left: 100, width: 320, height: 140 }); // no room: the card ends up over the list
+    render();
     expect(faded()).toBe(true);
-    expect(dimmed()).toBe(false);
+
     target.setAttribute('aria-expanded', 'false');
     render();
     expect(faded()).toBe(false);
-    expect(dimmed()).toBe(true);
-  });
-
-  it('counts focus inside a popup the element owns (options rendered elsewhere, like a CDK overlay)', () => {
-    const { dimmed } = setup(`
-      <input id="target" data-guide-id="target" role="combobox" aria-controls="options" />
-      <div id="elsewhere"><ul id="options" role="listbox"><li tabindex="-1" id="opt">Branch 1400</li></ul></div>`);
-    document.getElementById('opt')!.focus();
-    expect(dimmed()).toBe(false);
-  });
-
-  it('a press on a part that takes no focus engages it; a press elsewhere releases it', () => {
-    const { target, dimmed } = setup('<div id="target" data-guide-id="target"><span id="inner">Pick</span></div><p id="out">x</p>');
-    document.getElementById('inner')!.dispatchEvent(new Event('pointerdown', { bubbles: true }));
-    expect(dimmed()).toBe(false);
-    document.getElementById('out')!.dispatchEvent(new Event('pointerdown', { bubbles: true }));
-    expect(dimmed()).toBe(true);
-    expect(target.isConnected).toBe(true);
   });
 
   it('never fades the centered card of an untargeted step', () => {
