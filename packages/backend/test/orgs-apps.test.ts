@@ -144,7 +144,7 @@ describe('roles', () => {
     const g = await request(app)
       .post(`/v1/apps/${appId}/guides`)
       .set('Authorization', as('owner'))
-      .send({ name: 'G', type: 'modal' });
+      .send({ name: 'G' });
     ctx = { orgId, appId, guideId: g.body.id };
   });
 

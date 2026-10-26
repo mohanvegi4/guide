@@ -8,7 +8,7 @@ nav_order: 4
 This guide explains, part by part, how Guide Engine works inside: what runs where, what each piece
 stores, how a request is authorized, and how a guide gets from the Studio onto a visitor's screen.
 It is written for engineers who will run, extend or review the system, and it describes the code
-as it is on `main` (version 0.3.0, migrations `001_schema.sql` to `003_match_site_theme.sql`). Where the code and the intent differ, the
+as it is on `main` (version 0.3.0, migrations `001_schema.sql` to `004_drop_guide_type.sql`). Where the code and the intent differ, the
 guide says so in [Known gaps and quirks](#16-known-gaps-and-quirks).
 
 For *using* the product, read the [Guide Engine reference](../README.md) and the
@@ -95,7 +95,7 @@ Three ideas run through everything below:
 | Member | A Studio user's membership in an organization, with one role: owner, manager, editor or viewer. |
 | Visitor | An end user of the customer's website, identified by a string the host page passes in. |
 | Account | The visitor's company, customer or library: an optional string used for targeting and analytics. |
-| Guide | A named item (tooltip, modal, banner, tour, …) belonging to one app. |
+| Guide | A named set of steps belonging to one app. Each step is a card, next to its anchor or centered without one. |
 | Version | An immutable published snapshot of a guide's steps, route, audience and help listing. |
 | Draft | The single unpublished version of a guide, edited in place. |
 | Saved page | A named URL rule per app that guides can point at instead of a raw route. |
@@ -320,7 +320,7 @@ has RLS **enabled and forced**, so even the table owner is subject to it.
 | `org_member` | Memberships | `(org_id, user_id)` primary key, `role` in owner, manager, editor, viewer |
 | `invitation` | Pending invitations | `email`, `org_role` (never owner), `token_hash` (SHA-256 only), `expires_at`, `accepted_at`, `accepted_by` |
 | `application` | Apps | `org_id`, `name`, `public_key` (unique), `allowed_origins[]` (the union of its environments' websites, kept in sync by the API), `identity_mode`, `signing_secret` (encrypted), `enabled`, help button settings, `route_mode`, `suspended_at` |
-| `guide` | Guides | `app_id`, `name`, `type`, `status`, `enabled`, `current_version_id`, `created_by` |
+| `guide` | Guides | `app_id`, `name`, `status`, `enabled`, `current_version_id`, `created_by` |
 | `guide_version` | Drafts and published versions | `guide_id`, `version_number`, `steps` (JSONB), `route_match` (JSONB), `page_id`, `start_at`, `end_at`, `account_ids[]`, `visitor_tags[]`, `help` (JSONB), `activation`, `published_at` |
 | `app_page` | Saved pages | `app_id`, `name` (unique per app, case-insensitive), `match_type`, `match_value`, `start_path` |
 | `app_environment` | Release stages of an app | `app_id`, `name` (unique per app, case-insensitive), `position` (promotion order, unique per app, deferred; the highest is production), `origins[]` (its websites), `analytics_enabled` |
@@ -416,6 +416,7 @@ schema matched the chain's object for object. The old files are in git history (
 | 021 | Environments, releases and the release log; events and visitor state per environment; `active_guide` on releases | Dev → Test → Accept → Prod promotion with revert, from one Studio and one key; analytics that never mix environments and can be switched off per environment. Existing apps got one *Production* environment |
 | 002 (after the squash) | Leftovers dropped: `app_member`, `app_role`, `invitation.app_roles`, `step`, the retired `org_role` values, `snoozed` | The first migration after the squash; the enums are rebuilt because Postgres can't drop an enum value |
 | 003 (after the squash) | `match_site_theme` on applications | Cards and the help center look like the customer's site (its Bootstrap theme), per page and per tenant theme |
+| 004 (after the squash) | `guide.type` dropped | The type (tooltip, modal, banner, …) never changed how a guide looked; walkthroughs come first because they have several steps |
 
 ---
 
@@ -697,7 +698,7 @@ WHERE a.app_id = $1                                            -- this app
       AND s.last_seen_version >= a.version_number)
 ```
 
-Response: `{ enabled: true, routeMode, guides: [{ id, versionId, name, type, steps, routeMatch }] }`.
+Response: `{ enabled: true, routeMode, theme, guides: [{ id, versionId, name, steps, routeMatch }] }`.
 Route matching is left to the browser, so one response serves every page of a single-page app.
 
 **`/v1/agent/<key>/help`**: the help center. If the app's help center is off, `{ enabled: false }`.
@@ -1021,7 +1022,7 @@ Source: [`routes/studio/guides.ts`](../packages/backend/src/routes/studio/guides
 
 ### 11.1 A guide and its versions
 
-- A **guide** row holds the name, type, status, `enabled` flag and `current_version_id`. It starts
+- A **guide** row holds the name, status, `enabled` flag and `current_version_id`. It starts
   as `draft` and disabled, with no versions.
 - The **draft** is the one version with `published_at` null. Saving updates it in place.
 - **Publishing** promotes the draft: `published_at = now()`, then releases it to the app's
@@ -1039,7 +1040,7 @@ Validated with zod before anything is written:
 
 | Field | Rules |
 |---|---|
-| `steps` | 1 to 50. Each: `type`, optional `targetSelector` matching `[data-guide-id="[A-Za-z0-9_-]+"]`, `content` up to 20,000 characters of HTML, `position` (top, bottom, left, right, center), `actions` (label up to 100; next, back, dismiss, complete). Step ids are kept across versions so per-step analytics follow a step through edits. |
+| `steps` | 1 to 50. Each: optional `targetSelector` matching `[data-guide-id="[A-Za-z0-9_-]+"]`, `content` up to 20,000 characters of HTML, `position` (top, bottom, left, right, center), `actions` (label up to 100; next, back, dismiss, complete). Step ids are kept across versions so per-step analytics follow a step through edits. |
 | Where | Exactly one of `pageId` (a saved page of this app) or `routeMatch` (`exact` or `pattern`, starting with `/`). With a page, its route is also copied into `route_match` as a fallback. |
 | `startAt`, `endAt` | Optional; start must be before end. |
 | `accountIds` | Optional, 1 to 500 ids; null means everyone. |

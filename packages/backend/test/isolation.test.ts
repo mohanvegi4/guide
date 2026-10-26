@@ -68,7 +68,7 @@ describe('through the API', () => {
         await request(app)
           .post(`/v1/apps/${a.appId}/guides`)
           .set('Authorization', as('bob'))
-          .send({ name: 'x', type: 'tooltip' })
+          .send({ name: 'x' })
       ).status,
     ).toBe(403);
   });

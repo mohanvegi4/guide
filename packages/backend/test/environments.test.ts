@@ -161,7 +161,7 @@ describe('releases', () => {
 
   it('cannot promote from an empty stage, nor release a draft', async () => {
     const { test } = await threeStages();
-    const g = await api().post('/guides', { name: 'Draft only', type: 'tooltip' });
+    const g = await api().post('/guides', { name: 'Draft only' });
     const draft = await api().put(`/guides/${g.body.id}/draft`, sampleVersion);
     expect((await api().post(`/guides/${g.body.id}/promote`, { from: test.id })).body.error).toBe(
       'nothing_to_promote',

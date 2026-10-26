@@ -28,7 +28,7 @@ const call = (method: 'get' | 'post' | 'put' | 'patch', path: string, body?: obj
 beforeEach(async () => {
   await resetData();
   ({ appId, key } = await signUp('alice'));
-  guideId = (await call('post', `/v1/apps/${appId}/guides`, { name: 'Welcome', type: 'tour' })).body.id;
+  guideId = (await call('post', `/v1/apps/${appId}/guides`, { name: 'Welcome' })).body.id;
 });
 
 describe('lifecycle', () => {
@@ -51,6 +51,19 @@ describe('lifecycle', () => {
     expect(list.body).toEqual([
       expect.objectContaining({ id: guideId, status: 'published', current_version_number: 1 }),
     ]);
+  });
+
+  it('has no type: one an older client still sends is ignored, on the guide and on its steps', async () => {
+    const created = await call('post', `/v1/apps/${appId}/guides`, { name: 'Old client', type: 'tour' });
+    expect(created.status).toBe(201);
+    expect(created.body).not.toHaveProperty('type');
+    const id = created.body.id as string;
+    const steps = [{ ...sampleVersion.steps[0], type: 'modal' }];
+    expect((await call('post', `/v1/apps/${appId}/guides/${id}/publish`, { ...sampleVersion, steps })).status).toBe(201);
+    await call('patch', `/v1/apps/${appId}/guides/${id}/flag`, { enabled: true });
+    const served = (await agent(key, '/guides', visitor())).body.guides.find((g: { id: string }) => g.id === id);
+    expect(served).not.toHaveProperty('type');
+    expect(served.steps[0]).not.toHaveProperty('type');
   });
 
   it('deletes a guide with its versions, events and visitor state; viewers cannot', async () => {

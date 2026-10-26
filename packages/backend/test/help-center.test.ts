@@ -94,7 +94,7 @@ describe('help center', () => {
     const g = await request(app)
       .post(`/v1/apps/${appId}/guides`)
       .set('Authorization', as('alice'))
-      .send({ name: 'G', type: 'tooltip' });
+      .send({ name: 'G' });
     const res = await request(app)
       .put(`/v1/apps/${appId}/guides/${g.body.id}/draft`)
       .set('Authorization', as('alice'))
@@ -172,7 +172,7 @@ describe('help center', () => {
       await request(app)
         .post(`/v1/apps/${appId}/guides`)
         .set('Authorization', as('alice'))
-        .send({ name: 'G', type: 'tour' })
+        .send({ name: 'G' })
     ).body.id;
     const draft = (body: object) =>
       request(app)
@@ -194,7 +194,7 @@ describe('help center', () => {
       await request(app)
         .post(`/v1/apps/${appId}/guides`)
         .set('Authorization', as('alice'))
-        .send({ name: 'G', type: 'tour' })
+        .send({ name: 'G' })
     ).body.id;
     const res = await request(app)
       .put(`/v1/apps/${appId}/guides/${g}/draft`)

@@ -14,7 +14,7 @@ describe('seeded welcome tour', () => {
 
     const guides = (await agent(key, '/guides', visitor())).body.guides;
     expect(guides).toMatchObject([
-      { id: guideId, type: 'tour', routeMatch: { type: 'exact', value: '/dashboard' } },
+      { id: guideId, routeMatch: { type: 'exact', value: '/dashboard' } },
     ]);
     expect(guides[0].steps).toHaveLength(5);
     expect(guides[0].steps.map((s: { order: number }) => s.order)).toEqual([0, 1, 2, 3, 4]);

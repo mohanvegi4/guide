@@ -32,7 +32,7 @@ describe('matching the website theme', () => {
 
   it('reaches the agent with /guides, /help and /preview, so cards, the help center and previews agree', async () => {
     const { guideId, versionId } = await liveGuide('alice', appId, {
-      steps: [{ order: 0, type: 'modal', content: '<p>Hi</p>', actions: [] }],
+      steps: [{ order: 0, content: '<p>Hi</p>', actions: [] }],
       routeMatch: { type: 'exact', value: '/' },
       help: { title: 'Hi' },
     });

@@ -17,10 +17,8 @@ import { runRequest } from '../core/request';
 import {
   AppPage,
   appRoleAtLeast,
-  GUIDE_TYPES,
   GuideActivation,
   GuideDetail,
-  GuideType,
   GuideVersion,
   PreviewLink,
   PublishPayload,
@@ -39,7 +37,6 @@ type ActionForm = FormGroup<{ label: FormControl<string>; action: FormControl<St
 type StepForm = FormGroup<{
   /** '' for a step that hasn't been saved yet; the backend assigns one. */
   id: FormControl<string>;
-  type: FormControl<GuideType>;
   anchorId: FormControl<string>;
   position: FormControl<StepPosition>;
   content: FormControl<string>;
@@ -85,7 +82,6 @@ export class GuideEditorComponent {
     appRoleAtLeast(this.auth.appRole(this.appId()), 'publisher'),
   );
 
-  protected readonly guideTypes = GUIDE_TYPES;
   protected readonly positions = STEP_POSITIONS;
   protected readonly actionTypes = STEP_ACTIONS;
 
@@ -248,7 +244,7 @@ export class GuideEditorComponent {
     const live = guide.versions.find((v) => v.id === guide.current_version_id);
     const source = draft ?? live ?? guide.versions[0];
     if (source) this.loadVersion(source);
-    else this.resetToBlank(guide.type);
+    else this.resetToBlank();
   }
 
   loadVersion(version: GuideVersion): void {
@@ -276,19 +272,18 @@ export class GuideEditorComponent {
     this.form.markAsPristine();
   }
 
-  private resetToBlank(type: GuideType): void {
+  private resetToBlank(): void {
     // A brand-new guide starts on "A saved page" once the app has some.
     this.form.controls.where.setValue(this.pages().length ? 'page' : 'custom');
     this.steps.clear();
-    this.steps.push(this.stepForm({ type }));
+    this.steps.push(this.stepForm({}));
     this.loadedFrom.set(null);
   }
 
   // ---------- steps ----------
 
   addStep(): void {
-    const type = this.guide()?.type ?? 'tooltip';
-    this.steps.push(this.stepForm({ type }));
+    this.steps.push(this.stepForm({}));
     this.form.markAsDirty();
   }
 
@@ -324,7 +319,6 @@ export class GuideEditorComponent {
     ];
     return this.fb.group({
       id: this.fb.control(step.id ?? ''),
-      type: this.fb.control<GuideType>(step.type ?? 'tooltip'),
       anchorId: this.fb.control(anchor, Validators.pattern(ANCHOR_ID_PATTERN)),
       position: this.fb.control<StepPosition>(step.position ?? (anchor ? 'bottom' : 'center')),
       content: this.fb.control(step.content ?? '', [Validators.required, Validators.maxLength(20000)]),
@@ -371,7 +365,6 @@ export class GuideEditorComponent {
       steps: v.steps.map((s, order) => ({
         ...(s.id ? { id: s.id } : {}),
         order,
-        type: s.type,
         ...(s.anchorId.trim() ? { targetSelector: `[data-guide-id="${s.anchorId.trim()}"]` } : {}),
         position: s.position,
         content: s.content,

@@ -44,13 +44,6 @@ async function fillField(field: Locator, value: string): Promise<void> {
   await expect(field).toHaveValue(value);
 }
 
-/** Same as fillField, for a <select>. */
-async function selectField(field: Locator, value: string): Promise<void> {
-  await expect(field).toHaveClass(/\bng-(pristine|dirty)\b/);
-  await field.selectOption(value);
-  await expect(field).toHaveValue(value);
-}
-
 /** The customer's page: the install snippet pointing at the backend, plus a visitor id. */
 function hostPage(appKey: string): string {
   return `<!doctype html>
@@ -157,7 +150,6 @@ test('sign in with SSO, create an org and an app, publish a guide, see it on the
       await page.getByRole('link', { name: 'Guides', exact: true }).click();
       await page.waitForURL(new RegExp(`/o/${orgId}/apps/${appId}/guides$`));
       await fillField(page.getByLabel('Name'), GUIDE_NAME);
-      await selectField(page.getByLabel('Type'), 'modal');
       await page.getByRole('button', { name: 'Create' }).click();
       await page.waitForURL(new RegExp(`/o/${orgId}/apps/${appId}/guides/[^/]+$`));
       await expect(page.getByRole('heading', { name: GUIDE_NAME })).toBeVisible();

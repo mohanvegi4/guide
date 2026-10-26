@@ -9,6 +9,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). How a rel
 
 ## [Unreleased]
 
+### Removed
+
+- The guide and step `type` (core): `GuideType`, `Guide.type` and `Step.type` are gone. The type
+  never changed how anything looked; every step is the same card, next to its anchor or centered.
+  Walkthroughs still show before single tips: any guide with more than one step counts as one.
+  The agent API no longer sends a `type`, and the Studio API ignores one sent by older clients.
+
 ### Added
 
 - Theming (core): guide cards, the spotlight and the help center can take the host page's

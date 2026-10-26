@@ -136,7 +136,7 @@ describe('saved pages', () => {
     const g = await request(app)
       .post(`/v1/apps/${appId}/guides`)
       .set('Authorization', as('alice'))
-      .send({ name: 'G', type: 'tooltip' });
+      .send({ name: 'G' });
     const draft = (body: object) =>
       request(app)
         .put(`/v1/apps/${appId}/guides/${g.body.id}/draft`)
@@ -193,7 +193,7 @@ describe('saved pages', () => {
     const g = await request(app)
       .post(`/v1/apps/${appId}/guides`)
       .set('Authorization', as('alice'))
-      .send({ name: 'G', type: 'tooltip' });
+      .send({ name: 'G' });
     const draft = await request(app)
       .put(`/v1/apps/${appId}/guides/${g.body.id}/draft`)
       .set('Authorization', as('alice'))
@@ -217,7 +217,7 @@ describe('saved pages', () => {
     const g = await request(app)
       .post(`/v1/apps/${appId}/guides`)
       .set('Authorization', as('alice'))
-      .send({ name: 'G', type: 'tooltip' });
+      .send({ name: 'G' });
     const draft = await request(app)
       .put(`/v1/apps/${appId}/guides/${g.body.id}/draft`)
       .set('Authorization', as('alice'))

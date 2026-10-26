@@ -61,7 +61,6 @@ export interface OrganizationExport {
     guides: Array<{
       id: string;
       name: string;
-      type: string;
       status: string;
       enabled: boolean;
       currentVersionId: string | null;
@@ -147,7 +146,6 @@ export async function exportOrganization(client: PoolClient, orgId: string): Pro
     id: string;
     app_id: string;
     name: string;
-    type: string;
     status: string;
     enabled: boolean;
     current_version_id: string | null;
@@ -158,7 +156,7 @@ export async function exportOrganization(client: PoolClient, orgId: string): Pro
     completed: number;
     dismissed: number;
   }>(
-    `SELECT g.id, g.app_id, g.name, g.type, g.status, g.enabled, g.current_version_id,
+    `SELECT g.id, g.app_id, g.name, g.status, g.enabled, g.current_version_id,
             g.created_by, g.created_at, g.updated_at,
             COUNT(e.id) FILTER (WHERE e.event_type = 'guide_shown')::int AS shown,
             COUNT(e.id) FILTER (WHERE e.event_type = 'guide_completed')::int AS completed,
@@ -252,7 +250,6 @@ export async function exportOrganization(client: PoolClient, orgId: string): Pro
         .map((g) => ({
           id: g.id,
           name: g.name,
-          type: g.type,
           status: g.status,
           enabled: g.enabled,
           currentVersionId: g.current_version_id,

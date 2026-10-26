@@ -54,6 +54,7 @@ is no separate schema tool or SQL to run by hand. The schema lives in
 | `001_schema.sql` | The whole schema: tables, constraints, indexes, the row-level security policies, the one view and the kill-switch row. The development history was squashed into this one file before this first deployment. |
 | `002_drop_leftovers.sql` | Removes unused development-era tables and values. |
 | `003_match_site_theme.sql` | Adds the per-app "match the website's theme" setting. |
+| `004_drop_guide_type.sql` | Removes the unused guide type. |
 
 - On start (or `node packages/backend/dist/migrate.js` as a release step, with
   `RUN_MIGRATIONS=false` on the containers), the backend applies the files its
@@ -195,8 +196,8 @@ values to provide per environment.
    production realm (no test users, brute-force protection on, redirect URIs set to the Studio
    host). Keycloak imports it on first start only.
 5. **Start** PostgreSQL, Keycloak, backend, Studio and the ingress. The backend creates the schema
-   in the empty `guide_engine` database on its first start (`001_schema.sql`, then `002_…` and
-   `003_…`; see section 1). Check with `SELECT filename FROM schema_migrations;` (one row per
+   in the empty `guide_engine` database on its first start (`001_schema.sql`, then the later numbered
+   files; see section 1). Check with `SELECT filename FROM schema_migrations;` (one row per
    file in `packages/backend/migrations/`).
 6. **First user.** In the Keycloak admin console, realm `guide-engine`: add a user, tick *Email
    verified*, set a password. Also create a permanent admin in the `master` realm and turn on its

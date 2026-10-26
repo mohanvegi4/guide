@@ -12,8 +12,6 @@ import { GuideTheme, readTheme, sameTheme } from './theme';
 // Types
 // ------------------------------------------------------------
 
-export type GuideType = 'tooltip' | 'modal' | 'banner' | 'tour' | 'checklist' | 'survey' | 'beacon';
-
 export interface StepAction {
   label: string;
   action: 'next' | 'back' | 'dismiss' | 'complete' | 'custom';
@@ -23,7 +21,6 @@ export interface StepAction {
 export interface Step {
   id: string;
   order: number;
-  type: GuideType;
   targetSelector?: string; // e.g. '[data-guide-id="invite-button"]'
   content: string; // sanitized HTML
   position?: 'top' | 'bottom' | 'left' | 'right' | 'center';
@@ -47,7 +44,6 @@ export interface Guide {
   id: string;
   versionId: string;
   name: string;
-  type: GuideType;
   steps: Step[];
   routeMatch: RouteMatch;
   /** Set when force-rendered from a signed preview link (renderer shows a badge). */
@@ -498,7 +494,7 @@ function readPreviewToken(): string | null {
 
 /** Automatic display order on a page: walkthroughs first, then single-step guides. */
 function autoShowRank(guide: Guide): number {
-  return guide.type === 'tour' || (guide.steps?.length ?? 0) > 1 ? 0 : 1;
+  return (guide.steps?.length ?? 0) > 1 ? 0 : 1;
 }
 
 /** Route matching is on the path only — query strings and hashes vary freely. */

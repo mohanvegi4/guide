@@ -23,7 +23,6 @@ export function makeStep(overrides: Partial<Step> = {}): Step {
   return {
     id: `step-${Math.random().toString(36).slice(2)}`,
     order: 0,
-    type: 'tooltip',
     content: '<p>Hi</p>',
     actions: [{ label: 'Next', action: 'next' }],
     ...overrides,
@@ -35,7 +34,6 @@ export function makeGuide(overrides: Partial<Guide> = {}): Guide {
     id: 'guide-1',
     versionId: 'version-1',
     name: 'Welcome',
-    type: 'tooltip',
     steps: [makeStep()],
     routeMatch: { type: 'exact', value: '/dashboard' },
     ...overrides,

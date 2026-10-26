@@ -16,7 +16,6 @@ const NEXT = [
 const anchor = (id: string) => `[data-guide-id="${id}"]`;
 const TOUR_STEPS = [
   {
-    type: 'modal',
     position: 'center',
     content: '<h3>Welcome to Acme 👋</h3><p>Let us show you around — it takes about 30 seconds.</p>',
     actions: [
@@ -25,7 +24,6 @@ const TOUR_STEPS = [
     ],
   },
   {
-    type: 'tooltip',
     position: 'bottom',
     targetSelector: anchor('nav-projects'),
     content:
@@ -33,7 +31,6 @@ const TOUR_STEPS = [
     actions: NEXT,
   },
   {
-    type: 'tooltip',
     position: 'bottom',
     targetSelector: anchor('invite-button'),
     content:
@@ -41,7 +38,6 @@ const TOUR_STEPS = [
     actions: NEXT,
   },
   {
-    type: 'tooltip',
     position: 'bottom',
     targetSelector: anchor('sign-in'),
     content:
@@ -49,7 +45,6 @@ const TOUR_STEPS = [
     actions: NEXT,
   },
   {
-    type: 'tooltip',
     position: 'bottom',
     targetSelector: anchor('help-link'),
     content:
@@ -70,8 +65,8 @@ export async function seedWelcomeTour(
     [appId, ctx.userId],
   );
   const guide = await client.query<{ id: string }>(
-    `INSERT INTO guide (app_id, name, type, status, enabled, created_by)
-     VALUES ($1, 'Welcome tour', 'tour', 'published', TRUE, $2) RETURNING id`,
+    `INSERT INTO guide (app_id, name, status, enabled, created_by)
+     VALUES ($1, 'Welcome tour', 'published', TRUE, $2) RETURNING id`,
     [appId, ctx.userId],
   );
   const steps = TOUR_STEPS.map((step, order) => ({

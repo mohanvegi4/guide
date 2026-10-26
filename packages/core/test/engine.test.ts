@@ -314,7 +314,7 @@ describe('a later step whose anchor appears after the visitor acts', () => {
   it('shows the card centered at once, then moves it onto the element when it appears', async () => {
     const guide = makeGuide({
       steps: [
-        makeStep({ id: 's1', type: 'modal' }),
+        makeStep({ id: 's1' }),
         makeStep({ id: 's2', targetSelector: '[data-guide-id="item-scanner"]' }),
       ],
     });
@@ -691,7 +691,7 @@ describe('step change vs. target observer (regression)', () => {
         makeGuide({
           steps: [
             makeStep({ id: 's1', targetSelector: '[data-guide-id="invite-button"]' }),
-            makeStep({ id: 's2', type: 'modal', position: 'center' }),
+            makeStep({ id: 's2', position: 'center' }),
           ],
         }),
       ),

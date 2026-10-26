@@ -248,7 +248,7 @@ describe('support access (customer-granted, time-boxed, read-only, logged)', () 
 
     // Writes: the viewer role says no (403), and so would Postgres (READ ONLY transaction).
     const write = await asSupport('root', orgId, 'put', `/apps/${appId}/guides/${g.guideId}/draft`).send({
-      steps: [{ order: 0, type: 'tooltip', content: '<p>x</p>', actions: [] }],
+      steps: [{ order: 0, content: '<p>x</p>', actions: [] }],
       routeMatch: { type: 'exact', value: '/x' },
     });
     expect(write.status).toBe(403);

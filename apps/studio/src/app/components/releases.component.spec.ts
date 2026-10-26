@@ -24,7 +24,6 @@ const version = (n: number, published = true): GuideVersion => ({
 const guide: GuideDetail = {
   id: 'g1',
   name: 'Welcome',
-  type: 'tooltip',
   status: 'published',
   enabled: true,
   current_version_id: 'v1',

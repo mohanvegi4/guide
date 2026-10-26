@@ -19,7 +19,7 @@ const version = (over: Partial<GuideVersion>): GuideVersion => ({
   id: 'v1',
   guide_id: 'g1',
   version_number: 1,
-  steps: [{ id: 's1', order: 0, type: 'tooltip', content: '<p>Hi</p>', actions: [] }],
+  steps: [{ id: 's1', order: 0, content: '<p>Hi</p>', actions: [] }],
   route_match: { type: 'exact', value: '/dashboard' },
   page_id: null,
   start_at: null,
@@ -36,7 +36,6 @@ const version = (over: Partial<GuideVersion>): GuideVersion => ({
 const guide = (versions: GuideVersion[]): GuideDetail => ({
   id: 'g1',
   name: 'Welcome',
-  type: 'tooltip',
   status: versions.length ? 'published' : 'draft',
   enabled: false,
   current_version_id: versions[0]?.id ?? null,

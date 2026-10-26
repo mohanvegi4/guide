@@ -249,7 +249,7 @@ agentApiRouter.post(
       const environment = await environmentForRequest(client, scoped.id, req.header('origin'));
       if (!environment) return { enabled: false, guides: [] };
       const rows = await client.query(
-        `SELECT a.id, a.app_id, a.name, a.type, a.version_id, a.steps, a.route_match
+        `SELECT a.id, a.app_id, a.name, a.version_id, a.steps, a.route_match
          FROM active_guide a
          WHERE a.app_id = $1
            AND a.environment_id = $5
@@ -271,7 +271,6 @@ agentApiRouter.post(
           id: r.id,
           versionId: r.version_id,
           name: r.name,
-          type: r.type,
           steps: r.steps,
           routeMatch: r.route_match,
         })),
@@ -310,7 +309,7 @@ agentApiRouter.post(
       const environment = await environmentForRequest(client, scoped.id, req.header('origin'));
       if (!environment) return { enabled: false, guides: [] };
       const rows = await client.query(
-        `SELECT a.id, a.name, a.type, a.version_id, a.steps, a.route_match, a.help, a.page_start_path
+        `SELECT a.id, a.name, a.version_id, a.steps, a.route_match, a.help, a.page_start_path
          FROM active_guide a
          WHERE a.app_id = $1 AND a.environment_id = $4 AND a.help IS NOT NULL
            AND ${audienceSql('$2', '$3')}
@@ -330,7 +329,6 @@ agentApiRouter.post(
           id: r.id,
           versionId: r.version_id,
           name: r.name,
-          type: r.type,
           steps: r.steps,
           routeMatch: r.route_match,
           help: {
@@ -574,7 +572,7 @@ agentApiRouter.post(
     const guide = await inApp(req, async (client, scoped) => {
       if (claims.appId !== scoped.id || !(await engineEnabled(client, scoped))) return null;
       const row = await client.query(
-        `SELECT g.id, g.name, g.type, gv.id AS version_id, gv.steps, ${RESOLVED_ROUTE_MATCH_SQL} AS route_match
+        `SELECT g.id, g.name, gv.id AS version_id, gv.steps, ${RESOLVED_ROUTE_MATCH_SQL} AS route_match
          FROM guide_version gv JOIN guide g ON g.id = gv.guide_id
          LEFT JOIN app_page p ON p.id = gv.page_id
          WHERE gv.id = $1 AND g.id = $2 AND g.app_id = $3`,
@@ -587,7 +585,6 @@ agentApiRouter.post(
       id: guide.id,
       versionId: guide.version_id,
       name: guide.name,
-      type: guide.type,
       steps: guide.steps,
       routeMatch: guide.route_match,
       preview: true,

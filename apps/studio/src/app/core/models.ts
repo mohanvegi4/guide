@@ -1,9 +1,6 @@
 // Mirrors the backend's Studio API (packages/backend/src/routes/studio/*).
 // Responses that are database rows use snake_case; request bodies use camelCase.
 
-export const GUIDE_TYPES = ['tooltip', 'modal', 'banner', 'tour', 'checklist', 'survey', 'beacon'] as const;
-export type GuideType = (typeof GUIDE_TYPES)[number];
-
 export const STEP_POSITIONS = ['bottom', 'top', 'left', 'right', 'center'] as const;
 export type StepPosition = (typeof STEP_POSITIONS)[number];
 
@@ -200,7 +197,6 @@ export interface InvitationPreview {
 export interface GuideSummary {
   id: string;
   name: string;
-  type: GuideType;
   status: GuideStatus;
   enabled: boolean;
   current_version_id: string | null;
@@ -258,7 +254,6 @@ export interface StepPayload {
   /** Present for existing steps; keeps the step's identity (and analytics) across versions. */
   id?: string;
   order: number;
-  type: GuideType;
   targetSelector?: string;
   content: string;
   position?: StepPosition;
@@ -297,7 +292,6 @@ export interface GuideVersion {
 export interface GuideDetail {
   id: string;
   name: string;
-  type: GuideType;
   status: GuideStatus;
   enabled: boolean;
   current_version_id: string | null;

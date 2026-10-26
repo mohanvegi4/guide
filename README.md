@@ -357,7 +357,7 @@ Full guide: [`apps/studio/README.md`](apps/studio/README.md).
   - **Dates:** optional start and end.
   - **Audience:** all accounts, or only listed account ids; and all visitors, or only visitors
     carrying any of the listed [visitor tags](#1-add-the-snippet). Both rules apply.
-  - **Steps:** each has a type, anchor, position, HTML content, and buttons (`next`, `dismiss`,
+  - **Steps:** each has an anchor, position, HTML content, and buttons (`next`, `dismiss`,
     `complete`).
   - **Workflow:** save a draft, preview, publish, enable. Publishing releases the version to the
     app's first [environment](#environments-and-releases); **Environments** promotes it stage by
@@ -730,7 +730,7 @@ plain `visitor` and `account`, and anything else sent beside it is ignored. Tags
 
 | Method & path | Body → response |
 |---|---|
-| `POST /v1/agent/:key/guides` | identity → `{ enabled, routeMode, theme: { color, matchSite }, guides: [{ id, versionId, name, type, steps, routeMatch }] }`. `routeMode` is `path` or `hash`; `theme` is the app's color and whether to match the website's Bootstrap theme ([Help center](#help-center)). |
+| `POST /v1/agent/:key/guides` | identity → `{ enabled, routeMode, theme: { color, matchSite }, guides: [{ id, versionId, name, steps, routeMatch }] }`. `routeMode` is `path` or `hash`; `theme` is the app's color and whether to match the website's Bootstrap theme ([Help center](#help-center)). |
 | `POST /v1/agent/:key/events` | identity + `{ events: [{ guideId, guideVersionId, stepId?, sessionId, eventType, occurredAt, metadata? }] }` (1–100) → `202 { accepted }`. Stored under the environment of the page's `Origin`; when that environment's analytics are off, the events update show-once state only and are not stored. Help-center events (`help_opened`, `help_searched`) carry no `guideId` / `guideVersionId`; a `help_searched` event's `metadata` is `{ query, results }` (the query is cut to 200 characters; other keys are dropped). |
 | `POST /v1/agent/:key/preview` | `{ token }` → the previewed guide with `preview: true` and the app's `theme` |
 | `POST /v1/agent/:key/errors` | `{ message (1–500 chars), stack? (≤ 4000), url? (≤ 2000), agentVersion? }` → `202 { accepted }`. `accepted: false` once the app already has 1000 reports in the last hour. |
@@ -774,7 +774,7 @@ plain `visitor` and `account`, and anything else sent beside it is ignored. Tags
 | `GET` / `POST /orgs/:orgId/invitations` | manager | `POST` takes `{ email?, orgRole: manager\|editor\|viewer }` (default viewer; owners are promoted, never invited) → `{ …, token, emailSent }`. With an `email` and mail configured, the link is emailed; `emailSent` is false when it wasn't (no mail set up, or sending failed — the request still succeeds). |
 | `DELETE /orgs/:orgId/invitations/:id` | manager | revoke |
 | `GET /invitations/:token`, `POST /invitations/:token/accept` | the link holder | |
-| `GET` / `POST /apps/:appId/guides` | viewer / editor | Each listed guide carries `releases: [{ environmentId, versionNumber }]` in environment order. |
+| `GET` / `POST /apps/:appId/guides` | viewer / editor | `POST` takes `{ name }` (a `type` older clients send is ignored). Each listed guide carries `releases: [{ environmentId, versionNumber }]` in environment order. |
 | `GET /apps/:appId/guides/:id` | viewer | Guide + `versions[]`. The version with `published_at: null` is the draft. |
 | `PUT /apps/:appId/guides/:id/draft` | editor | `VersionBody` |
 | `POST /apps/:appId/guides/:id/publish` | editor | `VersionBody`, or empty to publish the draft as-is. |
@@ -796,7 +796,7 @@ plain `visitor` and `account`, and anything else sent beside it is ignored. Tags
 A `VersionBody` is:
 
 ```
-{ steps: [{ id?, order, type, targetSelector?, content, position?, actions: [{ label, action }] }],
+{ steps: [{ id?, order, targetSelector?, content, position?, actions: [{ label, action }] }],
   pageId? | routeMatch?: { type, value },   // exactly one
   startAt?, endAt?, accountIds?: string[] | null, visitorTags?: string[] | null,
   help?: { title, description?, keywords?: string[], startPath? } | null,
@@ -868,6 +868,7 @@ pending files and the others wait, then find nothing to do.
 | `001_schema.sql` | The whole schema: types, the session-variable helpers RLS reads, every table with its constraints and indexes, the `application_guard_keys` trigger, the `active_guide` view, every RLS policy (enabled and forced), and the kill-switch row. |
 | `002_drop_leftovers.sql` | Drops what the code no longer used: `app_member` and `app_role` (per-app roles), `invitation.app_roles`, the never-used `step` table, the retired `admin` / `member` roles (`org_role` now has only owner, manager, editor, viewer) and the unused `snoozed` visitor status. The two enums are rebuilt, with the policy and CHECK constraints that embed them. |
 | `003_match_site_theme.sql` | `application.match_site_theme` (default on, existing apps included): guide cards and the help center follow the website's Bootstrap theme, with `help_button_color` as the fallback. |
+| `004_drop_guide_type.sql` | Drops `guide.type` and the `guide_type` enum (rebuilding `active_guide` without it): the type never changed how a guide looks. Steps saved earlier keep a `type` key in their JSON, which nothing reads. |
 
 The 21 migrations written during development were squashed into `001_schema.sql` before the first
 deployment (they had only run on development databases); [How the schema got

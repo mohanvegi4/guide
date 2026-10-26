@@ -7,7 +7,6 @@
     <div>
       <h1>{{ g.name }}</h1>
       <p class="muted">
-        {{ g.type }} ·
         <span class="badge" [class]="'badge ' + g.status">{{ g.status }}</span>
         @if (loadedFrom(); as from) { · editing from v{{ from.number }}{{ from.draft ? ' (draft)' : '' }} }
       </p>
@@ -225,13 +224,7 @@
               <button type="button" class="danger" (click)="removeStep(i)" [disabled]="steps.length === 1">Remove</button>
             </div>
 
-            <div class="grid-3">
-              <label>
-                Type
-                <select formControlName="type">
-                  @for (t of guideTypes; track t) { <option [value]="t">{{ t }}</option> }
-                </select>
-              </label>
+            <div class="grid-2">
               <label>
                 Anchor (data-guide-id)
                 <input formControlName="anchorId" placeholder="invite-button — blank = centered" />

@@ -128,7 +128,7 @@ describe('GET /apps/:appId/analytics', () => {
     const other = await request(app)
       .post(`/v1/apps/${appId}/guides`)
       .set('Authorization', as('alice'))
-      .send({ name: 'Quiet', type: 'tooltip' });
+      .send({ name: 'Quiet' });
     await record({ visitor: 'v1', account: 'acme' }, ['guide_shown', 'guide_completed']);
     await record({ visitor: 'v2', account: 'acme' }, ['guide_shown', 'guide_dismissed']);
     await record({ visitor: 'v3', account: null }, ['guide_shown']);

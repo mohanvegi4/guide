@@ -12,7 +12,6 @@ import {
   GuideDetail,
   GuideRelease,
   GuideSummary,
-  GuideType,
   HelpAnalytics,
   HelpPosition,
   Invitation,
@@ -310,8 +309,8 @@ export class ApiService {
     return this.http.get<GuideSummary[]>(this.guides(appId));
   }
 
-  createGuide(appId: string, name: string, type: GuideType): Observable<GuideSummary> {
-    return this.http.post<GuideSummary>(this.guides(appId), { name, type });
+  createGuide(appId: string, name: string): Observable<GuideSummary> {
+    return this.http.post<GuideSummary>(this.guides(appId), { name });
   }
 
   getGuide(appId: string, id: string): Observable<GuideDetail> {

@@ -22,7 +22,6 @@ const tour = makeGuide({
   id: 'tour',
   versionId: 'tour-v1',
   name: 'Welcome tour',
-  type: 'tour',
   steps: [makeStep({ id: 'tour-s1' }), makeStep({ id: 'tour-s2' })],
 });
 

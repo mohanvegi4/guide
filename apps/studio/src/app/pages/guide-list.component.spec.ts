@@ -17,7 +17,6 @@ const production: Environment = {
 const guide: GuideSummary = {
   id: 'g1',
   name: 'Welcome',
-  type: 'tooltip',
   status: 'published',
   enabled: false,
   current_version_id: 'v1',

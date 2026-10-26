@@ -72,7 +72,6 @@ export async function addMember(
 
 export const sampleStep = {
   order: 0,
-  type: 'tooltip' as const,
   targetSelector: '[data-guide-id="invite-button"]',
   content: '<p>Invite your team</p>',
   position: 'bottom',
@@ -93,7 +92,7 @@ export async function liveGuide(
   const g = await request(app)
     .post(`/v1/apps/${appId}/guides`)
     .set('Authorization', as(sub))
-    .send({ name: 'G', type: 'tooltip' });
+    .send({ name: 'G' });
   const v = await request(app)
     .post(`/v1/apps/${appId}/guides/${g.body.id}/publish`)
     .set('Authorization', as(sub))

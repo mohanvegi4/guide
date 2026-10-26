@@ -54,7 +54,6 @@ interface AccountRow {
   visitors: number;
 }
 
-const guideTypeSchema = z.enum(['tooltip', 'modal', 'banner', 'tour', 'checklist', 'survey', 'beacon']);
 
 // ------------------------------------------------------------
 // Version payloads (shared by draft save + publish)
@@ -70,7 +69,8 @@ const stepSchema = z.object({
   // follow a step through edits. New steps omit it and get one assigned.
   id: z.string().uuid().optional(),
   order: z.number().int().nonnegative(),
-  type: guideTypeSchema,
+  // No step type (migration 004): every step is the same card. A `type` an
+  // older client still sends is dropped here like any unknown key.
   targetSelector: z.string().regex(DATA_GUIDE_ID_SELECTOR, 'must be [data-guide-id="..."]').optional(),
   content: z.string().min(1).max(20_000),
   position: z.enum(['top', 'bottom', 'left', 'right', 'center']).optional(),
@@ -285,7 +285,7 @@ guidesRouter.get(
     const guides = await studio(req, async (client, ctx) => {
       requireAppRole(ctx, appId, 'viewer');
       const result = await client.query(
-        `SELECT g.id, g.name, g.type, g.status, g.enabled, g.current_version_id,
+        `SELECT g.id, g.name, g.status, g.enabled, g.current_version_id,
                 gv.version_number AS current_version_number, gv.activation, g.created_at, g.updated_at,
                 p.id AS page_id, p.name AS page_name,
                 COALESCE((
@@ -315,16 +315,17 @@ guidesRouter.post(
   asyncHandler(async (req, res) => {
     const appId = idParam(req, 'appId');
     const body = parseBody(
-      z.object({ name: z.string().trim().min(1).max(200), type: guideTypeSchema }),
+      // A `type` an older client still sends is ignored (migration 004).
+      z.object({ name: z.string().trim().min(1).max(200) }),
       req.body,
     );
     const guide = await studio(req, async (client, ctx) => {
       requireAppRole(ctx, appId, 'editor');
       const result = await client.query(
-        `INSERT INTO guide (app_id, name, type, created_by)
-         VALUES ($1, $2, $3, $4)
-         RETURNING id, name, type, status, enabled, created_at`,
-        [appId, body.name, body.type, ctx.userId],
+        `INSERT INTO guide (app_id, name, created_by)
+         VALUES ($1, $2, $3)
+         RETURNING id, name, status, enabled, created_at`,
+        [appId, body.name, ctx.userId],
       );
       return result.rows[0];
     });

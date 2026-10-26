@@ -272,7 +272,7 @@ describe('targeting and kill switches', () => {
     const g = await request(app)
       .post(`/v1/apps/${appId}/guides`)
       .set('Authorization', as('alice'))
-      .send({ name: 'D', type: 'modal' });
+      .send({ name: 'D' });
     await request(app)
       .put(`/v1/apps/${appId}/guides/${g.body.id}/draft`)
       .set('Authorization', as('alice'))
@@ -398,7 +398,7 @@ describe('preview links', () => {
     const g = await request(app)
       .post(`/v1/apps/${s.appId}/guides`)
       .set('Authorization', as('alice'))
-      .send({ name: 'P', type: 'modal' });
+      .send({ name: 'P' });
     const draft = await request(app)
       .put(`/v1/apps/${s.appId}/guides/${g.body.id}/draft`)
       .set('Authorization', as('alice'))

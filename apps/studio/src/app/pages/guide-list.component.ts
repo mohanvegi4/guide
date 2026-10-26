@@ -4,7 +4,7 @@ import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { ApiService, describeError } from '../core/api.service';
 import { AuthService } from '../core/auth.service';
-import { AppAnalytics, Environment, GUIDE_TYPES, GuideSummary, GuideType, appRoleAtLeast } from '../core/models';
+import { AppAnalytics, Environment, GuideSummary, appRoleAtLeast } from '../core/models';
 import { EnvironmentSelectComponent } from '../components/environment-select.component';
 
 interface OverviewRow {
@@ -79,14 +79,6 @@ interface OverviewRow {
             Name
             <input formControlName="name" placeholder="e.g. Welcome tour" />
           </label>
-          <label>
-            Type
-            <select formControlName="type">
-              @for (t of guideTypes; track t) {
-                <option [value]="t">{{ t }}</option>
-              }
-            </select>
-          </label>
           <button type="submit" class="primary" [disabled]="createForm.invalid || creating()">Create</button>
         </form>
       </section>
@@ -105,7 +97,6 @@ interface OverviewRow {
         <thead>
           <tr>
             <th>Name</th>
-            <th>Type</th>
             <th>Status</th>
             <th>Page</th>
             <th>Starts</th>
@@ -121,7 +112,6 @@ interface OverviewRow {
               <td>
                 <a [routerLink]="[g.id]">{{ g.name }}</a>
               </td>
-              <td>{{ g.type }}</td>
               <td>
                 <span class="badge" [class]="'badge ' + g.status">{{ g.status }}</span>
               </td>
@@ -184,7 +174,6 @@ interface OverviewRow {
 export class GuideListComponent {
   private readonly api = inject(ApiService);
   private readonly router = inject(Router);
-  protected readonly guideTypes = GUIDE_TYPES;
   private readonly auth = inject(AuthService);
   readonly orgId = input.required<string>();
   readonly appId = input.required<string>();
@@ -220,7 +209,6 @@ export class GuideListComponent {
 
   protected readonly createForm = inject(FormBuilder).nonNullable.group({
     name: ['', [Validators.required, Validators.maxLength(200)]],
-    type: ['tooltip' as GuideType, Validators.required],
   });
 
   constructor() {
@@ -268,9 +256,9 @@ export class GuideListComponent {
   }
 
   create(): void {
-    const { name, type } = this.createForm.getRawValue();
+    const { name } = this.createForm.getRawValue();
     this.creating.set(true);
-    this.api.createGuide(this.appId(), name.trim(), type).subscribe({
+    this.api.createGuide(this.appId(), name.trim()).subscribe({
       next: (g) => void this.router.navigate(['/o', this.orgId(), 'apps', this.appId(), 'guides', g.id]),
       error: (err) => {
         this.error.set(describeError(err));
