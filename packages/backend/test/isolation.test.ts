@@ -117,18 +117,6 @@ describe('directly in the database (RLS)', () => {
     ).rejects.toThrow(/row-level security/);
   });
 
-  it("can't grant yourself a role on another org's app", async () => {
-    const zed = await userId('zed');
-    await expect(
-      withStudioSession(zed, (c) =>
-        c.query(`INSERT INTO app_member (app_id, user_id, role) VALUES ($1, $2, 'app_admin')`, [
-          a.appId,
-          zed,
-        ]),
-      ),
-    ).rejects.toThrow(/row-level security/);
-  });
-
   it("an agent session for Globex's key sees none of Acme's guides and can't write its events", async () => {
     const seen = await withAgentSession(b.key, async (c) => (await c.query(`SELECT id FROM guide`)).rowCount);
     expect(seen).toBe(0);

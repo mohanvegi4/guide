@@ -13,7 +13,7 @@ export const SITE = 'https://app.acme.test';
 
 export async function resetData(): Promise<void> {
   await adminPool.query(
-    `TRUNCATE organization, studio_user, guide, guide_version, step, guide_event, user_guide_state, invitation
+    `TRUNCATE organization, studio_user, guide, guide_version, guide_event, user_guide_state, invitation
      RESTART IDENTITY CASCADE`,
   );
   await adminPool.query(`UPDATE system_config SET value = 'true' WHERE key = 'guide_engine_enabled'`);

@@ -267,6 +267,11 @@ describe('roles', () => {
       { role: 'owner', n: 1 },
       { role: 'viewer', n: 1 },
     ]);
-    expect((await adminPool.query(`SELECT count(*)::int AS n FROM app_member`)).rows[0].n).toBe(0);
+    // Retired in migration 002: the roles can't even be written any more, and
+    // per-app grants have no table.
+    const leftovers = await adminPool.query(
+      `SELECT enum_range(NULL::org_role)::text AS roles, to_regclass('app_member') AS app_member`,
+    );
+    expect(leftovers.rows[0]).toEqual({ roles: '{owner,manager,editor,viewer}', app_member: null });
   });
 });

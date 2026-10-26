@@ -8,7 +8,7 @@ nav_order: 4
 This guide explains, part by part, how Guide Engine works inside: what runs where, what each piece
 stores, how a request is authorized, and how a guide gets from the Studio onto a visitor's screen.
 It is written for engineers who will run, extend or review the system, and it describes the code
-as it is on `main` (version 0.3.0, schema `001_schema.sql`). Where the code and the intent differ, the
+as it is on `main` (version 0.3.0, migrations `001_schema.sql` and `002_drop_leftovers.sql`). Where the code and the intent differ, the
 guide says so in [Known gaps and quirks](#16-known-gaps-and-quirks).
 
 For *using* the product, read the [Guide Engine reference](../README.md) and the
@@ -334,8 +334,9 @@ has RLS **enabled and forced**, so even the table owner is subject to it.
 | `agent_rate_limit` | Rate-limit windows (unscoped) | `(bucket, window_start)`, `count` |
 | `schema_migrations` | Applied migrations (unscoped) | `filename`, `applied_at` |
 
-Two leftovers exist: `app_member` (per-app roles, empty since the organization-wide role and unused) and `step` (an early
-normalized steps table that was never used). Neither is read by the code.
+Migration 002 dropped the development-era leftovers: the `app_member` table and `app_role` type
+(per-app roles), `invitation.app_roles`, the never-used `step` table, the retired `admin` /
+`member` values of `org_role` and the unused `snoozed` value of `user_guide_status`.
 
 **Constraints that encode rules.** A few business rules live in the schema, not only in code:
 
@@ -413,6 +414,7 @@ schema matched the chain's object for object. The old files are in git history (
 | 019 | `shown` visitor state | An automatic guide shows once per visitor per version |
 | 020 | `visitor_tags` on versions | Target guides by what the visitor may do in the host application |
 | 021 | Environments, releases and the release log; events and visitor state per environment; `active_guide` on releases | Dev → Test → Accept → Prod promotion with revert, from one Studio and one key; analytics that never mix environments and can be switched off per environment. Existing apps got one *Production* environment |
+| 002 (after the squash) | Leftovers dropped: `app_member`, `app_role`, `invitation.app_roles`, `step`, the retired `org_role` values, `snoozed` | The first migration after the squash; the enums are rebuilt because Postgres can't drop an enum value |
 
 ---
 

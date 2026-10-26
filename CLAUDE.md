@@ -39,7 +39,7 @@ deliberately for this project's scale and constraints:
 - **Studio identity comes from OIDC (identity only).**
   - Organizations, memberships and roles live in our database.
   - One organization-wide role per person: viewer < editor < manager < owner. It applies to
-    every app of the org; there are no per-app grants (the `app_member` table is empty and unused).
+    every app of the org; there are no per-app grants.
     Internally the backend derives an `AppRole` (viewer | app_admin) from it for the existing
     per-app route checks; destructive app actions (delete, key rotation, forget visitor) are
     gated by `requireAppManager` (manager+) and, in the database, by `app.manager_app_ids`
