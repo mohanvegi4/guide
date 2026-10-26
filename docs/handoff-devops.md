@@ -160,7 +160,7 @@ values to provide per environment.
 ## 5. Go-live steps (per environment)
 
 1. **Servers and DNS.** Provision the servers in section 2 and the three DNS names.
-2. **Images.** Deploy images built from the release commit we give you (section 8). Mirror them into
+2. **Images.** Deploy the release images named in section 8. Mirror them into
    your registry if you chose that.
 3. **Databases.** Create the two databases and roles (`deploy/init.sh` shows the exact SQL).
 4. **Keycloak realm.** Run `deploy/render-realm.sh` with the environment's settings: it produces the
@@ -215,8 +215,10 @@ curl -s https://API_HOST/agent/v1/version       # {"version":"…","hash":"…"}
 
 ## 8. Status and known limits
 
-- **Release to deploy.** The images published so far do not include the latest fixes. We will
-  give you the commit and image tag to deploy.
+- **Release to deploy.** Commit `12d6144` on `main`. CI published its images as
+  `ghcr.io/mohanvegi4/guide/backend:12d6144fa1f1de40d18c39ec910055029bb3fc4f` and
+  `ghcr.io/mohanvegi4/guide/studio:12d6144fa1f1de40d18c39ec910055029bb3fc4f`. Deploy by that tag,
+  not `latest`, so every environment runs the same build.
 - **Graceful shutdown.** The backend does not drain requests on `SIGTERM`. Take an instance out of
   the load balancer (readiness) before stopping it during a rolling deploy.
 - **Rate limiting** is counted in PostgreSQL: one small write per agent request.
