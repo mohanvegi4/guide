@@ -166,4 +166,15 @@ describe('GuideEditorComponent', () => {
     fixture = await render(guide([]), []);
     expect(fixture.componentInstance['form'].controls.where.value).toBe('custom');
   });
+
+  it('starts a brand-new guide as help-center only, listed under the guide name', async () => {
+    const fixture = await render(guide([]), []);
+    const form = fixture.componentInstance['form'];
+    expect(form.controls.activation.value).toBe('manual');
+    form.controls.steps.at(0).controls.content.setValue('<p>Hi</p>'); // the starter step
+    fixture.componentInstance.publish();
+    const body = publishBody();
+    expect(body.activation).toBe('manual');
+    expect(body.help).toMatchObject({ title: 'Welcome' });
+  });
 });

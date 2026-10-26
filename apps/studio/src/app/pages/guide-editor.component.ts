@@ -126,7 +126,9 @@ export class GuideEditorComponent {
     tagAudience: this.fb.control<'all' | 'tags'>('all'),
     visitorTags: this.fb.control(''),
     // How the guide starts: automatically on its page, or only from the help center.
-    activation: this.fb.control<GuideActivation>('auto'),
+    // A new guide starts as help-center only: it pops up for nobody until its
+    // author chooses "Automatically". (Existing versions keep their own setting.)
+    activation: this.fb.control<GuideActivation>('manual'),
     // Help center listing (on-demand, searchable).
     helpListed: this.fb.control(false),
     helpTitle: this.fb.control('', Validators.maxLength(120)),

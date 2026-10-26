@@ -170,8 +170,10 @@ for that id).
      version — being shown counts, so a reload never restarts it; publish again to show it to
      everyone once more — welcome tours, "what's new"), or
      *Only from the help center* (never pops up; visitors pick it from the help list or open a
-     help link, so it's always listed there). When several automatic guides match a page, the
-     agent shows them one at a time, walkthroughs first.
+     help link, so it's always listed there, under the guide's name unless you give a title).
+     New guides start as *Only from the help center*; choose *Automatically* for the few that
+     should pop up. When several automatic guides match a page, the agent shows them one at a
+     time, walkthroughs first.
    - **Audience:** *All accounts*, or *Only these accounts*, one id per line. Use the account ids
      your site passes to `guideEngine.initialize({ account: { id } })`. Separately, *All
      visitors*, or *Only visitors with any of these tags*: the tags your site passes as
