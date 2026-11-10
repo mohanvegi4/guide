@@ -246,9 +246,9 @@ curl -s https://API_HOST/agent/v1/version       # {"version":"…","hash":"…"}
 
 ## 8. Status and known limits
 
-- **Release to deploy.** Commit `6758843` on `main`. CI published its images as
-  `ghcr.io/mohanvegi4/guide/backend:675884382a53efceb76294db36216dcde00bfca8` and
-  `ghcr.io/mohanvegi4/guide/studio:675884382a53efceb76294db36216dcde00bfca8`. Deploy by that tag,
+- **Release to deploy.** Commit `4315f85` on `main`. CI published its images as
+  `ghcr.io/mohanvegi4/guide/backend:4315f8574b7cc88832186336e13ee7d85aba2382` and
+  `ghcr.io/mohanvegi4/guide/studio:4315f8574b7cc88832186336e13ee7d85aba2382`. Deploy by that tag,
   not `latest`, so every environment runs the same build.
 - **Graceful shutdown.** The backend does not drain requests on `SIGTERM`. Take an instance out of
   the load balancer (readiness) before stopping it during a rolling deploy.
