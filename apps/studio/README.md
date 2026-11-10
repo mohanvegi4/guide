@@ -125,7 +125,8 @@ after that, grants happen here.
   a name, its **websites** (the only origins where guides load; each website belongs to one
   environment, which is how a page's environment is known) and a **Record analytics** switch
   (off: no events are stored for it; guides still show once per visitor). **Save** each one
-  separately. **Add before production** creates a stage in front of production; the ↑ / ↓ arrows
+  separately. **Add environment** creates a stage in front of production, or, with **Make it production**
+  on, at the end as the new production (after a confirmation); the ↑ / ↓ arrows
   reorder them (moving a stage to the end makes it production, after a confirmation). **Delete**
   (managers and owners; type its name) removes the stage with its releases. Every app starts with
   one environment, *Production*.

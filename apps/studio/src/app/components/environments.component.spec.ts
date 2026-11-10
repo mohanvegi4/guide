@@ -1,4 +1,4 @@
-import { TestBed } from '@angular/core/testing';
+import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { EnvironmentsComponent } from './environments.component';
@@ -21,6 +21,7 @@ const prod: Environment = {
 
 describe('EnvironmentsComponent', () => {
   let http: HttpTestingController;
+  let fixture: ComponentFixture<EnvironmentsComponent>;
 
   async function render(canDelete = true) {
     TestBed.configureTestingModule({
@@ -28,7 +29,7 @@ describe('EnvironmentsComponent', () => {
       providers: [provideHttpClient(), provideHttpClientTesting()],
     });
     http = TestBed.inject(HttpTestingController);
-    const fixture = TestBed.createComponent(EnvironmentsComponent);
+    fixture = TestBed.createComponent(EnvironmentsComponent);
     fixture.componentRef.setInput('appId', 'a1');
     fixture.componentRef.setInput('canDelete', canDelete);
     fixture.detectChanges();
@@ -82,6 +83,7 @@ describe('EnvironmentsComponent', () => {
     expect(created.request.body).toEqual({
       name: 'Accept',
       websites: ['https://accept.oclc.test'],
+      last: false,
     });
     created.flush({ ...test, id: 'e3', name: 'Accept' });
     http.expectOne('/api/v1/apps/a1/environments').flush([test, prod]);
@@ -98,6 +100,56 @@ describe('EnvironmentsComponent', () => {
     expect(del.request.body).toEqual({ confirmName: 'Test' });
     del.flush(null);
     http.expectOne('/api/v1/apps/a1/environments').flush([prod]);
+  });
+
+  it('adds a new production at the end, after asking, when the switch is on', async () => {
+    const el = await render();
+    const name = el.querySelector<HTMLInputElement>('input[name="newName"]')!;
+    name.value = 'Live';
+    name.dispatchEvent(new Event('input'));
+    const toggle = el.querySelector<HTMLInputElement>('input[name="newIsProduction"]')!;
+    toggle.checked = true;
+    toggle.dispatchEvent(new Event('change'));
+    await fixture.whenStable();
+    const form = el.querySelector('form')!;
+
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    form.dispatchEvent(new Event('submit'));
+    expect(confirm).toHaveBeenCalled();
+    http.expectNone((r) => r.method === 'POST');
+
+    confirm.mockReturnValue(true);
+    form.dispatchEvent(new Event('submit'));
+    const created = http.expectOne((r) => r.method === 'POST');
+    expect(created.request.body).toEqual({ name: 'Live', websites: [], last: true });
+    const live: Environment = { ...prod, id: 'e3', name: 'Live', position: 3, websites: [] };
+    created.flush(live);
+    http.expectOne('/api/v1/apps/a1/environments').flush([test, prod, live]);
+    await fixture.whenStable();
+    expect(el.textContent).toContain('Added Live as production.');
+    expect(toggle.checked).toBe(false);
+    expect(el.querySelector('[data-testid="environment-Production"]')!.textContent).not.toContain(
+      'production',
+    );
+    expect(el.querySelector('[data-testid="environment-Live"]')!.textContent).toContain('production');
+  });
+
+  it('marks a single environment as production too', async () => {
+    TestBed.configureTestingModule({
+      imports: [EnvironmentsComponent],
+      providers: [provideHttpClient(), provideHttpClientTesting()],
+    });
+    http = TestBed.inject(HttpTestingController);
+    fixture = TestBed.createComponent(EnvironmentsComponent);
+    fixture.componentRef.setInput('appId', 'a1');
+    fixture.detectChanges();
+    await fixture.whenStable();
+    http.expectOne('/api/v1/apps/a1/environments').flush([prod]);
+    await fixture.whenStable();
+    const el = fixture.nativeElement as HTMLElement;
+    expect(el.querySelector('[data-testid="environment-Production"] .badge')!.textContent).toBe(
+      'production',
+    );
   });
 
   it('offers no Delete without the manager role', async () => {

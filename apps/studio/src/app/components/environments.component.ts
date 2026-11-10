@@ -43,7 +43,7 @@ interface Draft {
           <div class="section-head">
             <h3 class="subhead">
               {{ i + 1 }}. {{ d.savedName }}
-              @if (last && drafts().length > 1) {
+              @if (last) {
                 <span class="badge published">production</span>
               }
             </h3>
@@ -119,7 +119,11 @@ interface Draft {
           placeholder="https://test.example.com"
         />
       </label>
-      <button type="submit" [disabled]="busy() || !newName.trim()">Add before production</button>
+      <label class="switch">
+        <input type="checkbox" name="newIsProduction" [(ngModel)]="newIsProduction" />
+        <span>Make it production</span>
+      </label>
+      <button type="submit" [disabled]="busy() || !newName.trim()">Add environment</button>
     </form>
   `,
 })
@@ -135,6 +139,7 @@ export class EnvironmentsComponent {
   protected readonly message = signal<string | null>(null);
   protected newName = '';
   protected newWebsites = '';
+  protected newIsProduction = false;
 
   constructor() {
     effect(() => {
@@ -183,18 +188,29 @@ export class EnvironmentsComponent {
     );
   }
 
+  /** A new stage goes in front of production, or at the end as the new production. */
   add(): void {
     const websites = parseWebsites(this.newWebsites);
     if (typeof websites === 'string') {
       this.error.set(websites);
       return;
     }
+    const last = this.newIsProduction;
+    if (
+      last &&
+      this.drafts().length > 0 &&
+      !confirm(
+        'The new environment becomes production: its releases become what end users see, and it starts with none. Continue?',
+      )
+    )
+      return;
     this.run(
-      this.api.createEnvironment(this.appId(), { name: this.newName.trim(), websites }),
+      this.api.createEnvironment(this.appId(), { name: this.newName.trim(), websites, last }),
       (e) => {
         this.newName = '';
         this.newWebsites = '';
-        this.message.set(`Added ${e.name}.`);
+        this.newIsProduction = false;
+        this.message.set(last ? `Added ${e.name} as production.` : `Added ${e.name}.`);
         this.reload();
       },
     );

@@ -97,7 +97,7 @@ export class ApiService {
   /** Added in front of production, which stays the last stage. */
   createEnvironment(
     appId: string,
-    body: { name: string; websites: string[]; analyticsEnabled?: boolean },
+    body: { name: string; websites: string[]; analyticsEnabled?: boolean; last?: boolean },
   ): Observable<Environment> {
     return this.http.post<Environment>(this.environments(appId), body);
   }
