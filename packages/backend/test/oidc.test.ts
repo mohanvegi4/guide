@@ -57,13 +57,13 @@ describe('OIDC verifier (identity only)', () => {
   it('maps a provider-signed token to an identity', async () => {
     const verify = createOidcVerifier(config());
     expect(
-      await verify(idpToken({ sub: 'u-1', email: 'a@corp.com', email_verified: true, name: 'Alice' })),
+      await verify(idpToken({ sub: 'u-1', email: 'a@corp.com', email_verified: true, name: 'Owner' })),
     ).toEqual({
       issuer,
       sub: 'u-1',
       email: 'a@corp.com',
       emailVerified: true,
-      name: 'Alice',
+      name: 'Owner',
     });
   });
 
@@ -136,12 +136,12 @@ describe('token routing (dev HS256 vs OIDC)', () => {
   it('sends asymmetric tokens to the OIDC verifier and HS256 tokens to the dev secret', async () => {
     const devConfig = loadAuthConfig({ NODE_ENV: 'test', JWT_SECRET: 'x'.repeat(40) });
     const oidc = createOidcVerifier(config());
-    const fromIdp = idpToken({ sub: 'alice' });
-    const dev = jwt.sign({}, 'x'.repeat(40), { subject: 'bob', issuer: DEV_TOKEN_ISSUER, expiresIn: '5m' });
+    const fromIdp = idpToken({ sub: 'owner' });
+    const dev = jwt.sign({}, 'x'.repeat(40), { subject: 'other', issuer: DEV_TOKEN_ISSUER, expiresIn: '5m' });
 
-    expect(await verifyStudioToken(fromIdp, devConfig, oidc)).toMatchObject({ sub: 'alice', issuer });
+    expect(await verifyStudioToken(fromIdp, devConfig, oidc)).toMatchObject({ sub: 'owner', issuer });
     expect(await verifyStudioToken(dev, devConfig, oidc)).toMatchObject({
-      sub: 'bob',
+      sub: 'other',
       issuer: DEV_TOKEN_ISSUER,
     });
     // With OIDC not configured, provider tokens are simply not accepted.

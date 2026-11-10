@@ -23,11 +23,11 @@ describe('App shell navigation', () => {
     });
     router = TestBed.inject(Router);
     TestBed.inject(AuthService).me.set({
-      user: { id: 'u', email: 'o@acme.test', name: 'Olivia', platformAdmin: false },
+      user: { id: 'u', email: 'o@oclc.test', name: 'Owner', platformAdmin: false },
       orgs: [
         {
           id: 'o1',
-          name: 'Acme',
+          name: 'OCLC',
           role: 'editor',
           suspendedAt: null,
           apps: [

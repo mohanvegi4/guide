@@ -69,7 +69,7 @@ so a fix is always a **new patch version** (`npm run version:set 0.2.1`, tag `v0
 
 ## Renaming the scope
 
-If `guide-engine` is not available on npm, pick another scope (say `@acme-guides`) and change:
+If `guide-engine` is not available on npm, pick another scope (say `@oclc-guides`) and change:
 
 - the `name` in `packages/core/package.json`, `packages/angular-wrapper/package.json` and
   `packages/vue-wrapper/package.json`, plus the `@guide-engine/core` entry in the wrappers'

@@ -121,16 +121,16 @@ describe('GET /metrics', () => {
   });
 
   it('labels requests by route pattern and agent endpoint, never by id or key', async () => {
-    const { appId, key } = await signUp('alice');
-    const { guideId } = await liveGuide('alice', appId);
+    const { appId, key } = await signUp('owner');
+    const { guideId } = await liveGuide('owner', appId);
     expect(
-      (await request(app).get(`/v1/apps/${appId}/guides/${guideId}`).set('Authorization', as('alice')))
+      (await request(app).get(`/v1/apps/${appId}/guides/${guideId}`).set('Authorization', as('owner')))
         .status,
     ).toBe(200);
     // A 404 thrown inside the route handler keeps its pattern.
     const missing = '00000000-0000-4000-8000-000000000000';
     expect(
-      (await request(app).get(`/v1/apps/${missing}/guides/${missing}`).set('Authorization', as('alice')))
+      (await request(app).get(`/v1/apps/${missing}/guides/${missing}`).set('Authorization', as('owner')))
         .status,
     ).toBe(404);
     expect((await agent(key, '/guides', visitor())).status).toBe(200);
@@ -186,11 +186,11 @@ describe('request logging and the error handler', () => {
   it('logs one structured line per request with the route pattern and a key prefix, never the key', async () => {
     const { logger, lines } = capturedLogger();
     const logged = createApp({ logger });
-    const { appId, key } = await signUp('alice');
-    await liveGuide('alice', appId);
+    const { appId, key } = await signUp('owner');
+    await liveGuide('owner', appId);
     await request(logged)
       .get(`/v1/apps/${appId}/guides`)
-      .set('Authorization', as('alice'))
+      .set('Authorization', as('owner'))
       .set('X-Request-Id', 'r-1');
     await request(logged)
       .post(`/v1/agent/${key}/guides`)
@@ -226,11 +226,11 @@ describe('request logging and the error handler', () => {
     const { logger, lines } = capturedLogger();
     const reported: unknown[] = [];
     const observed = createApp({ logger, reportError: (err, context) => reported.push({ err, context }) });
-    await signUp('alice');
+    await signUp('owner');
 
     const missing = await request(observed)
       .get('/v1/orgs/00000000-0000-4000-8000-000000000000')
-      .set('Authorization', as('alice'))
+      .set('Authorization', as('owner'))
       .set('X-Request-Id', 'r-404');
     expect(missing.status).toBe(404);
     const rejected = lines.find((l) => l.msg === 'request rejected');
@@ -241,7 +241,7 @@ describe('request logging and the error handler', () => {
     failStudioSessions = true;
     const failed = await request(observed)
       .get('/v1/me')
-      .set('Authorization', as('alice'))
+      .set('Authorization', as('owner'))
       .set('X-Request-Id', 'r-500');
     expect(failed.status).toBe(500);
     expect(failed.body).toEqual({ error: 'internal_error' });
@@ -265,7 +265,7 @@ describe('request logging and the error handler', () => {
     const { logger, lines } = capturedLogger();
     const reported: unknown[] = [];
     const observed = createApp({ logger, reportError: (err, context) => reported.push({ err, context }) });
-    const { key } = await signUp('alice');
+    const { key } = await signUp('owner');
 
     const secret = process.env.PREVIEW_TOKEN_SECRET;
     delete process.env.PREVIEW_TOKEN_SECRET;
@@ -289,7 +289,7 @@ describe('request logging and the error handler', () => {
 
     const bad = await request(observed)
       .post('/v1/orgs')
-      .set('Authorization', as('alice'))
+      .set('Authorization', as('owner'))
       .set('Content-Type', 'application/json')
       .send('{not json');
     expect(bad.status).toBe(400);

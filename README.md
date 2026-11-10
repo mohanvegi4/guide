@@ -167,21 +167,21 @@ in through the local Keycloak with one of its test users.
 | | Developer sign-in (paste a token) | Sign in with SSO (Keycloak) |
 |---|---|---|
 | When | Default; no extra setup | After `npm run idp:up` and `OIDC_ISSUER=http://localhost:8081/realms/guide-engine` in `packages/backend/.env` (restart the backend) |
-| User | **Dev Admin** (`dev-admin@example.com`), owner of **Demo Org** / **Demo site** | `olivia` (Olivia Owner, `olivia@acme.test`), `eddie` (Eddie Editor) or `root` (Guide Engine Admin) |
-| Credentials | The token `npm run seed` prints (valid 8 h) | Password = username (`olivia` / `olivia`, …). Admin console at http://localhost:8081, `admin` / `admin` |
+| User | **Mohan Vegi** (`vegim@oclc.org`), owner of **Demo Org** / **Demo site** | `vegim` (Mohan Vegi, `vegim@oclc.org`), `editor` (an org editor) or `root` (Guide Engine Admin) |
+| Credentials | The token `npm run seed` prints (valid 8 h) | Password = username (`vegim` / `vegim`, …). Admin console at http://localhost:8081, `admin` / `admin` |
 | Where | Login page → **Developer sign-in (paste a token)** → paste → **Sign in** | Login page → **Sign in with SSO** → Keycloak's form |
 
 Notes:
-- A new token for Dev Admin, or for any other dev user (new users start with no organization):
+- A new token for the seeded user, or for any other dev user (new users start with no organization):
   ```bash
-  npm run mint-token --workspace=packages/backend -- --sub dev-admin --email dev-admin@example.com --name "Dev Admin"
+  npm run mint-token --workspace=packages/backend -- --sub vegim --email vegim@oclc.org --name "Mohan Vegi"
   ```
-- Each Keycloak user is one Studio user, so `olivia` keeps her organizations across sign-ins.
+- Each Keycloak user is one Studio user, so `vegim` keeps their organizations across sign-ins.
   Add more people in the Keycloak admin console (realm **guide-engine → Users**) to try the
   roles, and invite them from **Members**. `root` is meant to become the platform admin.
 - SSO users are *not* members of the seeded Demo Org (identity comes from the provider,
   memberships from our database). A new SSO user lands on **Welcome** to create their own
-  organization, or accepts an invitation link from Dev Admin.
+  organization, or accepts an invitation link from the seeded user.
 - Production: set `OIDC_ISSUER` to your real provider; the token login is disabled outside
   development and test.
 - To administer Guide Engine itself, give your own user the platform-admin flag: see
@@ -897,7 +897,7 @@ npm test --workspace=apps/studio          # Studio components and services
 Type-checking is part of every `test` script, with strict TypeScript throughout.
 
 **End-to-end smoke test** (`e2e/`, Playwright, Chromium). One browser flow proves the whole
-product works together: sign in to the Studio through Keycloak (`olivia` / `olivia`), create an
+product works together: sign in to the Studio through Keycloak (`vegim` / `vegim`), create an
 organization with a first app, read the public key from the install snippet, create, publish
 and enable a guide, then open a page that installs the snippet with that key and see the guide.
 The page is served from a Playwright route at `http://e2e.localhost` (the origin the app's
@@ -911,7 +911,7 @@ npx playwright install chromium          # once
 npm run e2e                              # STUDIO_URL / API_URL / KEYCLOAK_USER / KEYCLOAK_PASSWORD override the defaults
 ```
 
-Each run creates a new organization (`E2E <timestamp>`) for `olivia` and deletes it at the end
+Each run creates a new organization (`E2E <timestamp>`) for `vegim` and deletes it at the end
 through the Studio's danger zone, even when an earlier step failed, so it can be repeated against
 the same database without leaving anything behind. On failure, `e2e/playwright-report/` holds the report with a trace
 (`npx playwright show-trace e2e/test-results/<run>/trace.zip`). CI runs it in the `e2e` job
@@ -1006,7 +1006,7 @@ Everything needed to run Guide Engine for real is in the repo:
    two secrets from `openssl rand -hex 32` (`PREVIEW_TOKEN_SECRET`, `SECRETS_KEY`).
 3. `./render-realm.sh` (needs `jq`) writes `keycloak-import/guide-engine-realm.json` from the
    development realm, made safe for a real deployment: **no users** (the development realm's
-   `olivia` / `eddie` / `root` are stripped), brute-force detection on (temporary lockouts:
+   `vegim` / `editor` / `root` are stripped), brute-force detection on (temporary lockouts:
    5 failures lock a user for 1 min, growing to 15 min), and the Studio client's redirect
    URIs and web origins set to exactly `https://STUDIO_HOST`. It prints what it changed and
    the token/session lifetimes it kept (15 min access tokens, 8 h idle / 10 h max sessions).
@@ -1128,7 +1128,7 @@ in the response, not the URL.
 `npm run idp:up` starts the same Keycloak (`:8081`, admin console `admin` / `admin`) with the
 realm imported, so development, staging and production all authenticate the same way. Set
 `OIDC_ISSUER=http://localhost:8081/realms/guide-engine` in `packages/backend/.env`, restart the
-backend, and sign in as `olivia` / `olivia` (see [Studio login details](#studio-login-details)).
+backend, and sign in as `vegim` / `vegim` (see [Studio login details](#studio-login-details)).
 
 ---
 

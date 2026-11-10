@@ -49,7 +49,7 @@ const env = (
           action: 'release',
           versionNumber,
           at: '2026-10-21T00:00:00Z',
-          by: 'Alice',
+          by: 'Owner',
           reverted: false,
         },
       ]

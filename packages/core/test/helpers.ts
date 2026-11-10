@@ -16,7 +16,7 @@ export const baseOptions: SdkInitOptions = {
   apiBaseUrl: API,
   appKey: KEY,
   visitor: { id: 'user-1', email: 'not-sent@example.com' },
-  account: { id: 'acme' },
+  account: { id: 'oclc' },
 };
 
 export function makeStep(overrides: Partial<Step> = {}): Step {

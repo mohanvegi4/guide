@@ -23,11 +23,11 @@ let key: string;
 let guideId: string;
 const base = () => `/v1/apps/${appId}/guides/${guideId}`;
 const call = (method: 'get' | 'post' | 'put' | 'patch', path: string, body?: object) =>
-  request(app)[method](path).set('Authorization', as('alice')).send(body);
+  request(app)[method](path).set('Authorization', as('owner')).send(body);
 
 beforeEach(async () => {
   await resetData();
-  ({ appId, key } = await signUp('alice'));
+  ({ appId, key } = await signUp('owner'));
   guideId = (await call('post', `/v1/apps/${appId}/guides`, { name: 'Welcome' })).body.id;
 });
 
@@ -84,12 +84,12 @@ describe('lifecycle', () => {
 
     // Viewers may look, not delete.
     const orgId = (await call('get', '/v1/me')).body.orgs[0].id as string;
-    await addMember('alice', orgId, 'vic', 'viewer');
-    expect((await request(app).delete(base()).set('Authorization', as('vic')).send()).status).toBe(403);
+    await addMember('owner', orgId, 'viewer', 'viewer');
+    expect((await request(app).delete(base()).set('Authorization', as('viewer')).send()).status).toBe(403);
 
-    expect((await request(app).delete(base()).set('Authorization', as('alice')).send()).status).toBe(204);
+    expect((await request(app).delete(base()).set('Authorization', as('owner')).send()).status).toBe(204);
     expect((await call('get', base())).status).toBe(404);
-    expect((await request(app).delete(base()).set('Authorization', as('alice')).send()).status).toBe(404);
+    expect((await request(app).delete(base()).set('Authorization', as('owner')).send()).status).toBe(404);
     const left = await adminPool.query(
       `SELECT (SELECT count(*) FROM guide_version WHERE guide_id = $1)::int AS versions,
               (SELECT count(*) FROM guide_event WHERE guide_id = $1)::int AS events,
@@ -139,8 +139,8 @@ describe('lifecycle', () => {
 
   it('enforces published-version immutability in the database', async () => {
     const v1 = await call('post', `${base()}/publish`, sampleVersion);
-    const alice = (await call('get', '/v1/me')).body.user.id;
-    const result = await withStudioSession(alice, async (c) => ({
+    const owner = (await call('get', '/v1/me')).body.user.id;
+    const result = await withStudioSession(owner, async (c) => ({
       updated: (await c.query(`UPDATE guide_version SET steps = '[]' WHERE id = $1`, [v1.body.id])).rowCount,
       deleted: (await c.query(`DELETE FROM guide_version WHERE id = $1`, [v1.body.id])).rowCount,
     }));
@@ -150,9 +150,9 @@ describe('lifecycle', () => {
   it('validates audience: a deduplicated account allowlist, or everyone', async () => {
     const v = await call('put', `${base()}/draft`, {
       ...sampleVersion,
-      accountIds: ['acme', 'acme', 'globex'],
+      accountIds: ['oclc', 'oclc', 'globex'],
     });
-    expect(v.body.accountIds).toEqual(['acme', 'globex']);
+    expect(v.body.accountIds).toEqual(['oclc', 'globex']);
     expect((await call('put', `${base()}/draft`, { ...sampleVersion, accountIds: [] })).status).toBe(400);
     expect(
       (await call('put', `${base()}/draft`, { ...sampleVersion, accountIds: null })).body.accountIds,
@@ -249,7 +249,7 @@ describe('stable step ids + analytics', () => {
   });
 
   it('counts events overall and per step, across versions and accounts', async () => {
-    const { guideId: g, versionId } = await liveGuide('alice', appId);
+    const { guideId: g, versionId } = await liveGuide('owner', appId);
     const stepId = (await call('get', `/v1/apps/${appId}/guides/${g}`)).body.versions[0].steps[0].id;
     const ev = (eventType: string) => ({
       guideId: g,
@@ -260,7 +260,7 @@ describe('stable step ids + analytics', () => {
       occurredAt: new Date().toISOString(),
     });
     await agent(key, '/events', {
-      ...visitor('v1', 'acme'),
+      ...visitor('v1', 'oclc'),
       events: [ev('guide_shown'), ev('guide_step_completed')],
     });
     await agent(key, '/events', { ...visitor('v2', 'globex'), events: [ev('guide_shown')] });

@@ -33,12 +33,12 @@ The login page asks the backend how to sign in (`GET /api/auth/config`):
   - Register `/auth/callback` as the redirect URI, and `/login` for logout.
   - The session lives in `sessionStorage`. It renews silently if the provider issues refresh
     tokens.
-- **Paste a token** is for local development only. Get one from `npm run seed` (Dev Admin, the
+- **Paste a token** is for local development only. Get one from `npm run seed` (Mohan Vegi, the
   owner of the seeded Demo Org) or:
   ```bash
-  npm run mint-token --workspace=packages/backend -- --sub you --email you@example.com
+  npm run mint-token --workspace=packages/backend -- --sub vegim --email vegim@oclc.org
   ```
-- **Keycloak** (`npm run idp:up`): sign in as `olivia`, `eddie` or `root` (password = username).
+- **Keycloak** (`npm run idp:up`): sign in as `vegim`, `editor` or `root` (password = username).
   The same provider is used in staging and production. See "Studio login details" in the root
   README.
 

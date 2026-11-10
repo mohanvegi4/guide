@@ -540,7 +540,7 @@ The Studio never decodes tokens itself. It asks `GET /v1/me` who it is and what 
 **Keycloak.** Development uses `docker/keycloak/guide-engine-realm.json`: realm `guide-engine`,
 public client `guide-studio` (PKCE S256, refresh tokens, redirect `http://localhost:4300/*`), an
 audience mapper that adds `guide-engine-api` to access tokens, 15-minute access tokens, and three
-users whose password equals their username (`olivia`, `eddie`, `root`). Production renders the same
+users whose password equals their username (`vegim`, `editor`, `root`). Production renders the same
 realm with `deploy/render-realm.sh`, which removes the users, sets the real Studio host and turns
 on brute-force protection.
 

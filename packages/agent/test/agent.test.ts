@@ -49,14 +49,14 @@ describe('install snippet agent', () => {
     const fetchMock = mockApi();
     installSnippet([
       ['identify', { visitor: { id: 'later-user' } }],
-      ['initialize', { visitor: { id: 'u-1' }, account: { id: 'acme' } }],
+      ['initialize', { visitor: { id: 'u-1' }, account: { id: 'oclc' } }],
     ]);
     await import('../src/index');
     await vi.waitFor(() => expect(guidesCalls(fetchMock).length).toBeGreaterThanOrEqual(2));
 
     const [first, second] = guidesCalls(fetchMock);
     expect(first[0]).toBe(`https://guides.example.com/v1/agent/${KEY}/guides`);
-    expect(body(first)).toEqual({ visitor: { id: 'u-1' }, account: { id: 'acme' } });
+    expect(body(first)).toEqual({ visitor: { id: 'u-1' }, account: { id: 'oclc' } });
     expect(body(second)).toMatchObject({ visitor: { id: 'later-user' } }); // the identify that came after
     // The package version, injected at build time (vitest.config defines it the same way).
     expect((window as unknown as { guideEngine: { version: string } }).guideEngine.version).toMatch(

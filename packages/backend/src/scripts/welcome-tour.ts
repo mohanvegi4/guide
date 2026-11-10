@@ -17,7 +17,7 @@ const anchor = (id: string) => `[data-guide-id="${id}"]`;
 const TOUR_STEPS = [
   {
     position: 'center',
-    content: '<h3>Welcome to Acme 👋</h3><p>Let us show you around — it takes about 30 seconds.</p>',
+    content: '<h3>Welcome to OCLC 👋</h3><p>Let us show you around — it takes about 30 seconds.</p>',
     actions: [
       { label: 'Start tour', action: 'next' },
       { label: 'Maybe later', action: 'dismiss' },
@@ -34,7 +34,7 @@ const TOUR_STEPS = [
     position: 'bottom',
     targetSelector: anchor('invite-button'),
     content:
-      '<p>Acme is better with colleagues. <strong>Invite teammates</strong> sends them a link to join your account.</p>',
+      '<p>OCLC is better with colleagues. <strong>Invite teammates</strong> sends them a link to join your account.</p>',
     actions: NEXT,
   },
   {

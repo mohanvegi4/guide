@@ -56,7 +56,7 @@ describe('GuideEditorComponent', () => {
       orgs: [
         {
           id: 'o1',
-          name: 'Acme',
+          name: 'OCLC',
           role: 'owner',
           suspendedAt: null,
           apps: [{ id: 'a1', name: 'Web', role: 'app_admin' }],

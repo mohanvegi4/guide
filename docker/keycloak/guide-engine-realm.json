@@ -54,31 +54,31 @@
   ],
   "users": [
     {
-      "username": "olivia",
-      "email": "olivia@acme.test",
+      "username": "vegim",
+      "email": "vegim@oclc.org",
       "emailVerified": true,
-      "firstName": "Olivia",
-      "lastName": "Owner",
+      "firstName": "Mohan",
+      "lastName": "Vegi",
       "enabled": true,
       "credentials": [
         {
           "type": "password",
-          "value": "olivia",
+          "value": "vegim",
           "temporary": false
         }
       ]
     },
     {
-      "username": "eddie",
-      "email": "eddie@acme.test",
+      "username": "editor",
+      "email": "editor@oclc.test",
       "emailVerified": true,
-      "firstName": "Eddie",
+      "firstName": "Org",
       "lastName": "Editor",
       "enabled": true,
       "credentials": [
         {
           "type": "password",
-          "value": "eddie",
+          "value": "editor",
           "temporary": false
         }
       ]

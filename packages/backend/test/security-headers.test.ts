@@ -21,7 +21,7 @@ const DOCUMENT_HEADERS = {
 
 describe('the Studio API and other first-party responses', () => {
   it('deny framing, send no referrer, and never advertise the framework', async () => {
-    const res = await request(app).get('/v1/me').set('Authorization', as('alice'));
+    const res = await request(app).get('/v1/me').set('Authorization', as('owner'));
     expect(res.status).toBe(200);
     expect(res.headers['x-content-type-options']).toBe('nosniff');
     expect(res.headers).toMatchObject(DOCUMENT_HEADERS);
@@ -35,7 +35,7 @@ describe('the Studio API and other first-party responses', () => {
     expect(unauthorized.headers).toMatchObject(DOCUMENT_HEADERS);
     expect(unauthorized.headers['x-powered-by']).toBeUndefined();
 
-    const invalid = await request(app).post('/v1/orgs').set('Authorization', as('alice')).send({});
+    const invalid = await request(app).post('/v1/orgs').set('Authorization', as('owner')).send({});
     expect(invalid.status).toBe(400);
     expect(invalid.headers).toMatchObject(DOCUMENT_HEADERS);
   });
@@ -52,7 +52,7 @@ describe('the Studio API and other first-party responses', () => {
 
 describe('the agent script', () => {
   it('gets nosniff only, keeping its cross-origin, caching and ETag behaviour', async () => {
-    const { key } = await signUp('alice');
+    const { key } = await signUp('owner');
     const res = await request(app).get(`/agent/v1/${key}/guides.js`);
     expect(res.status).toBe(200);
     expect(res.headers['content-type']).toMatch(/^application\/javascript/);
@@ -82,7 +82,7 @@ describe('the agent script', () => {
 
 describe('the agent API', () => {
   it('keeps its per-app CORS answer and gets no framing or referrer headers', async () => {
-    const { key } = await signUp('alice');
+    const { key } = await signUp('owner');
     const res = await agent(key, '/guides', visitor());
     expect(res.status).toBe(200);
     expect(res.headers['access-control-allow-origin']).toBe(SITE);

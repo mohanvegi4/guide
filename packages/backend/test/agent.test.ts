@@ -24,7 +24,7 @@ const ids = (res: request.Response) => res.body.guides.map((g: { id: string }) =
 
 describe('the install script', () => {
   it('serves the agent bundle for a well-formed key, cacheable and cross-origin', async () => {
-    const { key } = await signUp('alice');
+    const { key } = await signUp('owner');
     const res = await request(app).get(`/agent/v1/${key}/guides.js`);
     expect(res.status).toBe(200);
     expect(res.headers['content-type']).toMatch(/javascript/);
@@ -42,8 +42,8 @@ describe('the install script', () => {
 
 describe('keys and websites', () => {
   it('serves guides to the app’s own website, with CORS for that origin only', async () => {
-    const { key, appId } = await signUp('alice');
-    const { guideId } = await liveGuide('alice', appId);
+    const { key, appId } = await signUp('owner');
+    const { guideId } = await liveGuide('owner', appId);
     const res = await agent(key, '/guides', visitor());
     expect(res.status).toBe(200);
     expect(res.headers['access-control-allow-origin']).toBe(SITE);
@@ -54,26 +54,26 @@ describe('keys and websites', () => {
   });
 
   it('refuses other websites (fail closed), including when the app lists none', async () => {
-    const { key } = await signUp('alice');
+    const { key } = await signUp('owner');
     const other = await agent(key, '/guides', visitor(), 'https://evil.test');
     expect(other.status).toBe(403);
     expect(other.body.error).toBe('origin_not_allowed');
     expect(other.headers['access-control-allow-origin']).toBeUndefined();
 
-    const bare = await signUp('bob', 'bare', []);
+    const bare = await signUp('other', 'bare', []);
     expect((await agent(bare.key, '/guides', visitor())).status).toBe(403);
   });
 
   it('answers CORS preflights for allowed origins', async () => {
-    const { key } = await signUp('alice');
+    const { key } = await signUp('owner');
     const res = await request(app).options(`/v1/agent/${key}/guides`).set('Origin', SITE);
     expect(res.status).toBe(204);
     expect(res.headers['access-control-allow-origin']).toBe(SITE);
   });
 
   it('gives unknown, malformed and rotated keys the same 404', async () => {
-    const { key, appId } = await signUp('alice');
-    await request(app).post(`/v1/apps/${appId}/rotate-key`).set('Authorization', as('alice'));
+    const { key, appId } = await signUp('owner');
+    await request(app).post(`/v1/apps/${appId}/rotate-key`).set('Authorization', as('owner'));
     for (const k of [key, 'ge_pk_' + '0'.repeat(32), 'nope']) {
       const res = await agent(k, '/guides', visitor());
       expect(res.status).toBe(404);
@@ -82,16 +82,16 @@ describe('keys and websites', () => {
   });
 
   it("never serves one app's guides through another app's key", async () => {
-    const a = await signUp('alice');
-    const b = await signUp('zed');
-    await liveGuide('alice', a.appId);
+    const a = await signUp('owner');
+    const b = await signUp('rival');
+    await liveGuide('owner', a.appId);
     const res = await agent(b.key, '/guides', visitor());
     expect(res.body.guides).toEqual([]);
   });
 
   it('accepts application/json too', async () => {
-    const { key, appId } = await signUp('alice');
-    await liveGuide('alice', appId);
+    const { key, appId } = await signUp('owner');
+    await liveGuide('owner', appId);
     const res = await request(app).post(`/v1/agent/${key}/guides`).set('Origin', SITE).send(visitor());
     expect(res.body.guides).toHaveLength(1);
   });
@@ -99,23 +99,23 @@ describe('keys and websites', () => {
 
 describe('visitor identity', () => {
   async function requiredApp() {
-    const setup = await signUp('alice');
+    const setup = await signUp('owner');
     const secret = (
-      await request(app).post(`/v1/apps/${setup.appId}/signing-secret`).set('Authorization', as('alice'))
+      await request(app).post(`/v1/apps/${setup.appId}/signing-secret`).set('Authorization', as('owner'))
     ).body.secret as string;
     await request(app)
       .patch(`/v1/apps/${setup.appId}`)
-      .set('Authorization', as('alice'))
+      .set('Authorization', as('owner'))
       .send({ identityMode: 'required' });
-    await liveGuide('alice', setup.appId);
+    await liveGuide('owner', setup.appId);
     return { ...setup, secret };
   }
   const sign = (secret: string, claims: object, opts: jwt.SignOptions = {}) =>
     jwt.sign(claims, secret, { algorithm: 'HS256', expiresIn: '5m', ...opts });
 
   it('optional mode: plain visitor ids work; a visitor id is required', async () => {
-    const { key, appId } = await signUp('alice');
-    await liveGuide('alice', appId);
+    const { key, appId } = await signUp('owner');
+    await liveGuide('owner', appId);
     expect((await agent(key, '/guides', visitor('v1'))).status).toBe(200);
     const none = await agent(key, '/guides', {});
     expect(none.status).toBe(401);
@@ -129,7 +129,7 @@ describe('visitor identity', () => {
     expect(unsigned.body.error).toBe('signed_identity_required');
 
     const signed = await agent(key, '/guides', {
-      jwt: sign(secret, { visitor: { id: 'u1' }, account: { id: 'acme' } }),
+      jwt: sign(secret, { visitor: { id: 'u1' }, account: { id: 'oclc' } }),
     });
     expect(signed.status).toBe(200);
     expect(signed.body.guides).toHaveLength(1);
@@ -139,7 +139,7 @@ describe('visitor identity', () => {
     ['wrong secret', () => sign('ge_sk_wrong'.padEnd(40, 'x'), { visitor: { id: 'u1' } })],
     ['expired', (s: string) => sign(s, { visitor: { id: 'u1' } }, { expiresIn: -60 })],
     ['no exp', (s: string) => jwt.sign({ visitor: { id: 'u1' } }, s, { algorithm: 'HS256' })],
-    ['no visitor', (s: string) => sign(s, { account: { id: 'acme' } })],
+    ['no visitor', (s: string) => sign(s, { account: { id: 'oclc' } })],
   ])('required mode rejects: %s', async (_name, make) => {
     const { key, secret } = await requiredApp();
     const res = await agent(key, '/guides', { jwt: (make as (s: string) => string)(secret) });
@@ -149,7 +149,7 @@ describe('visitor identity', () => {
 
   it('reads tags from the signed identity and ignores tags sent beside it', async () => {
     const { key, secret, appId } = await requiredApp();
-    await liveGuide('alice', appId, { ...sampleVersion, visitorTags: ['POS'] });
+    await liveGuide('owner', appId, { ...sampleVersion, visitorTags: ['POS'] });
     const guides = async (claims: object, extra: object = {}) =>
       (await agent(key, '/guides', { jwt: sign(secret, claims), ...extra })).body.guides;
     // requiredApp() already published one untagged guide.
@@ -178,9 +178,9 @@ describe('visitor identity', () => {
 
   it('signed claims win over plain ids sent alongside them', async () => {
     const { key, secret, appId } = await requiredApp();
-    const g = (await request(app).get(`/v1/apps/${appId}/guides`).set('Authorization', as('alice'))).body[0];
+    const g = (await request(app).get(`/v1/apps/${appId}/guides`).set('Authorization', as('owner'))).body[0];
     const versionId = (
-      await request(app).get(`/v1/apps/${appId}/guides/${g.id}`).set('Authorization', as('alice'))
+      await request(app).get(`/v1/apps/${appId}/guides/${g.id}`).set('Authorization', as('owner'))
     ).body.versions[0].id;
     await agent(key, '/events', {
       jwt: sign(secret, { visitor: { id: 'real-user' } }),
@@ -203,16 +203,16 @@ describe('visitor identity', () => {
 
 describe('targeting and kill switches', () => {
   it('limits a guide to listed accounts', async () => {
-    const { key, appId } = await signUp('alice');
-    await liveGuide('alice', appId, { ...sampleVersion, accountIds: ['acme', 'globex'] });
-    expect((await agent(key, '/guides', visitor('v', 'acme'))).body.guides).toHaveLength(1);
+    const { key, appId } = await signUp('owner');
+    await liveGuide('owner', appId, { ...sampleVersion, accountIds: ['oclc', 'globex'] });
+    expect((await agent(key, '/guides', visitor('v', 'oclc'))).body.guides).toHaveLength(1);
     expect((await agent(key, '/guides', visitor('v', 'initech'))).body.guides).toHaveLength(0);
     expect((await agent(key, '/guides', visitor('v', null))).body.guides).toHaveLength(0);
   });
 
   it('limits a guide to visitors carrying any listed tag', async () => {
-    const { key, appId } = await signUp('alice');
-    await liveGuide('alice', appId, { ...sampleVersion, visitorTags: ['POINT_OF_SALE', 'CUSTOMERS:edit'] });
+    const { key, appId } = await signUp('owner');
+    await liveGuide('owner', appId, { ...sampleVersion, visitorTags: ['POINT_OF_SALE', 'CUSTOMERS:edit'] });
     const tagged = (tags?: string[]) => agent(key, '/guides', { visitor: { id: 'v', tags } });
     expect((await tagged(['CUSTOMERS:edit', 'CATALOG'])).body.guides).toHaveLength(1);
     expect((await tagged(['CATALOG'])).body.guides).toHaveLength(0);
@@ -223,26 +223,26 @@ describe('targeting and kill switches', () => {
   });
 
   it('combines tags with the account allowlist: both must pass', async () => {
-    const { key, appId } = await signUp('alice');
-    await liveGuide('alice', appId, { ...sampleVersion, accountIds: ['acme'], visitorTags: ['POS'] });
+    const { key, appId } = await signUp('owner');
+    await liveGuide('owner', appId, { ...sampleVersion, accountIds: ['oclc'], visitorTags: ['POS'] });
     const call = (account: string, tags: string[]) =>
       agent(key, '/guides', { visitor: { id: 'v', tags }, account: { id: account } });
-    expect((await call('acme', ['POS'])).body.guides).toHaveLength(1);
+    expect((await call('oclc', ['POS'])).body.guides).toHaveLength(1);
     expect((await call('globex', ['POS'])).body.guides).toHaveLength(0);
-    expect((await call('acme', ['OTHER'])).body.guides).toHaveLength(0);
+    expect((await call('oclc', ['OTHER'])).body.guides).toHaveLength(0);
   });
 
   it('serves an untagged guide to every visitor, tagged or not', async () => {
-    const { key, appId } = await signUp('alice');
-    await liveGuide('alice', appId);
+    const { key, appId } = await signUp('owner');
+    await liveGuide('owner', appId);
     expect((await agent(key, '/guides', { visitor: { id: 'v', tags: ['ANY'] } })).body.guides).toHaveLength(1);
     expect((await agent(key, '/guides', visitor())).body.guides).toHaveLength(1);
   });
 
   it('ignores tags it could never match instead of refusing the visitor', async () => {
-    const { key, appId } = await signUp('alice');
-    await liveGuide('alice', appId); // untagged
-    await liveGuide('alice', appId, { ...sampleVersion, visitorTags: ['POS'] });
+    const { key, appId } = await signUp('owner');
+    await liveGuide('owner', appId); // untagged
+    await liveGuide('owner', appId, { ...sampleVersion, visitorTags: ['POS'] });
     const served = async (tags: unknown) => {
       const res = await agent(key, '/guides', { visitor: { id: 'v', tags } });
       expect(res.status).toBe(200);
@@ -257,42 +257,42 @@ describe('targeting and kill switches', () => {
   });
 
   it('serves nothing when the app or the whole engine is switched off', async () => {
-    const { key, appId } = await signUp('alice');
-    await liveGuide('alice', appId);
-    await request(app).patch(`/v1/apps/${appId}`).set('Authorization', as('alice')).send({ enabled: false });
+    const { key, appId } = await signUp('owner');
+    await liveGuide('owner', appId);
+    await request(app).patch(`/v1/apps/${appId}`).set('Authorization', as('owner')).send({ enabled: false });
     expect((await agent(key, '/guides', visitor())).body).toEqual({ enabled: false, guides: [] });
 
-    await request(app).patch(`/v1/apps/${appId}`).set('Authorization', as('alice')).send({ enabled: true });
+    await request(app).patch(`/v1/apps/${appId}`).set('Authorization', as('owner')).send({ enabled: true });
     await adminPool.query(`UPDATE system_config SET value = 'false' WHERE key = 'guide_engine_enabled'`);
     expect((await agent(key, '/guides', visitor())).body).toEqual({ enabled: false, guides: [] });
   });
 
   it('hides drafts, disabled guides and guides outside their date window', async () => {
-    const { key, appId } = await signUp('alice');
+    const { key, appId } = await signUp('owner');
     const g = await request(app)
       .post(`/v1/apps/${appId}/guides`)
-      .set('Authorization', as('alice'))
+      .set('Authorization', as('owner'))
       .send({ name: 'D' });
     await request(app)
       .put(`/v1/apps/${appId}/guides/${g.body.id}/draft`)
-      .set('Authorization', as('alice'))
+      .set('Authorization', as('owner'))
       .send(sampleVersion);
     await request(app)
       .patch(`/v1/apps/${appId}/guides/${g.body.id}/flag`)
-      .set('Authorization', as('alice'))
+      .set('Authorization', as('owner'))
       .send({ enabled: true });
     expect((await agent(key, '/guides', visitor())).body.guides).toEqual([]);
 
     const later = new Date(Date.now() + 3600_000).toISOString();
-    await liveGuide('alice', appId, { ...sampleVersion, startAt: later });
+    await liveGuide('owner', appId, { ...sampleVersion, startAt: later });
     expect((await agent(key, '/guides', visitor())).body.guides).toEqual([]);
   });
 });
 
 describe('events and per-visitor state', () => {
   async function setup() {
-    const s = await signUp('alice');
-    const live = await liveGuide('alice', s.appId);
+    const s = await signUp('owner');
+    const live = await liveGuide('owner', s.appId);
     const ev = (eventType: string, versionId = live.versionId) => ({
       guideId: live.guideId,
       guideVersionId: versionId,
@@ -305,16 +305,16 @@ describe('events and per-visitor state', () => {
 
   it('records events with visitor and account', async () => {
     const { key, ev } = await setup();
-    const res = await agent(key, '/events', { ...visitor('v-9', 'acme'), events: [ev('guide_shown')] });
+    const res = await agent(key, '/events', { ...visitor('v-9', 'oclc'), events: [ev('guide_shown')] });
     expect(res.status).toBe(202);
     expect((await adminPool.query(`SELECT visitor_id, account_id FROM guide_event`)).rows).toEqual([
-      { visitor_id: 'v-9', account_id: 'acme' },
+      { visitor_id: 'v-9', account_id: 'oclc' },
     ]);
   });
 
   it("drops events for another app's guides", async () => {
     const { ev } = await setup();
-    const other = await signUp('zed');
+    const other = await signUp('rival');
     const res = await agent(other.key, '/events', { ...visitor(), events: [ev('guide_shown')] });
     expect(res.body.accepted).toBe(0);
   });
@@ -338,7 +338,7 @@ describe('events and per-visitor state', () => {
 
     await request(app)
       .post(`/v1/apps/${appId}/guides/${guideId}/publish`)
-      .set('Authorization', as('alice'))
+      .set('Authorization', as('owner'))
       .send({ ...sampleVersion, steps: [{ ...sampleStep, content: '<p>v2</p>' }] });
     expect(ids(await agent(key, '/guides', visitor('v1')))).toEqual([guideId]);
   });
@@ -351,7 +351,7 @@ describe('events and per-visitor state', () => {
 
     await request(app)
       .post(`/v1/apps/${appId}/guides/${guideId}/publish`)
-      .set('Authorization', as('alice'))
+      .set('Authorization', as('owner'))
       .send({ ...sampleVersion, steps: [{ ...sampleStep, content: '<p>v2</p>' }] });
     expect(ids(await agent(key, '/guides', visitor('v1')))).toEqual([guideId]);
   });
@@ -360,7 +360,7 @@ describe('events and per-visitor state', () => {
     const { key, appId, guideId } = await setup();
     const v2 = await request(app)
       .post(`/v1/apps/${appId}/guides/${guideId}/publish`)
-      .set('Authorization', as('alice'))
+      .set('Authorization', as('owner'))
       .send(sampleVersion);
     await agent(key, '/events', {
       ...visitor('v1'),
@@ -376,7 +376,7 @@ describe('events and per-visitor state', () => {
     });
     await request(app)
       .post(`/v1/apps/${appId}/guides/${guideId}/rollback/1`)
-      .set('Authorization', as('alice'));
+      .set('Authorization', as('owner'));
     expect(ids(await agent(key, '/guides', visitor('v1')))).toEqual([]);
   });
 
@@ -394,18 +394,18 @@ describe('events and per-visitor state', () => {
 
 describe('preview links', () => {
   async function draftOnlyGuide() {
-    const s = await signUp('alice');
+    const s = await signUp('owner');
     const g = await request(app)
       .post(`/v1/apps/${s.appId}/guides`)
-      .set('Authorization', as('alice'))
+      .set('Authorization', as('owner'))
       .send({ name: 'P' });
     const draft = await request(app)
       .put(`/v1/apps/${s.appId}/guides/${g.body.id}/draft`)
-      .set('Authorization', as('alice'))
+      .set('Authorization', as('owner'))
       .send({ ...sampleVersion, routeMatch: { type: 'exact', value: '/projects' } });
     const minted = await request(app)
       .post(`/v1/apps/${s.appId}/guides/${g.body.id}/preview-token`)
-      .set('Authorization', as('alice'))
+      .set('Authorization', as('owner'))
       .send({ versionId: draft.body.id });
     return { ...s, guideId: g.body.id, draftId: draft.body.id, minted };
   }
@@ -420,7 +420,7 @@ describe('preview links', () => {
 
   it("only resolves through the same app's key", async () => {
     const { minted } = await draftOnlyGuide();
-    const other = await signUp('zed');
+    const other = await signUp('rival');
     expect((await agent(other.key, '/preview', { token: minted.body.token })).status).toBe(404);
   });
 

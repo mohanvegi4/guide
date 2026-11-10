@@ -30,7 +30,7 @@ describe('PagesComponent', () => {
       orgs: [
         {
           id: 'o1',
-          name: 'Acme',
+          name: 'OCLC',
           role: 'editor',
           suspendedAt: null,
           apps: [{ id: 'a1', name: 'Web', role }],

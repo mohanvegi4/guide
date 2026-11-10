@@ -37,11 +37,11 @@ describe('secrets at rest', () => {
   });
 
   it('the signing-secret endpoint stores an encrypted value, and signed identities still verify', async () => {
-    const { appId, key } = await signUp('alice');
-    await liveGuide('alice', appId);
+    const { appId, key } = await signUp('owner');
+    await liveGuide('owner', appId);
     const minted = await request(app)
       .post(`/v1/apps/${appId}/signing-secret`)
-      .set('Authorization', as('alice'));
+      .set('Authorization', as('owner'));
     expect(minted.status).toBe(201);
     const row = await adminPool.query<{ signing_secret: string }>(
       `SELECT signing_secret FROM application WHERE id = $1`,
@@ -50,7 +50,7 @@ describe('secrets at rest', () => {
     expect(isEncrypted(row.rows[0].signing_secret)).toBe(true);
     expect(row.rows[0].signing_secret).not.toContain(minted.body.secret);
 
-    const token = jwt.sign({ visitor: { id: 'v-signed' }, account: { id: 'acme' } }, minted.body.secret, {
+    const token = jwt.sign({ visitor: { id: 'v-signed' }, account: { id: 'oclc' } }, minted.body.secret, {
       algorithm: 'HS256',
       expiresIn: '5m',
     });
@@ -87,8 +87,8 @@ describe('shared rate limiter (Postgres)', () => {
 
 describe('event retention', () => {
   it('deletes only events older than the retention period, and sweeps spent rate-limit windows', async () => {
-    const { appId, key } = await signUp('alice');
-    const g = await liveGuide('alice', appId);
+    const { appId, key } = await signUp('owner');
+    const g = await liveGuide('owner', appId);
     const event = (daysAgo: number) => ({
       guideId: g.guideId,
       guideVersionId: g.versionId,
@@ -119,8 +119,8 @@ describe('event retention', () => {
   });
 
   it('is the only way to delete events: other sessions cannot', async () => {
-    const { appId, key } = await signUp('alice');
-    const g = await liveGuide('alice', appId);
+    const { appId, key } = await signUp('owner');
+    const g = await liveGuide('owner', appId);
     await agent(key, '/events', {
       ...visitor(),
       events: [
@@ -133,9 +133,9 @@ describe('event retention', () => {
         },
       ],
     });
-    await adminPool.query(`UPDATE studio_user SET platform_admin = TRUE WHERE oidc_sub = 'alice'`);
-    const alice = (await adminPool.query(`SELECT id FROM studio_user WHERE oidc_sub = 'alice'`)).rows[0].id;
-    const deleted = await withPlatformSession(alice, (client) =>
+    await adminPool.query(`UPDATE studio_user SET platform_admin = TRUE WHERE oidc_sub = 'owner'`);
+    const owner = (await adminPool.query(`SELECT id FROM studio_user WHERE oidc_sub = 'owner'`)).rows[0].id;
+    const deleted = await withPlatformSession(owner, (client) =>
       client.query(`DELETE FROM guide_event`).then((r) => r.rowCount),
     );
     expect(deleted).toBe(0);

@@ -59,7 +59,7 @@ describe('talking to the agent API', () => {
       headers: { 'Content-Type': 'text/plain' },
       credentials: 'omit',
     });
-    expect(bodyOf(fetchMock.mock.calls[0])).toEqual({ visitor: { id: 'user-1' }, account: { id: 'acme' } });
+    expect(bodyOf(fetchMock.mock.calls[0])).toEqual({ visitor: { id: 'user-1' }, account: { id: 'oclc' } });
   });
 
   it('sends visitor tags, dropping malformed and duplicate ones', async () => {
@@ -73,7 +73,7 @@ describe('talking to the agent API', () => {
     );
     expect(bodyOf(fetchMock.mock.calls[0])).toEqual({
       visitor: { id: 'user-1', tags: ['POS', 'CUSTOMERS:edit'] },
-      account: { id: 'acme' },
+      account: { id: 'oclc' },
     });
   });
 
@@ -803,7 +803,7 @@ describe('identity changes and transport', () => {
     expect(rendered).toHaveLength(1); // neither torn down nor shown twice
     expect(bodyOf(callsTo(fetchMock, R.guides).slice(-1)[0])).toEqual({
       visitor: { id: 'user-1', tags: ['POS'] },
-      account: { id: 'acme' },
+      account: { id: 'oclc' },
     });
   });
 
@@ -904,11 +904,11 @@ describe('identity changes and transport', () => {
     const fetchMock = mockFetch({ [R.guides]: serving(makeGuide()), [R.events]: () => ({ status: 202 }) });
     const { renderer, cleared } = fakeRenderer();
     const engine = new GuideEngine();
-    await engine.init(baseOptions, renderer); // guide_shown queued under acme
+    await engine.init(baseOptions, renderer); // guide_shown queued under oclc
 
     await engine.identify({ account: { id: 'globex' } });
 
-    expect(bodyOf(callsTo(fetchMock, R.events)[0])).toMatchObject({ account: { id: 'acme' } });
+    expect(bodyOf(callsTo(fetchMock, R.events)[0])).toMatchObject({ account: { id: 'oclc' } });
     expect(cleared).toEqual(['guide-1']);
   });
 

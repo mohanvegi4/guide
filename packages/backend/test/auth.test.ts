@@ -12,13 +12,13 @@ const devConfig = () => loadAuthConfig({ NODE_ENV: 'test', JWT_SECRET: process.e
 
 describe('Studio tokens (development HS256)', () => {
   it('verifies a valid dev token into an identity', async () => {
-    const identity = await verifyStudioToken(studioToken('alice'), devConfig(), null);
+    const identity = await verifyStudioToken(studioToken('owner'), devConfig(), null);
     expect(identity).toEqual({
       issuer: DEV_TOKEN_ISSUER,
-      sub: 'alice',
-      email: 'alice@example.com',
+      sub: 'owner',
+      email: 'owner@example.com',
       emailVerified: true,
-      name: 'alice',
+      name: 'owner',
     });
   });
 
@@ -55,7 +55,7 @@ describe('Studio tokens (development HS256)', () => {
       OIDC_AUDIENCE: 'api',
     });
     expect(prod.devTokenSecret).toBeUndefined();
-    expect(await verifyStudioToken(studioToken('alice'), prod, null)).toBeNull();
+    expect(await verifyStudioToken(studioToken('owner'), prod, null)).toBeNull();
   });
 });
 
@@ -85,18 +85,18 @@ describe('Studio sign-in', () => {
   it('creates the Studio user on first sign-in (just-in-time) and reuses it after', async () => {
     const first = await request(app)
       .get('/v1/me')
-      .set('Authorization', `Bearer ${studioToken('carol')}`);
+      .set('Authorization', `Bearer ${studioToken('newcomer')}`);
     expect(first.status).toBe(200);
     expect(first.body).toEqual({
-      user: { id: expect.any(String), email: 'carol@example.com', name: 'carol', platformAdmin: false },
+      user: { id: expect.any(String), email: 'newcomer@example.com', name: 'newcomer', platformAdmin: false },
       orgs: [],
     });
     const second = await request(app)
       .get('/v1/me')
-      .set('Authorization', `Bearer ${studioToken('carol')}`);
+      .set('Authorization', `Bearer ${studioToken('newcomer')}`);
     expect(second.body.user.id).toBe(first.body.user.id);
     const rows = await adminPool.query(`SELECT oidc_issuer, oidc_sub FROM studio_user`);
-    expect(rows.rows).toEqual([{ oidc_issuer: DEV_TOKEN_ISSUER, oidc_sub: 'carol' }]);
+    expect(rows.rows).toEqual([{ oidc_issuer: DEV_TOKEN_ISSUER, oidc_sub: 'newcomer' }]);
   });
 
   it('GET /auth/config is public and exposes no secrets', async () => {

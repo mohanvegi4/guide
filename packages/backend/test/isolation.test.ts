@@ -18,9 +18,9 @@ let versionA: string;
 
 beforeEach(async () => {
   await resetData();
-  a = await signUp('alice', 'Acme');
-  b = await signUp('zed', 'Globex');
-  ({ guideId: guideA, versionId: versionA } = await liveGuide('alice', a.appId));
+  a = await signUp('owner', 'OCLC');
+  b = await signUp('rival', 'Globex');
+  ({ guideId: guideA, versionId: versionA } = await liveGuide('owner', a.appId));
 });
 
 const userId = async (sub: string) =>
@@ -44,30 +44,30 @@ describe('through the API', () => {
     ['rollback', 'post', () => `/v1/apps/${a.appId}/guides/${guideA}/rollback/1`],
     ['analytics', 'get', () => `/v1/apps/${a.appId}/guides/${guideA}/analytics`],
     ['preview token', 'post', () => `/v1/apps/${a.appId}/guides/${guideA}/preview-token`],
-  ] as const)("Globex's admin gets 404 for Acme's %s", async (_n, method, path) => {
+  ] as const)("Globex's admin gets 404 for OCLC's %s", async (_n, method, path) => {
     const body = { ...sampleVersion, name: 'x', enabled: false, websites: [], versionId: versionA };
-    const res = await request(app)[method](path()).set('Authorization', as('zed')).send(body);
+    const res = await request(app)[method](path()).set('Authorization', as('rival')).send(body);
     expect(res.status).toBe(404);
     expect(res.body).toEqual({ error: 'not_found' });
   });
 
-  it("can't reach Acme's guide through Globex's own app id", async () => {
+  it("can't reach OCLC's guide through Globex's own app id", async () => {
     const res = await request(app)
       .get(`/v1/apps/${b.appId}/guides/${guideA}`)
-      .set('Authorization', as('zed'));
+      .set('Authorization', as('rival'));
     expect(res.status).toBe(404);
   });
 
   it('a viewer sees every app of their org, read-only', async () => {
-    await addMember('alice', a.orgId, 'bob', 'viewer');
+    await addMember('owner', a.orgId, 'other', 'viewer');
     expect(
-      (await request(app).get(`/v1/apps/${a.appId}/guides`).set('Authorization', as('bob'))).status,
+      (await request(app).get(`/v1/apps/${a.appId}/guides`).set('Authorization', as('other'))).status,
     ).toBe(200);
     expect(
       (
         await request(app)
           .post(`/v1/apps/${a.appId}/guides`)
-          .set('Authorization', as('bob'))
+          .set('Authorization', as('other'))
           .send({ name: 'x' })
       ).status,
     ).toBe(403);
@@ -75,9 +75,9 @@ describe('through the API', () => {
 });
 
 describe('directly in the database (RLS)', () => {
-  it("a Globex session sees none of Acme's rows, even with no WHERE clause", async () => {
-    const zed = await userId('zed');
-    const seen = await withStudioSession(zed, async (c) => ({
+  it("a Globex session sees none of OCLC's rows, even with no WHERE clause", async () => {
+    const rival = await userId('rival');
+    const seen = await withStudioSession(rival, async (c) => ({
       orgs: (await c.query(`SELECT id FROM organization`)).rows.map((r) => r.id),
       apps: (await c.query(`SELECT id FROM application`)).rows.map((r) => r.id),
       guides: (await c.query(`SELECT id FROM guide`)).rowCount,
@@ -87,9 +87,9 @@ describe('directly in the database (RLS)', () => {
     expect(seen).toEqual({ orgs: [b.orgId], apps: [b.appId], guides: 0, versions: 0, members: [b.orgId] });
   });
 
-  it("blocks writes to Acme's rows from a Globex session", async () => {
-    const zed = await userId('zed');
-    const changed = await withStudioSession(zed, async (c) => ({
+  it("blocks writes to OCLC's rows from a Globex session", async () => {
+    const rival = await userId('rival');
+    const changed = await withStudioSession(rival, async (c) => ({
       guides: (await c.query(`UPDATE guide SET enabled = FALSE`)).rowCount,
       apps: (await c.query(`UPDATE application SET enabled = FALSE WHERE org_id = $1`, [a.orgId])).rowCount,
       orgs: (await c.query(`UPDATE organization SET name = 'pwned' WHERE id = $1`, [a.orgId])).rowCount,
@@ -99,25 +99,25 @@ describe('directly in the database (RLS)', () => {
   });
 
   it("can't add yourself to someone else's org (owner bootstrap can't be replayed)", async () => {
-    const zed = await userId('zed');
+    const rival = await userId('rival');
     await expect(
-      withStudioSession(zed, (c) =>
-        c.query(`INSERT INTO org_member (org_id, user_id, role) VALUES ($1, $2, 'owner')`, [a.orgId, zed]),
+      withStudioSession(rival, (c) =>
+        c.query(`INSERT INTO org_member (org_id, user_id, role) VALUES ($1, $2, 'owner')`, [a.orgId, rival]),
       ),
     ).rejects.toThrow(/row-level security/);
     // ...not even for an org you created yourself, once you've left it: the
     // creator-becomes-owner rule only holds inside the creating transaction.
-    await withStudioSession(zed, (c) =>
-      c.query(`DELETE FROM org_member WHERE org_id = $1 AND user_id = $2`, [b.orgId, zed]),
+    await withStudioSession(rival, (c) =>
+      c.query(`DELETE FROM org_member WHERE org_id = $1 AND user_id = $2`, [b.orgId, rival]),
     );
     await expect(
-      withStudioSession(zed, (c) =>
-        c.query(`INSERT INTO org_member (org_id, user_id, role) VALUES ($1, $2, 'owner')`, [b.orgId, zed]),
+      withStudioSession(rival, (c) =>
+        c.query(`INSERT INTO org_member (org_id, user_id, role) VALUES ($1, $2, 'owner')`, [b.orgId, rival]),
       ),
     ).rejects.toThrow(/row-level security/);
   });
 
-  it("an agent session for Globex's key sees none of Acme's guides and can't write its events", async () => {
+  it("an agent session for Globex's key sees none of OCLC's guides and can't write its events", async () => {
     const seen = await withAgentSession(b.key, async (c) => (await c.query(`SELECT id FROM guide`)).rowCount);
     expect(seen).toBe(0);
     await expect(

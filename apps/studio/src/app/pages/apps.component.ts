@@ -52,7 +52,7 @@ import { parseWebsites } from './websites';
         <h2>New application</h2>
         <form class="inline-form" [formGroup]="form" (ngSubmit)="create()">
           <label>Name <input formControlName="name" placeholder="e.g. Admin console" /></label>
-          <label class="grow">Website(s) <input formControlName="websites" placeholder="https://admin.acme.com, http://localhost:4200" /></label>
+          <label class="grow">Website(s) <input formControlName="websites" placeholder="https://admin.oclc.org, http://localhost:4200" /></label>
           <button class="primary" [disabled]="form.invalid || busy()">Create</button>
         </form>
       </section>

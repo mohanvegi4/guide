@@ -23,7 +23,7 @@ services:
   # Keycloak for Studio SSO in development (the same provider staging and
   # production use). Opt-in: `npm run idp:up`. Imports docker/keycloak/
   # guide-engine-realm.json on first start: realm "guide-engine", public
-  # client "guide-studio" (PKCE) and three test users (olivia / eddie / root,
+  # client "guide-studio" (PKCE) and three test users (vegim / editor / root,
   # password = username). Admin console: http://localhost:8081 (admin / admin).
   #   OIDC_ISSUER=http://localhost:8081/realms/guide-engine
   keycloak:

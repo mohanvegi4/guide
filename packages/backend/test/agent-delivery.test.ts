@@ -30,7 +30,7 @@ const FIXTURE_HASH = createHash('sha256').update(FIXTURE_CODE).digest('hex').sli
 
 describe('the agent script: ETag and revalidation', () => {
   it('carries a strong ETag made from the content hash, and CDN-friendly cache headers', async () => {
-    const { key } = await signUp('alice');
+    const { key } = await signUp('owner');
     const res = await request(app).get(`/agent/v1/${key}/guides.js`);
     expect(res.status).toBe(200);
     expect(res.headers['etag']).toBe(`"${FIXTURE_HASH}"`);
@@ -42,7 +42,7 @@ describe('the agent script: ETag and revalidation', () => {
   });
 
   it('answers If-None-Match with 304 (strong or weak form, in a list), and a stale tag with the file', async () => {
-    const { key } = await signUp('alice');
+    const { key } = await signUp('owner');
     const url = `/agent/v1/${key}/guides.js`;
     for (const tag of [`"${FIXTURE_HASH}"`, `W/"${FIXTURE_HASH}"`, `"other", "${FIXTURE_HASH}"`]) {
       const res = await request(app).get(url).set('If-None-Match', tag);
@@ -82,12 +82,12 @@ describe('POST /v1/agent/:key/errors', () => {
   const report = {
     message: 'render: Cannot read properties of null',
     stack: 'TypeError: Cannot read properties of null\n    at renderStep (guides.js:1:2)',
-    url: 'https://app.acme.test/dashboard?tab=1',
+    url: 'https://app.oclc.test/dashboard?tab=1',
     agentVersion: '0.1.0',
   };
 
   it('stores a report for the app, as text', async () => {
-    const { key, appId } = await signUp('alice');
+    const { key, appId } = await signUp('owner');
     const res = await agent(key, '/errors', { ...visitor(), ...report });
     expect(res.status).toBe(202);
     expect(res.body).toEqual({ accepted: true });
@@ -109,14 +109,14 @@ describe('POST /v1/agent/:key/errors', () => {
   });
 
   it('needs only a message; the rest is optional', async () => {
-    const { key } = await signUp('alice');
+    const { key } = await signUp('owner');
     expect((await agent(key, '/errors', { message: 'init: boom' })).body).toEqual({ accepted: true });
     const row = (await adminPool.query(`SELECT stack, agent_version, url FROM agent_error`)).rows[0];
     expect(row).toEqual({ stack: null, agent_version: null, url: null });
   });
 
   it('rejects malformed reports', async () => {
-    const { key } = await signUp('alice');
+    const { key } = await signUp('owner');
     for (const body of [
       {},
       { message: '' },
@@ -132,14 +132,14 @@ describe('POST /v1/agent/:key/errors', () => {
   });
 
   it('applies the same key and website checks as every agent route', async () => {
-    const { key } = await signUp('alice');
+    const { key } = await signUp('owner');
     expect((await agent(key, '/errors', report, 'https://evil.test')).status).toBe(403);
     expect((await agent('ge_pk_' + '0'.repeat(32), '/errors', report)).status).toBe(404);
   });
 
   it('acknowledges but drops reports once an app has 1000 in the last hour', async () => {
-    const { key, appId } = await signUp('alice');
-    const other = await signUp('bob', 'bob org', [SITE]);
+    const { key, appId } = await signUp('owner');
+    const other = await signUp('other', 'other org', [SITE]);
     await adminPool.query(
       `INSERT INTO agent_error (app_id, message, occurred_at)
        SELECT $1, 'flood ' || i, now() - (i || ' seconds')::interval FROM generate_series(1, 999) AS i`,
@@ -156,7 +156,7 @@ describe('POST /v1/agent/:key/errors', () => {
   });
 
   it('counts only the last hour towards the cap', async () => {
-    const { key, appId } = await signUp('alice');
+    const { key, appId } = await signUp('owner');
     await adminPool.query(
       `INSERT INTO agent_error (app_id, message, occurred_at)
        SELECT $1, 'yesterday ' || i, now() - interval '1 day' FROM generate_series(1, 1000) AS i`,
@@ -168,12 +168,12 @@ describe('POST /v1/agent/:key/errors', () => {
 
 describe('GET /v1/apps/:appId/errors (Studio)', () => {
   it('lists an app’s recent errors, newest first, to any member of the app', async () => {
-    const { orgId, appId, key } = await signUp('alice');
-    await addMember('alice', orgId, 'vic', 'viewer');
-    await agent(key, '/errors', { message: 'first', url: 'https://app.acme.test/a' });
+    const { orgId, appId, key } = await signUp('owner');
+    await addMember('owner', orgId, 'viewer', 'viewer');
+    await agent(key, '/errors', { message: 'first', url: 'https://app.oclc.test/a' });
     await agent(key, '/errors', { message: 'second', agentVersion: '0.1.0' });
 
-    const res = await request(app).get(`/v1/apps/${appId}/errors`).set('Authorization', as('vic'));
+    const res = await request(app).get(`/v1/apps/${appId}/errors`).set('Authorization', as('viewer'));
     expect(res.status).toBe(200);
     expect(res.body).toEqual([
       {
@@ -189,49 +189,49 @@ describe('GET /v1/apps/:appId/errors (Studio)', () => {
         message: 'first',
         stack: null,
         agentVersion: null,
-        url: 'https://app.acme.test/a',
+        url: 'https://app.oclc.test/a',
         occurredAt: expect.any(String),
       },
     ]);
 
     const limited = await request(app)
       .get(`/v1/apps/${appId}/errors?limit=1`)
-      .set('Authorization', as('vic'));
+      .set('Authorization', as('viewer'));
     expect(limited.body.map((e: { message: string }) => e.message)).toEqual(['second']);
     // A silly limit falls back to the default rather than failing.
     expect(
-      (await request(app).get(`/v1/apps/${appId}/errors?limit=x`).set('Authorization', as('vic'))).status,
+      (await request(app).get(`/v1/apps/${appId}/errors?limit=x`).set('Authorization', as('viewer'))).status,
     ).toBe(200);
   });
 
   it('is 404 for someone outside the app', async () => {
-    const { appId, key } = await signUp('alice');
-    await signUp('mallory');
+    const { appId, key } = await signUp('owner');
+    await signUp('outsider');
     await agent(key, '/errors', { message: 'private' });
-    const res = await request(app).get(`/v1/apps/${appId}/errors`).set('Authorization', as('mallory'));
+    const res = await request(app).get(`/v1/apps/${appId}/errors`).set('Authorization', as('outsider'));
     expect(res.status).toBe(404);
   });
 
   it('is isolated in RLS: another app’s agent session and an unrelated Studio user see no rows', async () => {
-    const alice = await signUp('alice');
-    const bob = await signUp('bob');
-    await agent(alice.key, '/errors', { message: 'alice only' });
+    const owner = await signUp('owner');
+    const other = await signUp('other');
+    await agent(owner.key, '/errors', { message: 'owner only' });
 
-    const viaBobsAgent = await withAgentSession(bob.key, (client) =>
+    const viaOthersAgent = await withAgentSession(other.key, (client) =>
       client.query<{ n: number }>(`SELECT COUNT(*)::int AS n FROM agent_error`).then((r) => r.rows[0].n),
     );
-    expect(viaBobsAgent).toBe(0);
-    const bobId = (await adminPool.query(`SELECT id FROM studio_user WHERE oidc_sub = 'bob'`)).rows[0].id;
-    const viaBobsStudio = await withStudioSession(bobId, (client) =>
+    expect(viaOthersAgent).toBe(0);
+    const otherId = (await adminPool.query(`SELECT id FROM studio_user WHERE oidc_sub = 'other'`)).rows[0].id;
+    const viaOthersStudio = await withStudioSession(otherId, (client) =>
       client.query<{ n: number }>(`SELECT COUNT(*)::int AS n FROM agent_error`).then((r) => r.rows[0].n),
     );
-    expect(viaBobsStudio).toBe(0);
+    expect(viaOthersStudio).toBe(0);
   });
 });
 
 describe('platform usage', () => {
   it('counts each app’s errors in the last 24 hours', async () => {
-    const { orgId, appId, key } = await signUp('alice');
+    const { orgId, appId, key } = await signUp('owner');
     await request(app).get('/v1/me').set('Authorization', as('root')); // creates the user
     await adminPool.query(`UPDATE studio_user SET platform_admin = TRUE WHERE oidc_sub = 'root'`);
     await agent(key, '/errors', { message: 'today' });

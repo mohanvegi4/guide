@@ -10,7 +10,7 @@ const production: Environment = {
   id: 'env-prod',
   name: 'Production',
   position: 1,
-  websites: ['https://app.acme.test'],
+  websites: ['https://app.oclc.test'],
   analyticsEnabled: true,
 };
 
@@ -50,7 +50,7 @@ describe('GuideListComponent', () => {
       orgs: [
         {
           id: 'o1',
-          name: 'Acme',
+          name: 'OCLC',
           role: 'editor',
           suspendedAt: null,
           apps: [{ id: 'a1', name: 'Web', role }],

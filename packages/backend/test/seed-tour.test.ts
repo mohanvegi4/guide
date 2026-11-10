@@ -8,8 +8,8 @@ beforeEach(resetData);
 
 describe('seeded welcome tour', () => {
   it('is live on /dashboard with five steps, in the help center, on a saved page', async () => {
-    const { key, appId } = await signUp('alice');
-    const userId = (await adminPool.query(`SELECT id FROM studio_user WHERE oidc_sub = 'alice'`)).rows[0].id;
+    const { key, appId } = await signUp('owner');
+    const userId = (await adminPool.query(`SELECT id FROM studio_user WHERE oidc_sub = 'owner'`)).rows[0].id;
     const guideId = await withStudioSession(userId, (client, ctx) => seedWelcomeTour(client, ctx, appId));
 
     const guides = (await agent(key, '/guides', visitor())).body.guides;

@@ -18,14 +18,14 @@ import {
 
 afterAll(closePools);
 
-const TEST_SITE = 'https://test.acme.test';
-const ACCEPT_SITE = 'https://accept.acme.test';
+const TEST_SITE = 'https://test.oclc.test';
+const ACCEPT_SITE = 'https://accept.oclc.test';
 
 let orgId: string;
 let appId: string;
 let key: string;
 
-const api = (sub = 'alice') => ({
+const api = (sub = 'owner') => ({
   get: (path: string) => request(app).get(`/v1/apps/${appId}${path}`).set('Authorization', as(sub)),
   post: (path: string, body: unknown = {}) =>
     request(app).post(`/v1/apps/${appId}${path}`).set('Authorization', as(sub)).send(body as object),
@@ -59,7 +59,7 @@ const shownIds = async (origin: string, who = 'v-1') =>
 
 beforeEach(async () => {
   await resetData();
-  ({ orgId, appId, key } = await signUp('alice'));
+  ({ orgId, appId, key } = await signUp('owner'));
 });
 
 describe('environments', () => {
@@ -92,15 +92,15 @@ describe('environments', () => {
   it('the app websites shortcut only works while there is a single environment', async () => {
     const one = await request(app)
       .patch(`/v1/apps/${appId}`)
-      .set('Authorization', as('alice'))
-      .send({ websites: ['https://new.acme.test'] });
+      .set('Authorization', as('owner'))
+      .send({ websites: ['https://new.oclc.test'] });
     expect(one.status).toBe(200);
-    expect((await api().get('/environments')).body[0].websites).toEqual(['https://new.acme.test']);
+    expect((await api().get('/environments')).body[0].websites).toEqual(['https://new.oclc.test']);
 
     await api().post('/environments', { name: 'Test', websites: [TEST_SITE] });
     const many = await request(app)
       .patch(`/v1/apps/${appId}`)
-      .set('Authorization', as('alice'))
+      .set('Authorization', as('owner'))
       .send({ websites: [SITE] });
     expect(many.status).toBe(400);
     expect(many.body.error).toBe('websites_per_environment');
@@ -108,8 +108,8 @@ describe('environments', () => {
 
   it('deleting needs a manager and the exact name, and never removes the last environment', async () => {
     const { test, prod } = await threeStages();
-    await addMember('alice', orgId, 'eddie', 'editor');
-    expect((await api('eddie').del(`/environments/${test.id}`, { confirmName: 'Test' })).status).toBe(403);
+    await addMember('owner', orgId, 'editor', 'editor');
+    expect((await api('editor').del(`/environments/${test.id}`, { confirmName: 'Test' })).status).toBe(403);
     expect((await api().del(`/environments/${test.id}`, { confirmName: 'test' })).status).toBe(400);
     expect((await api().del(`/environments/${test.id}`, { confirmName: 'Test' })).status).toBe(204);
 
@@ -125,16 +125,16 @@ describe('environments', () => {
   });
 
   it('viewers read environments but cannot change them', async () => {
-    await addMember('alice', orgId, 'vera', 'viewer');
-    expect((await api('vera').get('/environments')).status).toBe(200);
-    expect((await api('vera').post('/environments', { name: 'Test' })).status).toBe(403);
+    await addMember('owner', orgId, 'viewer', 'viewer');
+    expect((await api('viewer').get('/environments')).status).toBe(200);
+    expect((await api('viewer').post('/environments', { name: 'Test' })).status).toBe(403);
   });
 });
 
 describe('releases', () => {
   it('publishing releases to the first stage; promote moves it on, stage by stage', async () => {
     const { test, accept, prod } = await threeStages();
-    const { guideId, versionId } = await liveGuide('alice', appId);
+    const { guideId, versionId } = await liveGuide('owner', appId);
 
     // v1 is in Test only: only the Test website sees it.
     expect(await shownIds(TEST_SITE)).toEqual([guideId]);
@@ -173,7 +173,7 @@ describe('releases', () => {
 
   it('revert walks back the release log one step at a time, down to nothing', async () => {
     const { test } = await threeStages();
-    const { guideId } = await liveGuide('alice', appId);
+    const { guideId } = await liveGuide('owner', appId);
     await api().post(`/guides/${guideId}/publish`, { ...sampleVersion, steps: [{ ...sampleVersion.steps[0], content: '<p>v2</p>' }] });
     await api().post(`/guides/${guideId}/publish`, { ...sampleVersion, steps: [{ ...sampleVersion.steps[0], content: '<p>v3</p>' }] });
 
@@ -200,7 +200,7 @@ describe('releases', () => {
 
   it('withdraw takes a guide out of one environment, and reverting a withdraw restores it', async () => {
     const { test, accept } = await threeStages();
-    const { guideId } = await liveGuide('alice', appId);
+    const { guideId } = await liveGuide('owner', appId);
     await api().post(`/guides/${guideId}/promote`, { from: test.id });
     expect(await shownIds(ACCEPT_SITE)).toEqual([guideId]);
 
@@ -222,7 +222,7 @@ describe('releases', () => {
   });
 
   it('rollback still targets production', async () => {
-    const { guideId } = await liveGuide('alice', appId);
+    const { guideId } = await liveGuide('owner', appId);
     await api().post(`/guides/${guideId}/publish`, sampleVersion);
     const res = await api().post(`/guides/${guideId}/rollback/1`);
     expect(res.status).toBe(200);
@@ -232,17 +232,17 @@ describe('releases', () => {
 
   it('editors cannot release; viewers can read the releases', async () => {
     const { test } = await threeStages();
-    const { guideId } = await liveGuide('alice', appId);
-    await addMember('alice', orgId, 'vera', 'viewer');
-    expect((await api('vera').get(`/guides/${guideId}/releases`)).status).toBe(200);
-    expect((await api('vera').post(`/guides/${guideId}/promote`, { from: test.id })).status).toBe(403);
+    const { guideId } = await liveGuide('owner', appId);
+    await addMember('owner', orgId, 'viewer', 'viewer');
+    expect((await api('viewer').get(`/guides/${guideId}/releases`)).status).toBe(200);
+    expect((await api('viewer').post(`/guides/${guideId}/promote`, { from: test.id })).status).toBe(403);
   });
 });
 
 describe('the agent, per environment', () => {
   it('keeps show-once state per environment', async () => {
     const { test } = await threeStages();
-    const { guideId, versionId } = await liveGuide('alice', appId);
+    const { guideId, versionId } = await liveGuide('owner', appId);
     await api().post(`/guides/${guideId}/promote`, { from: test.id });
     const accept = (await api().get('/environments')).body[1] as Env;
     await api().post(`/guides/${guideId}/promote`, { from: accept.id });
@@ -258,14 +258,14 @@ describe('the agent, per environment', () => {
   });
 
   it('serves nothing to an origin no environment owns, and production without an Origin', async () => {
-    const { guideId } = await liveGuide('alice', appId);
+    const { guideId } = await liveGuide('owner', appId);
     const res = await agent(key, '/guides', visitor(), null);
     expect(res.body.guides.map((g: { id: string }) => g.id)).toEqual([guideId]);
   });
 
   it('records events in their environment, and none where analytics are off — but still keeps state', async () => {
     const { test, prod } = await threeStages();
-    const { guideId, versionId } = await liveGuide('alice', appId);
+    const { guideId, versionId } = await liveGuide('owner', appId);
     await api().post(`/guides/${guideId}/promote`, { from: test.id });
     const accept = (await api().get('/environments')).body[1] as Env;
     await api().post(`/guides/${guideId}/promote`, { from: accept.id });
@@ -305,27 +305,27 @@ describe('the agent, per environment', () => {
     expect(await shownIn('')).toBe(1);
 
     // Another app's environment is not found, not mixed in.
-    const other = await signUp('bob', 'bob org', ['https://bob.test']);
-    const bobEnv = (
-      await request(app).get(`/v1/apps/${other.appId}/environments`).set('Authorization', as('bob'))
+    const other = await signUp('other', 'other org', ['https://other.test']);
+    const otherEnv = (
+      await request(app).get(`/v1/apps/${other.appId}/environments`).set('Authorization', as('other'))
     ).body[0].id;
-    expect((await api().get(`/analytics?environment=${bobEnv}`)).status).toBe(404);
+    expect((await api().get(`/analytics?environment=${otherEnv}`)).status).toBe(404);
   });
 });
 
 describe('row-level security', () => {
   it("one organization's session sees none of another's environments or releases", async () => {
-    await liveGuide('alice', appId);
-    const bob = await signUp('bob', 'bob org', ['https://bob.test']);
-    const res = await request(app).get(`/v1/apps/${appId}/environments`).set('Authorization', as('bob'));
+    await liveGuide('owner', appId);
+    const other = await signUp('other', 'other org', ['https://other.test']);
+    const res = await request(app).get(`/v1/apps/${appId}/environments`).set('Authorization', as('other'));
     expect(res.status).toBe(404);
     const { withStudioSession } = await import('../src/db');
-    const bobUser = await adminPool.query(`SELECT id FROM studio_user WHERE oidc_sub = 'bob'`);
-    const seen = await withStudioSession(bobUser.rows[0].id, async (c) => ({
+    const otherUser = await adminPool.query(`SELECT id FROM studio_user WHERE oidc_sub = 'other'`);
+    const seen = await withStudioSession(otherUser.rows[0].id, async (c) => ({
       environments: (await c.query(`SELECT app_id FROM app_environment`)).rows.map((r) => r.app_id),
       releases: (await c.query(`SELECT 1 FROM guide_release`)).rowCount,
       log: (await c.query(`SELECT 1 FROM guide_release_event`)).rowCount,
     }));
-    expect(seen).toEqual({ environments: [bob.appId], releases: 0, log: 0 });
+    expect(seen).toEqual({ environments: [other.appId], releases: 0, log: 0 });
   });
 });

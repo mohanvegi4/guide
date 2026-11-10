@@ -11,7 +11,7 @@ import { seedWelcomeTour } from './welcome-tour';
 
 /**
  * DEVELOPMENT ONLY: one-command local setup.
- *  - a dev Studio user (sub "dev-admin") who owns org "Demo Org"
+ *  - a dev Studio user (sub "vegim", Mohan Vegi) who owns org "Demo Org"
  *  - app "Demo site" allowed on http://localhost:5174 (apps/demo), with a
  *    published five-step "Welcome tour" on its dashboard (welcome-tour.ts)
  *  - writes apps/demo/.env.local so the demo page's snippet uses that app key
@@ -29,10 +29,10 @@ async function main(): Promise<void> {
 
   const identity = {
     issuer: DEV_TOKEN_ISSUER,
-    sub: 'dev-admin',
-    email: 'dev-admin@example.com',
+    sub: 'vegim',
+    email: 'vegim@oclc.org',
     emailVerified: true,
-    name: 'Dev Admin',
+    name: 'Mohan Vegi',
   };
   const userId = await provisionStudioUser(identity);
   const { org, app } = await withStudioSession(userId, async (client, ctx) => {
@@ -58,7 +58,7 @@ async function main(): Promise<void> {
   console.log(`app      ${app.name} — key ${app.public_key}`);
   console.log(`guide    "Welcome tour" (5 steps) published on /dashboard, listed in the help center`);
   console.log(`demo     wrote ${envPath}`);
-  console.log(`studio   paste this token to sign in as Dev Admin (8h):\n${token}`);
+  console.log(`studio   paste this token to sign in as Mohan Vegi (8h):\n${token}`);
 }
 
 main()

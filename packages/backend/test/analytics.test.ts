@@ -10,8 +10,8 @@ let key: string;
 let guideId: string;
 let versionId: string;
 
-const get = (path: string, sub = 'alice') => request(app).get(path).set('Authorization', as(sub));
-const guideAnalytics = (query = '', sub = 'alice') =>
+const get = (path: string, sub = 'owner') => request(app).get(path).set('Authorization', as(sub));
+const guideAnalytics = (query = '', sub = 'owner') =>
   get(`/v1/apps/${appId}/guides/${guideId}/analytics${query}`, sub);
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -38,15 +38,15 @@ async function record(
 
 beforeEach(async () => {
   await resetData();
-  ({ orgId, appId, key } = await signUp('alice'));
-  ({ guideId, versionId } = await liveGuide('alice', appId));
+  ({ orgId, appId, key } = await signUp('owner'));
+  ({ guideId, versionId } = await liveGuide('owner', appId));
 });
 
 describe('GET /apps/:appId/guides/:id/analytics?by=account', () => {
   it('breaks the funnel down by account, top accounts first, with anonymous visitors as their own row', async () => {
-    await record({ visitor: 'v1', account: 'acme' }, ['guide_shown', 'guide_completed']);
-    await record({ visitor: 'v2', account: 'acme' }, ['guide_shown', 'guide_dismissed']);
-    await record({ visitor: 'v2', account: 'acme' }, ['guide_shown']); // same visitor again
+    await record({ visitor: 'v1', account: 'oclc' }, ['guide_shown', 'guide_completed']);
+    await record({ visitor: 'v2', account: 'oclc' }, ['guide_shown', 'guide_dismissed']);
+    await record({ visitor: 'v2', account: 'oclc' }, ['guide_shown']); // same visitor again
     await record({ visitor: 'v3', account: 'globex' }, ['guide_shown', 'guide_completed']);
     await record({ visitor: 'v4', account: null }, ['guide_shown']);
 
@@ -57,7 +57,7 @@ describe('GET /apps/:appId/guides/:id/analytics?by=account', () => {
     const res = await guideAnalytics('?by=account');
     expect(res.status).toBe(200);
     expect(res.body.accounts).toEqual([
-      { accountId: 'acme', shown: 3, completed: 1, dismissed: 1, visitors: 2 },
+      { accountId: 'oclc', shown: 3, completed: 1, dismissed: 1, visitors: 2 },
       { accountId: 'globex', shown: 1, completed: 1, dismissed: 0, visitors: 1 },
       { accountId: null, shown: 1, completed: 0, dismissed: 0, visitors: 1 },
     ]);
@@ -74,8 +74,8 @@ describe('GET /apps/:appId/guides/:id/analytics?by=account', () => {
 
 describe('GET /apps/:appId/guides/:id/analytics?from=&to=', () => {
   it('counts only events in the window (from inclusive, a date "to" covers its whole day)', async () => {
-    await record({ visitor: 'old', account: 'acme' }, ['guide_shown'], daysAgo(40));
-    await record({ visitor: 'mid', account: 'acme' }, ['guide_shown', 'guide_completed'], daysAgo(10));
+    await record({ visitor: 'old', account: 'oclc' }, ['guide_shown'], daysAgo(40));
+    await record({ visitor: 'mid', account: 'oclc' }, ['guide_shown', 'guide_completed'], daysAgo(10));
     await record({ visitor: 'new', account: 'globex' }, ['guide_shown'], daysAgo(0));
 
     const all = await guideAnalytics('?by=account');
@@ -88,7 +88,7 @@ describe('GET /apps/:appId/guides/:id/analytics?from=&to=', () => {
         { event_type: 'guide_completed', count: 1 },
       ]),
     );
-    expect(recent.body.accounts.map((a: { accountId: string }) => a.accountId)).toEqual(['acme', 'globex']);
+    expect(recent.body.accounts.map((a: { accountId: string }) => a.accountId)).toEqual(['globex', 'oclc']);
 
     const middle = await guideAnalytics(`?from=${daysAgo(20)}&to=${daysAgo(5)}&by=account`);
     expect(middle.body.counts).toEqual(
@@ -98,7 +98,7 @@ describe('GET /apps/:appId/guides/:id/analytics?from=&to=', () => {
       ]),
     );
     expect(middle.body.accounts).toEqual([
-      { accountId: 'acme', shown: 1, completed: 1, dismissed: 0, visitors: 1 },
+      { accountId: 'oclc', shown: 1, completed: 1, dismissed: 0, visitors: 1 },
     ]);
 
     // Today as a plain date includes today's event; yesterday as a plain date excludes it.
@@ -127,10 +127,10 @@ describe('GET /apps/:appId/analytics', () => {
   it('rolls up every guide (zeros included) with completion rate, and distinct reach over 30 days', async () => {
     const other = await request(app)
       .post(`/v1/apps/${appId}/guides`)
-      .set('Authorization', as('alice'))
+      .set('Authorization', as('owner'))
       .send({ name: 'Quiet' });
-    await record({ visitor: 'v1', account: 'acme' }, ['guide_shown', 'guide_completed']);
-    await record({ visitor: 'v2', account: 'acme' }, ['guide_shown', 'guide_dismissed']);
+    await record({ visitor: 'v1', account: 'oclc' }, ['guide_shown', 'guide_completed']);
+    await record({ visitor: 'v2', account: 'oclc' }, ['guide_shown', 'guide_dismissed']);
     await record({ visitor: 'v3', account: null }, ['guide_shown']);
     await record({ visitor: 'v4', account: 'globex' }, ['guide_shown', 'guide_completed']);
     // Long ago: counts towards the guide's totals, not towards recent reach.
@@ -151,26 +151,26 @@ describe('GET /apps/:appId/analytics', () => {
   });
 
   it('is empty, not an error, for an app without guides', async () => {
-    const fresh = await signUp('zed');
-    const res = await get(`/v1/apps/${fresh.appId}/analytics`, 'zed');
+    const fresh = await signUp('rival');
+    const res = await get(`/v1/apps/${fresh.appId}/analytics`, 'rival');
     expect(res.body).toEqual({ guides: [], visitors: 0, accounts: 0, windowDays: 30, environmentId: expect.any(String) });
   });
 });
 
 describe('access', () => {
   it('viewers can read both; non-members get 404 for both', async () => {
-    await addMember('alice', orgId, 'viewer', 'viewer');
+    await addMember('owner', orgId, 'viewer', 'viewer');
     expect((await get(`/v1/apps/${appId}/analytics`, 'viewer')).status).toBe(200);
     expect((await guideAnalytics('?by=account', 'viewer')).status).toBe(200);
 
-    await signUp('mallory'); // has an org of their own, but not this one
-    expect((await get(`/v1/apps/${appId}/analytics`, 'mallory')).status).toBe(404);
-    expect((await guideAnalytics('?by=account', 'mallory')).status).toBe(404);
+    await signUp('outsider'); // has an org of their own, but not this one
+    expect((await get(`/v1/apps/${appId}/analytics`, 'outsider')).status).toBe(404);
+    expect((await guideAnalytics('?by=account', 'outsider')).status).toBe(404);
   });
 
   it("404s for another app's guide id", async () => {
-    const theirs = await signUp('zed');
-    const { guideId: theirGuide } = await liveGuide('zed', theirs.appId);
+    const theirs = await signUp('rival');
+    const { guideId: theirGuide } = await liveGuide('rival', theirs.appId);
     expect((await get(`/v1/apps/${appId}/guides/${theirGuide}/analytics?by=account`)).status).toBe(404);
   });
 });

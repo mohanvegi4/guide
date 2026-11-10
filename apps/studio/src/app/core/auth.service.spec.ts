@@ -5,7 +5,7 @@ import { AuthService } from './auth.service';
 import { Me } from './models';
 
 const me = (orgs: Me['orgs'] = []): Me => ({
-  user: { id: 'u1', email: 'a@example.com', name: 'Alice', platformAdmin: false },
+  user: { id: 'u1', email: 'a@example.com', name: 'Owner', platformAdmin: false },
   orgs,
 });
 
@@ -36,7 +36,7 @@ describe('AuthService', () => {
     expect(req.request.headers.get('Authorization')).toBe('Bearer abc.def.ghi');
     expect(result).toBeNull();
     expect(auth.token()).toBe('abc.def.ghi');
-    expect(auth.me()?.user.name).toBe('Alice');
+    expect(auth.me()?.user.name).toBe('Owner');
     expect(sessionStorage.getItem('guide-studio-token')).toBe('abc.def.ghi');
   });
 
@@ -54,7 +54,7 @@ describe('AuthService', () => {
         { id: 'o-empty', name: 'Empty', role: 'viewer', suspendedAt: null, apps: [] },
         {
           id: 'o1',
-          name: 'Acme',
+          name: 'OCLC',
           role: 'owner',
           suspendedAt: null,
           apps: [{ id: 'a1', name: 'Web', role: 'app_admin' }],

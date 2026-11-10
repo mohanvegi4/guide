@@ -18,11 +18,11 @@ import { parseWebsites } from './websites';
         invite teammates later.
       </p>
       <form [formGroup]="form" (ngSubmit)="create()">
-        <label>Organization name <input formControlName="org" placeholder="e.g. Acme Inc." /></label>
-        <label>First application <input formControlName="app" placeholder="e.g. Acme web app" /></label>
+        <label>Organization name <input formControlName="org" placeholder="e.g. OCLC" /></label>
+        <label>First application <input formControlName="app" placeholder="e.g. OCLC web app" /></label>
         <label>
           Website(s) where the app runs — one per line
-          <textarea formControlName="websites" rows="3" placeholder="https://app.acme.com&#10;http://localhost:4200"></textarea>
+          <textarea formControlName="websites" rows="3" placeholder="https://app.oclc.org&#10;http://localhost:4200"></textarea>
           <small class="muted">Guides only load on these sites. You can change this later.</small>
         </label>
         @if (error()) {

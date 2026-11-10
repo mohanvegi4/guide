@@ -9,7 +9,7 @@ export const app = createApp();
 /** Superuser pool for fixtures and raw-row assertions only (bypasses RLS by design). */
 export const adminPool = new Pool({ connectionString: process.env.TEST_ADMIN_DATABASE_URL });
 
-export const SITE = 'https://app.acme.test';
+export const SITE = 'https://app.oclc.test';
 
 export async function resetData(): Promise<void> {
   await adminPool.query(
@@ -111,7 +111,7 @@ export function agent(key: string, path: string, body: unknown, origin: string |
   return r.send(JSON.stringify(body));
 }
 
-export const visitor = (id = 'v-1', account: string | null = 'acme') => ({
+export const visitor = (id = 'v-1', account: string | null = 'oclc') => ({
   visitor: { id },
   ...(account ? { account: { id: account } } : {}),
 });

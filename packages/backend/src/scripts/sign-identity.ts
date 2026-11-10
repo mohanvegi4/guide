@@ -6,7 +6,7 @@ import { MAX_VISITOR_TAGS, VISITOR_TAG_PATTERN } from '../auth/visitor';
  * Signs a visitor identity the way a customer's BACKEND would when their app
  * has "Require signed identity" switched on. For testing the agent locally.
  *
- *   npm run sign-identity -- --secret ge_sk_... --visitor user-123 [--account acme] [--tags POS,CATALOG] [--ttl 1h]
+ *   npm run sign-identity -- --secret ge_sk_... --visitor user-123 [--account oclc] [--tags POS,CATALOG] [--ttl 1h]
  *
  * Pass the result as guideEngine.initialize({ jwt }).
  */

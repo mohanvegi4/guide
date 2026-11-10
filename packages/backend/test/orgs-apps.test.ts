@@ -10,28 +10,28 @@ describe('self-serve organizations', () => {
   it('creates an org (caller = owner) with its first app and a public key', async () => {
     const res = await request(app)
       .post('/v1/orgs')
-      .set('Authorization', as('alice'))
+      .set('Authorization', as('owner'))
       .send({
-        name: 'Acme',
-        app: { name: 'Web app', websites: ['https://app.acme.test/some/path', 'http://localhost:4200'] },
+        name: 'OCLC',
+        app: { name: 'Web app', websites: ['https://app.oclc.test/some/path', 'http://localhost:4200'] },
       });
     expect(res.status).toBe(201);
-    expect(res.body.org).toMatchObject({ name: 'Acme', role: 'owner' });
+    expect(res.body.org).toMatchObject({ name: 'OCLC', role: 'owner' });
     expect(res.body.app).toMatchObject({
       name: 'Web app',
       enabled: true,
       identity_mode: 'optional',
       has_signing_secret: false,
       // normalized to bare origins
-      allowed_origins: ['https://app.acme.test', 'http://localhost:4200'],
+      allowed_origins: ['https://app.oclc.test', 'http://localhost:4200'],
     });
     expect(res.body.app.public_key).toMatch(/^ge_pk_[0-9a-f]{32}$/);
 
-    const me = await request(app).get('/v1/me').set('Authorization', as('alice'));
+    const me = await request(app).get('/v1/me').set('Authorization', as('owner'));
     expect(me.body.orgs).toEqual([
       {
         id: res.body.org.id,
-        name: 'Acme',
+        name: 'OCLC',
         role: 'owner',
         suspendedAt: null,
         apps: [{ id: res.body.app.id, name: 'Web app', role: 'app_admin' }],
@@ -42,75 +42,75 @@ describe('self-serve organizations', () => {
   it('rejects non-http(s) websites', async () => {
     const res = await request(app)
       .post('/v1/orgs')
-      .set('Authorization', as('alice'))
-      .send({ name: 'Acme', app: { name: 'x', websites: ['javascript:alert(1)'] } });
+      .set('Authorization', as('owner'))
+      .send({ name: 'OCLC', app: { name: 'x', websites: ['javascript:alert(1)'] } });
     expect(res.status).toBe(400);
   });
 
   it('lets one admin manage several apps in one org', async () => {
-    const { orgId } = await signUp('alice');
+    const { orgId } = await signUp('owner');
     const second = await request(app)
       .post(`/v1/orgs/${orgId}/apps`)
-      .set('Authorization', as('alice'))
-      .send({ name: 'Admin console', websites: ['https://admin.acme.test'] });
+      .set('Authorization', as('owner'))
+      .send({ name: 'Admin console', websites: ['https://admin.oclc.test'] });
     expect(second.status).toBe(201);
-    const list = await request(app).get(`/v1/orgs/${orgId}/apps`).set('Authorization', as('alice'));
-    expect(list.body.map((a: { name: string }) => a.name)).toEqual(['Admin console', 'alice org app']);
+    const list = await request(app).get(`/v1/orgs/${orgId}/apps`).set('Authorization', as('owner'));
+    expect(list.body.map((a: { name: string }) => a.name)).toEqual(['Admin console', 'owner org app']);
   });
 });
 
 describe('app settings', () => {
   it('rotates the public key', async () => {
-    const { appId, key } = await signUp('alice');
-    const res = await request(app).post(`/v1/apps/${appId}/rotate-key`).set('Authorization', as('alice'));
+    const { appId, key } = await signUp('owner');
+    const res = await request(app).post(`/v1/apps/${appId}/rotate-key`).set('Authorization', as('owner'));
     expect(res.body.public_key).toMatch(/^ge_pk_/);
     expect(res.body.public_key).not.toBe(key);
     // the install snippet always carries the current key and the agent URL
     expect(res.body.snippet).toContain(`'${res.body.public_key}'`);
     expect(res.body.snippet).toContain('/agent/v1/');
-    const fetched = await request(app).get(`/v1/apps/${appId}`).set('Authorization', as('alice'));
+    const fetched = await request(app).get(`/v1/apps/${appId}`).set('Authorization', as('owner'));
     expect(fetched.body.snippet).toContain(res.body.public_key);
   });
 
   it('returns a signing secret once, and only "has secret" afterwards', async () => {
-    const { appId } = await signUp('alice');
+    const { appId } = await signUp('owner');
     const created = await request(app)
       .post(`/v1/apps/${appId}/signing-secret`)
-      .set('Authorization', as('alice'));
+      .set('Authorization', as('owner'));
     expect(created.body.secret).toMatch(/^ge_sk_/);
-    const fetched = await request(app).get(`/v1/apps/${appId}`).set('Authorization', as('alice'));
+    const fetched = await request(app).get(`/v1/apps/${appId}`).set('Authorization', as('owner'));
     expect(fetched.body.has_signing_secret).toBe(true);
     expect(JSON.stringify(fetched.body)).not.toContain(created.body.secret);
   });
 
   it('refuses "require signed identity" until a signing secret exists', async () => {
-    const { appId } = await signUp('alice');
+    const { appId } = await signUp('owner');
     const early = await request(app)
       .patch(`/v1/apps/${appId}`)
-      .set('Authorization', as('alice'))
+      .set('Authorization', as('owner'))
       .send({ identityMode: 'required' });
     expect(early.status).toBe(400);
     expect(early.body.error).toBe('signing_secret_required');
-    await request(app).post(`/v1/apps/${appId}/signing-secret`).set('Authorization', as('alice'));
+    await request(app).post(`/v1/apps/${appId}/signing-secret`).set('Authorization', as('owner'));
     const later = await request(app)
       .patch(`/v1/apps/${appId}`)
-      .set('Authorization', as('alice'))
+      .set('Authorization', as('owner'))
       .send({ identityMode: 'required' });
     expect(later.body.identity_mode).toBe('required');
   });
 
   it('updates websites and the app switch', async () => {
-    const { appId } = await signUp('alice');
+    const { appId } = await signUp('owner');
     const res = await request(app)
       .patch(`/v1/apps/${appId}`)
-      .set('Authorization', as('alice'))
-      .send({ websites: [SITE, 'https://beta.acme.test/x'], enabled: false });
-    expect(res.body).toMatchObject({ allowed_origins: [SITE, 'https://beta.acme.test'], enabled: false });
+      .set('Authorization', as('owner'))
+      .send({ websites: [SITE, 'https://beta.oclc.test/x'], enabled: false });
+    expect(res.body).toMatchObject({ allowed_origins: [SITE, 'https://beta.oclc.test'], enabled: false });
   });
 
   it('defaults routing to path, and round-trips a change to hash', async () => {
-    const { appId } = await signUp('alice');
-    const auth = as('alice');
+    const { appId } = await signUp('owner');
+    const auth = as('owner');
     expect((await request(app).get(`/v1/apps/${appId}`).set('Authorization', auth)).body.route_mode).toBe(
       'path',
     );

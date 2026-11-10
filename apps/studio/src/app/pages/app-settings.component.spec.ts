@@ -11,7 +11,7 @@ const app: App = {
   org_id: 'o1',
   name: 'Web app',
   public_key: 'ge_pk_0123',
-  allowed_origins: ['https://app.acme.test'],
+  allowed_origins: ['https://app.oclc.test'],
   identity_mode: 'optional',
   has_signing_secret: false,
   enabled: true,
@@ -30,7 +30,7 @@ const production: Environment = {
   id: 'env-prod',
   name: 'Production',
   position: 1,
-  websites: ['https://app.acme.test'],
+  websites: ['https://app.oclc.test'],
   analyticsEnabled: true,
 };
 
@@ -66,7 +66,7 @@ describe('AppSettingsComponent', () => {
       orgs: [
         {
           id: 'o1',
-          name: 'Acme',
+          name: 'OCLC',
           role: 'editor',
           suspendedAt: null,
           apps: [{ id: 'a1', name: 'Web app', role }],
@@ -103,7 +103,7 @@ describe('AppSettingsComponent', () => {
   it('shows the install snippet with the app key, and the websites', async () => {
     const el = await render();
     expect(el.querySelector('pre.snippet')!.textContent).toContain('ge_pk_0123');
-    expect((el.querySelector('textarea') as HTMLTextAreaElement).value).toBe('https://app.acme.test');
+    expect((el.querySelector('textarea') as HTMLTextAreaElement).value).toBe('https://app.oclc.test');
   });
 
   it('locks "require signed identity" until a signing secret exists', async () => {
@@ -126,7 +126,7 @@ describe('AppSettingsComponent', () => {
         message: 'render: <img src=x onerror=alert(1)>',
         stack: null,
         agentVersion: '0.1.0',
-        url: 'https://app.acme.test/dashboard',
+        url: 'https://app.oclc.test/dashboard',
         occurredAt: '2026-10-19T10:00:00Z',
       },
     ]);
@@ -134,7 +134,7 @@ describe('AppSettingsComponent', () => {
     expect(rows).toHaveLength(1);
     expect(rows[0].textContent).toContain('render: <img src=x onerror=alert(1)>');
     expect(rows[0].textContent).toContain('agent 0.1.0');
-    expect(rows[0].textContent).toContain('https://app.acme.test/dashboard');
+    expect(rows[0].textContent).toContain('https://app.oclc.test/dashboard');
     expect(card(el).querySelector('img')).toBeNull(); // rendered as text, never as HTML
   });
 

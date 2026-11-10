@@ -67,7 +67,7 @@ describe('AnalyticsComponent', () => {
       steps: [],
       startedFromHelp: 0,
       accounts: [
-        { accountId: 'acme', shown: 2, completed: 1, dismissed: 0, visitors: 2 },
+        { accountId: 'oclc', shown: 2, completed: 1, dismissed: 0, visitors: 2 },
         { accountId: null, shown: 1, completed: 0, dismissed: 1, visitors: 1 },
       ],
     });
@@ -79,8 +79,8 @@ describe('AnalyticsComponent', () => {
           .join(' ')
           .trim(),
       )
-      .filter((t) => t.startsWith('acme') || t.startsWith('No account'));
-    expect(rows).toEqual(['acme 2 1 0 2', 'No account 1 0 1 1']);
+      .filter((t) => t.startsWith('oclc') || t.startsWith('No account'));
+    expect(rows).toEqual(['oclc 2 1 0 2', 'No account 1 0 1 1']);
 
     toggle.checked = false;
     toggle.dispatchEvent(new Event('change'));

@@ -8,14 +8,14 @@ const test: Environment = {
   id: 'e1',
   name: 'Test',
   position: 1,
-  websites: ['https://test.acme.test'],
+  websites: ['https://test.oclc.test'],
   analyticsEnabled: false,
 };
 const prod: Environment = {
   id: 'e2',
   name: 'Production',
   position: 2,
-  websites: ['https://acme.test'],
+  websites: ['https://oclc.test'],
   analyticsEnabled: true,
 };
 
@@ -53,14 +53,14 @@ describe('EnvironmentsComponent', () => {
     const box = el.querySelector<HTMLTextAreaElement>(
       'textarea[aria-label="Websites of Test, one per line"]',
     )!;
-    expect(box.value).toBe('https://test.acme.test');
-    box.value = 'https://test.acme.test/some/path\nhttps://qa.acme.test';
+    expect(box.value).toBe('https://test.oclc.test');
+    box.value = 'https://test.oclc.test/some/path\nhttps://qa.oclc.test';
     box.dispatchEvent(new Event('input'));
     click(el, 'Save Test');
     const req = http.expectOne('/api/v1/apps/a1/environments/e1');
     expect(req.request.body).toEqual({
       name: 'Test',
-      websites: ['https://test.acme.test', 'https://qa.acme.test'],
+      websites: ['https://test.oclc.test', 'https://qa.oclc.test'],
       analyticsEnabled: false,
     });
     req.flush(test);
@@ -73,7 +73,7 @@ describe('EnvironmentsComponent', () => {
     name.value = 'Accept';
     name.dispatchEvent(new Event('input'));
     const sites = el.querySelector<HTMLInputElement>('input[name="newWebsites"]')!;
-    sites.value = 'https://accept.acme.test';
+    sites.value = 'https://accept.oclc.test';
     sites.dispatchEvent(new Event('input'));
     el.querySelector('form')!.dispatchEvent(new Event('submit'));
     const created = http.expectOne(
@@ -81,7 +81,7 @@ describe('EnvironmentsComponent', () => {
     );
     expect(created.request.body).toEqual({
       name: 'Accept',
-      websites: ['https://accept.acme.test'],
+      websites: ['https://accept.oclc.test'],
     });
     created.flush({ ...test, id: 'e3', name: 'Accept' });
     http.expectOne('/api/v1/apps/a1/environments').flush([test, prod]);

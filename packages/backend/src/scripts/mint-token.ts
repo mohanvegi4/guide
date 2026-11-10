@@ -7,7 +7,7 @@ import { DEV_TOKEN_ISSUER } from '../auth/studio';
 /**
  * DEVELOPMENT ONLY: mints a Studio sign-in token for a local identity.
  *
- *   npm run mint-token -- --sub dev-alice [--email alice@example.com] [--name Alice] [--ttl 8h]
+ *   npm run mint-token -- --sub vegim [--email vegim@oclc.org] [--name 'Mohan Vegi'] [--ttl 8h]
  *
  * The backend accepts these only when NODE_ENV is development or test. The
  * first sign-in creates the Studio user; organizations and roles come from

@@ -19,11 +19,11 @@ describe('MembersComponent danger zone', () => {
     const auth = TestBed.inject(AuthService);
     auth.token.set('t');
     auth.me.set({
-      user: { id: 'u1', email: 'olivia@acme.test', name: 'Olivia', platformAdmin: false },
+      user: { id: 'u1', email: 'owner@oclc.test', name: 'Owner', platformAdmin: false },
       orgs: [
         {
           id: 'o1',
-          name: 'Acme',
+          name: 'OCLC',
           role,
           suspendedAt: null,
           apps: [{ id: 'a1', name: 'Web', role: 'app_admin' }],
@@ -68,7 +68,7 @@ describe('MembersComponent danger zone', () => {
     expect(req.request.responseType).toBe('blob');
     req.flush(new Blob(['{}'], { type: 'application/json' }), {
       headers: new HttpHeaders({
-        'content-disposition': 'attachment; filename="guide-engine-acme-2026-10-19.json"',
+        'content-disposition': 'attachment; filename="guide-engine-oclc-2026-10-19.json"',
       }),
     });
     await fixture.whenStable();
@@ -76,8 +76,8 @@ describe('MembersComponent danger zone', () => {
 
     expect(anchorClick).toHaveBeenCalledTimes(1);
     const anchor = anchorClick.mock.instances[0] as HTMLAnchorElement;
-    expect(anchor.download).toBe('guide-engine-acme-2026-10-19.json');
-    expect(dangerZone(el)!.textContent).toContain('Downloaded guide-engine-acme-2026-10-19.json');
+    expect(anchor.download).toBe('guide-engine-oclc-2026-10-19.json');
+    expect(dangerZone(el)!.textContent).toContain('Downloaded guide-engine-oclc-2026-10-19.json');
   });
 
   it('deletes only after the exact name is typed, then leaves the organization', async () => {
@@ -89,19 +89,19 @@ describe('MembersComponent danger zone', () => {
     const submit = button(zone, 'Delete organization');
     expect(submit.disabled).toBe(true);
 
-    input.value = 'acme';
+    input.value = 'oclc';
     input.dispatchEvent(new Event('input'));
     fixture.detectChanges();
     expect(submit.disabled).toBe(true);
 
-    input.value = 'Acme';
+    input.value = 'OCLC';
     input.dispatchEvent(new Event('input'));
     fixture.detectChanges();
     expect(submit.disabled).toBe(false);
     zone.querySelector('form')!.dispatchEvent(new Event('submit'));
     const req = http.expectOne('/api/v1/orgs/o1');
     expect(req.request.method).toBe('DELETE');
-    expect(req.request.body).toEqual({ confirmName: 'Acme' });
+    expect(req.request.body).toEqual({ confirmName: 'OCLC' });
     req.flush(null, { status: 204, statusText: 'No Content' });
     await fixture.whenStable();
     // /me is re-read before leaving, so the home path no longer points at the deleted org.

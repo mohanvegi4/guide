@@ -5,7 +5,7 @@ import { GuideEngine, IdentityOptions, createDomRenderer, createHelpWidget } fro
  *
  *   (function(w,d,k){ … w.guideEngine = stub that queues calls; loads
  *     https://<api>/agent/v1/<k>/guides.js … })(window, document, 'ge_pk_…');
- *   guideEngine.initialize({ visitor: { id: 'u-1' }, account: { id: 'acme' } });
+ *   guideEngine.initialize({ visitor: { id: 'u-1' }, account: { id: 'oclc' } });
  *
  * This script then: works out its app key and API origin from its own URL,
  * replaces the stub with the real API, replays the queued calls, and follows

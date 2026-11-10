@@ -26,13 +26,13 @@ const help = {
 
 describe('help center', () => {
   it('lists only guides opted into the help center, with their help metadata and steps', async () => {
-    const { key, appId } = await signUp('alice');
-    const listed = await liveGuide('alice', appId, {
+    const { key, appId } = await signUp('owner');
+    const listed = await liveGuide('owner', appId, {
       ...sampleVersion,
       routeMatch: { type: 'exact', value: '/team' },
       help,
     });
-    await liveGuide('alice', appId); // not in the help center
+    await liveGuide('owner', appId); // not in the help center
 
     const res = await agent(key, '/help', visitor());
     expect(res.status).toBe(200);
@@ -58,14 +58,14 @@ describe('help center', () => {
   });
 
   it('an on-demand guide never pops up, but is listed in the help center', async () => {
-    const { key, appId } = await signUp('alice');
-    const onDemand = await liveGuide('alice', appId, {
+    const { key, appId } = await signUp('owner');
+    const onDemand = await liveGuide('owner', appId, {
       ...sampleVersion,
       routeMatch: { type: 'exact', value: '/team' },
       help,
       activation: 'manual',
     });
-    const automatic = await liveGuide('alice', appId, {
+    const automatic = await liveGuide('owner', appId, {
       ...sampleVersion,
       routeMatch: { type: 'exact', value: '/dashboard' },
       help,
@@ -81,23 +81,23 @@ describe('help center', () => {
     // The Studio sees the choice on the version, defaulting to 'auto'.
     const detail = await request(app)
       .get(`/v1/apps/${appId}/guides/${onDemand.guideId}`)
-      .set('Authorization', as('alice'));
+      .set('Authorization', as('owner'));
     expect(detail.body.versions[0].activation).toBe('manual');
     const auto = await request(app)
       .get(`/v1/apps/${appId}/guides/${automatic.guideId}`)
-      .set('Authorization', as('alice'));
+      .set('Authorization', as('owner'));
     expect(auto.body.versions[0].activation).toBe('auto');
   });
 
   it('refuses an on-demand guide that is not in the help center (it would be unreachable)', async () => {
-    const { appId } = await signUp('alice');
+    const { appId } = await signUp('owner');
     const g = await request(app)
       .post(`/v1/apps/${appId}/guides`)
-      .set('Authorization', as('alice'))
+      .set('Authorization', as('owner'))
       .send({ name: 'G' });
     const res = await request(app)
       .put(`/v1/apps/${appId}/guides/${g.body.id}/draft`)
-      .set('Authorization', as('alice'))
+      .set('Authorization', as('owner'))
       .send({ ...sampleVersion, activation: 'manual', help: null });
     expect(res.status).toBe(400);
     expect(res.body.details.fieldErrors.activation).toEqual([
@@ -106,8 +106,8 @@ describe('help center', () => {
   });
 
   it('keeps finished guides listed (help is on demand), unlike automatic guides', async () => {
-    const { key, appId } = await signUp('alice');
-    const g = await liveGuide('alice', appId, {
+    const { key, appId } = await signUp('owner');
+    const g = await liveGuide('owner', appId, {
       ...sampleVersion,
       routeMatch: { type: 'exact', value: '/team' },
       help,
@@ -129,32 +129,32 @@ describe('help center', () => {
   });
 
   it('applies the account allowlist and the guide/app switches', async () => {
-    const { key, appId } = await signUp('alice');
-    const g = await liveGuide('alice', appId, {
+    const { key, appId } = await signUp('owner');
+    const g = await liveGuide('owner', appId, {
       ...sampleVersion,
       routeMatch: { type: 'exact', value: '/t' },
       help,
-      accountIds: ['acme'],
+      accountIds: ['oclc'],
     });
-    expect((await agent(key, '/help', visitor('v', 'acme'))).body.guides).toHaveLength(1);
+    expect((await agent(key, '/help', visitor('v', 'oclc'))).body.guides).toHaveLength(1);
     expect((await agent(key, '/help', visitor('v', 'globex'))).body.guides).toHaveLength(0);
 
     await request(app)
       .patch(`/v1/apps/${appId}/guides/${g.guideId}/flag`)
-      .set('Authorization', as('alice'))
+      .set('Authorization', as('owner'))
       .send({ enabled: false });
-    expect((await agent(key, '/help', visitor('v', 'acme'))).body.guides).toHaveLength(0);
+    expect((await agent(key, '/help', visitor('v', 'oclc'))).body.guides).toHaveLength(0);
 
     await request(app)
       .patch(`/v1/apps/${appId}`)
-      .set('Authorization', as('alice'))
+      .set('Authorization', as('owner'))
       .send({ helpEnabled: false });
-    expect((await agent(key, '/help', visitor('v', 'acme'))).body).toEqual({ enabled: false, guides: [] });
+    expect((await agent(key, '/help', visitor('v', 'oclc'))).body).toEqual({ enabled: false, guides: [] });
   });
 
   it('lists a tagged guide only for visitors carrying one of its tags', async () => {
-    const { key, appId } = await signUp('alice');
-    await liveGuide('alice', appId, {
+    const { key, appId } = await signUp('owner');
+    await liveGuide('owner', appId, {
       ...sampleVersion,
       routeMatch: { type: 'exact', value: '/t' },
       help,
@@ -167,17 +167,17 @@ describe('help center', () => {
   });
 
   it('requires a start page for wildcard routes, and only same-site paths', async () => {
-    const { appId } = await signUp('alice');
+    const { appId } = await signUp('owner');
     const g = (
       await request(app)
         .post(`/v1/apps/${appId}/guides`)
-        .set('Authorization', as('alice'))
+        .set('Authorization', as('owner'))
         .send({ name: 'G' })
     ).body.id;
     const draft = (body: object) =>
       request(app)
         .put(`/v1/apps/${appId}/guides/${g}/draft`)
-        .set('Authorization', as('alice'))
+        .set('Authorization', as('owner'))
         .send({ ...sampleVersion, ...body });
 
     expect((await draft({ help })).status).toBe(400); // sampleVersion's route is '/dashboard/*'
@@ -189,16 +189,16 @@ describe('help center', () => {
   });
 
   it('stores help text as plain text', async () => {
-    const { appId } = await signUp('alice');
+    const { appId } = await signUp('owner');
     const g = (
       await request(app)
         .post(`/v1/apps/${appId}/guides`)
-        .set('Authorization', as('alice'))
+        .set('Authorization', as('owner'))
         .send({ name: 'G' })
     ).body.id;
     const res = await request(app)
       .put(`/v1/apps/${appId}/guides/${g}/draft`)
-      .set('Authorization', as('alice'))
+      .set('Authorization', as('owner'))
       .send({
         ...sampleVersion,
         routeMatch: { type: 'exact', value: '/x' },
@@ -212,9 +212,9 @@ describe('help center', () => {
   });
 
   it('validates the button settings', async () => {
-    const { appId } = await signUp('alice');
+    const { appId } = await signUp('owner');
     const patch = (body: object) =>
-      request(app).patch(`/v1/apps/${appId}`).set('Authorization', as('alice')).send(body);
+      request(app).patch(`/v1/apps/${appId}`).set('Authorization', as('owner')).send(body);
     expect((await patch({ helpButtonColor: 'red; background:url(x)' })).status).toBe(400);
     expect((await patch({ helpPosition: 'middle' })).status).toBe(400);
     const ok = await patch({
@@ -231,11 +231,11 @@ describe('help center', () => {
   });
 
   it('serves the placement to the agent', async () => {
-    const { key, appId } = await signUp('alice');
-    await liveGuide('alice', appId, { ...sampleVersion, routeMatch: { type: 'exact', value: '/t' }, help });
+    const { key, appId } = await signUp('owner');
+    await liveGuide('owner', appId, { ...sampleVersion, routeMatch: { type: 'exact', value: '/t' }, help });
     await request(app)
       .patch(`/v1/apps/${appId}`)
-      .set('Authorization', as('alice'))
+      .set('Authorization', as('owner'))
       .send({ helpPosition: 'center' });
     expect((await agent(key, '/help', visitor())).body.button).toEqual({
       label: 'Help',
@@ -245,8 +245,8 @@ describe('help center', () => {
   });
 
   it('counts guides started from the help center', async () => {
-    const { key, appId } = await signUp('alice');
-    const g = await liveGuide('alice', appId, {
+    const { key, appId } = await signUp('owner');
+    const g = await liveGuide('owner', appId, {
       ...sampleVersion,
       routeMatch: { type: 'exact', value: '/t' },
       help,
@@ -265,25 +265,25 @@ describe('help center', () => {
     });
     const stats = await request(app)
       .get(`/v1/apps/${appId}/guides/${g.guideId}/analytics`)
-      .set('Authorization', as('alice'));
+      .set('Authorization', as('owner'));
     expect(stats.body.startedFromHelp).toBe(2);
   });
 
   it('tells the agent how the app routes (path by default, or hash)', async () => {
-    const { key, appId } = await signUp('alice');
+    const { key, appId } = await signUp('owner');
     expect((await agent(key, '/guides', visitor())).body.routeMode).toBe('path');
     expect((await agent(key, '/help', visitor())).body.routeMode).toBe('path');
     await request(app)
       .patch(`/v1/apps/${appId}`)
-      .set('Authorization', as('alice'))
+      .set('Authorization', as('owner'))
       .send({ routeMode: 'hash' });
     expect((await agent(key, '/guides', visitor())).body).toMatchObject({ enabled: true, routeMode: 'hash' });
     expect((await agent(key, '/help', visitor())).body).toMatchObject({ enabled: true, routeMode: 'hash' });
   });
 
   it('includes the help methods in the install snippet stub', async () => {
-    const { appId } = await signUp('alice');
-    const res = await request(app).get(`/v1/apps/${appId}`).set('Authorization', as('alice'));
+    const { appId } = await signUp('owner');
+    const res = await request(app).get(`/v1/apps/${appId}`).set('Authorization', as('owner'));
     expect(res.body.snippet).toContain("'openHelp','closeHelp','toggleHelp'");
   });
 });
@@ -299,8 +299,8 @@ describe('help-center analytics', () => {
   });
 
   it('accepts help events without a guide, alongside guide events', async () => {
-    const { key, appId } = await signUp('alice');
-    const g = await liveGuide('alice', appId, {
+    const { key, appId } = await signUp('owner');
+    const g = await liveGuide('owner', appId, {
       ...sampleVersion,
       routeMatch: { type: 'exact', value: '/t' },
       help,
@@ -345,7 +345,7 @@ describe('help-center analytics', () => {
   });
 
   it('caps the stored query at 200 characters and keeps only query and results', async () => {
-    const { key } = await signUp('alice');
+    const { key } = await signUp('owner');
     const res = await agent(key, '/events', {
       ...visitor(),
       events: [
@@ -358,8 +358,8 @@ describe('help-center analytics', () => {
   });
 
   it('stores a help event without a guide even if one was named, and rejects a guide event without one', async () => {
-    const { key, appId } = await signUp('alice');
-    const g = await liveGuide('alice', appId);
+    const { key, appId } = await signUp('owner');
+    const g = await liveGuide('owner', appId);
     const mixed = await agent(key, '/events', {
       ...visitor(),
       events: [{ ...opened(), guideId: g.guideId, guideVersionId: g.versionId }],
@@ -390,8 +390,8 @@ describe('help-center analytics', () => {
   });
 
   it('reports opens, searches, top queries and guides started from help for the last 30 days', async () => {
-    const { key, appId, orgId } = await signUp('alice');
-    const g = await liveGuide('alice', appId, {
+    const { key, appId, orgId } = await signUp('owner');
+    const g = await liveGuide('owner', appId, {
       ...sampleVersion,
       routeMatch: { type: 'exact', value: '/t' },
       help,
@@ -424,7 +424,7 @@ describe('help-center analytics', () => {
       [appId],
     );
 
-    const res = await request(app).get(`/v1/apps/${appId}/help-analytics`).set('Authorization', as('alice'));
+    const res = await request(app).get(`/v1/apps/${appId}/help-analytics`).set('Authorization', as('owner'));
     expect(res.status).toBe(200);
     expect(res.body).toEqual({
       days: 30,
@@ -439,16 +439,16 @@ describe('help-center analytics', () => {
     });
 
     // Viewers may read it; another org's app answers 404.
-    await addMember('alice', orgId, 'vic', 'viewer');
+    await addMember('owner', orgId, 'viewer', 'viewer');
     expect(
-      (await request(app).get(`/v1/apps/${appId}/help-analytics`).set('Authorization', as('vic'))).status,
+      (await request(app).get(`/v1/apps/${appId}/help-analytics`).set('Authorization', as('viewer'))).status,
     ).toBe(200);
-    const other = await signUp('zed');
+    const other = await signUp('rival');
     expect(
-      (await request(app).get(`/v1/apps/${appId}/help-analytics`).set('Authorization', as('zed'))).status,
+      (await request(app).get(`/v1/apps/${appId}/help-analytics`).set('Authorization', as('rival'))).status,
     ).toBe(404);
     expect(
-      (await request(app).get(`/v1/apps/${other.appId}/help-analytics`).set('Authorization', as('alice')))
+      (await request(app).get(`/v1/apps/${other.appId}/help-analytics`).set('Authorization', as('owner')))
         .status,
     ).toBe(404);
   });
