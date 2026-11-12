@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 480" width="880" height="480" role="img" aria-label="Host site and Studio both call the backend; the backend uses Postgres and verifies tokens with Keycloak">
+<style>
+text{font-family:-apple-system,"Segoe UI",Helvetica,Arial,sans-serif;fill:#15212c}
+.m{fill:#566573}.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12.5px}
+.a{fill:#0d6a86}.g{fill:#9a6a06}
+.box{fill:#fff;stroke:#cfd8e0;stroke-width:1.5}.sunk{fill:#eef2f5;stroke:#cfd8e0;stroke-width:1.5}
+.acc{fill:#dcecf2;stroke:#0d6a86;stroke-width:1.5}.gd{fill:#fbefd2;stroke:#c98a0b;stroke-width:1.5}
+.ar{stroke:#566573;stroke-width:1.6;fill:none}.ara{stroke:#0d6a86;stroke-width:1.8;fill:none}.dash{stroke-dasharray:5 5}
+.h{fill:#566573}.ha{fill:#0d6a86}
+</style>
+<defs>
+<marker id="m" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="h"/></marker>
+<marker id="ma" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="ha"/></marker>
+</defs>
+<rect width="880" height="480" fill="#f7f9fb"/>
+<rect x="20" y="20" width="360" height="124" rx="10" class="box"/>
+<text x="40" y="50" font-weight="600" font-size="16">Host site</text>
+<text x="40" y="72" class="m" font-size="13">WISE staff console, OPAC, any web app</text>
+<rect x="40" y="88" width="320" height="40" rx="7" class="gd"/>
+<text x="56" y="113" class="mono">snippet → guides.js (agent + core)</text>
+<rect x="500" y="20" width="360" height="124" rx="10" class="box"/>
+<text x="520" y="50" font-weight="600" font-size="16">Studio</text>
+<text x="520" y="72" class="m" font-size="13">Angular SPA served by nginx</text>
+<rect x="520" y="88" width="320" height="40" rx="7" class="sunk"/>
+<text x="536" y="113" class="mono">/api/* proxied to the backend</text>
+<rect x="120" y="214" width="640" height="150" rx="10" class="acc"/>
+<text x="140" y="244" font-weight="600" font-size="16">Backend · Express, Node 22</text>
+<text x="140" y="276" class="mono a">/agent/v1/&lt;key&gt;/guides.js</text><text x="430" y="276" class="m" font-size="13">agent bundle, 5-min cache + ETag</text>
+<text x="140" y="302" class="mono a">/v1/agent/&lt;key&gt;/…</text><text x="430" y="302" class="m" font-size="13">active guides, events, visitor state</text>
+<text x="140" y="328" class="mono a">/v1/…</text><text x="430" y="328" class="m" font-size="13">Studio API: orgs, apps, guides, releases</text>
+<text x="140" y="352" class="mono m" font-size="12">/auth/config · /health · /ready · /metrics</text>
+<rect x="120" y="408" width="300" height="56" rx="10" class="sunk"/>
+<text x="140" y="434" font-weight="600" font-size="15">PostgreSQL 16</text>
+<text x="140" y="453" class="m" font-size="12.5">guide_engine database, RLS</text>
+<rect x="460" y="408" width="300" height="56" rx="10" class="sunk"/>
+<text x="480" y="434" font-weight="600" font-size="15">Keycloak</text>
+<text x="480" y="453" class="m" font-size="12.5">OIDC for authors, its own database</text>
+<path d="M200 144 L250 212" class="ara" marker-end="url(#ma)"/>
+<text x="40" y="186" class="a" font-size="12.5">public app key · CORS by website</text>
+<path d="M680 144 L630 212" class="ar" marker-end="url(#m)"/>
+<text x="662" y="186" class="m" font-size="12.5">OIDC bearer token</text>
+<path d="M270 364 L270 406" class="ar" marker-end="url(#m)"/>
+<text x="282" y="391" class="m" font-size="12">session variables → RLS</text>
+<path d="M610 364 L610 406" class="ar" marker-end="url(#m)"/>
+<text x="622" y="391" class="m" font-size="12">verifies tokens (JWKS)</text>
+<path d="M860 144 L860 436 L762 436" class="ar dash" marker-end="url(#m)"/>
+<text x="852" y="300" class="m" font-size="12" text-anchor="end" transform="rotate(-90 852 300)">authors sign in</text>
+</svg>

@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 150" width="880" height="150" role="img" aria-label="Request, then role checks, then session variables, then row-level security">
+<style>
+text{font-family:-apple-system,"Segoe UI",Helvetica,Arial,sans-serif;fill:#15212c}
+.m{fill:#566573}.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12.5px}
+.a{fill:#0d6a86}.g{fill:#9a6a06}
+.box{fill:#fff;stroke:#cfd8e0;stroke-width:1.5}.sunk{fill:#eef2f5;stroke:#cfd8e0;stroke-width:1.5}
+.acc{fill:#dcecf2;stroke:#0d6a86;stroke-width:1.5}.gd{fill:#fbefd2;stroke:#c98a0b;stroke-width:1.5}
+.ar{stroke:#566573;stroke-width:1.6;fill:none}.ara{stroke:#0d6a86;stroke-width:1.8;fill:none}.dash{stroke-dasharray:5 5}
+.h{fill:#566573}.ha{fill:#0d6a86}
+</style>
+<defs>
+<marker id="m" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="h"/></marker>
+<marker id="ma" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="ha"/></marker>
+</defs>
+<rect width="880" height="150" fill="#f7f9fb"/>
+<rect x="10" y="30" width="190" height="90" rx="10" class="sunk"/>
+<text x="26" y="62" font-weight="600" font-size="14">Request</text>
+<text x="26" y="84" class="m" font-size="12.5">OIDC token or</text>
+<text x="26" y="102" class="m" font-size="12.5">public app key</text>
+<rect x="236" y="30" width="190" height="90" rx="10" class="box"/>
+<text x="252" y="62" font-weight="600" font-size="14">1 · App layer</text>
+<text x="252" y="84" class="mono" font-size="11.5">requireOrgRole</text>
+<text x="252" y="102" class="m" font-size="12.5">unknown → 404, role → 403</text>
+<rect x="462" y="30" width="190" height="90" rx="10" class="box"/>
+<text x="478" y="62" font-weight="600" font-size="14">Session helper</text>
+<text x="478" y="84" class="mono" font-size="11.5">db.ts with*Session</text>
+<text x="478" y="102" class="m" font-size="12.5">sets session variables</text>
+<rect x="688" y="30" width="182" height="90" rx="10" class="acc"/>
+<text x="704" y="62" font-weight="600" font-size="14">2 · Postgres RLS</text>
+<text x="704" y="84" class="m" font-size="12.5">policies read only</text>
+<text x="704" y="102" class="m" font-size="12.5">those variables</text>
+<path d="M200 75 L234 75" class="ar" marker-end="url(#m)"/>
+<path d="M426 75 L460 75" class="ar" marker-end="url(#m)"/>
+<path d="M652 75 L686 75" class="ar" marker-end="url(#m)"/>
+</svg>

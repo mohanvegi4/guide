@@ -34,6 +34,9 @@ an **organization** owns any number of **applications**, and everyone in it has 
 
 **Engineers running, extending or reviewing Guide Engine**
 
+- [Architecture overview](architecture-overview.md): the whole system on one page with
+  diagrams: the pieces, the folder layout, the data model, isolation, release stages, the install
+  snippet and deployment.
 - [How Guide Engine is built](architecture.md): the whole system part by part, from the boot
   sequence and row-level security to the browser engine, with a who-can-do-what matrix, the
   audience-targeting model and a list of known gaps.

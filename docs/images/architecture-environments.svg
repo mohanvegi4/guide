@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 170" width="880" height="170" role="img" aria-label="Publish releases to the first environment, then promote stage by stage to production">
+<style>
+text{font-family:-apple-system,"Segoe UI",Helvetica,Arial,sans-serif;fill:#15212c}
+.m{fill:#566573}.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12.5px}
+.a{fill:#0d6a86}.g{fill:#9a6a06}
+.box{fill:#fff;stroke:#cfd8e0;stroke-width:1.5}.sunk{fill:#eef2f5;stroke:#cfd8e0;stroke-width:1.5}
+.acc{fill:#dcecf2;stroke:#0d6a86;stroke-width:1.5}.gd{fill:#fbefd2;stroke:#c98a0b;stroke-width:1.5}
+.ar{stroke:#566573;stroke-width:1.6;fill:none}.ara{stroke:#0d6a86;stroke-width:1.8;fill:none}.dash{stroke-dasharray:5 5}
+.h{fill:#566573}.ha{fill:#0d6a86}
+</style>
+<defs>
+<marker id="m" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="h"/></marker>
+<marker id="ma" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="ha"/></marker>
+</defs>
+<rect width="880" height="170" fill="#f7f9fb"/>
+<text x="20" y="28" class="g" font-weight="600" font-size="13">Publish</text>
+<path d="M70 34 L100 64" class="ara" marker-end="url(#ma)"/>
+<rect x="20" y="70" width="180" height="76" rx="10" class="box"/>
+<text x="38" y="100" font-weight="600" font-size="15">Dev</text>
+<text x="38" y="124" class="m" font-size="12.5">own websites, own analytics</text>
+<rect x="240" y="70" width="180" height="76" rx="10" class="box"/>
+<text x="258" y="100" font-weight="600" font-size="15">Test</text>
+<text x="258" y="124" class="m" font-size="12.5">own websites, own analytics</text>
+<rect x="460" y="70" width="180" height="76" rx="10" class="box"/>
+<text x="478" y="100" font-weight="600" font-size="15">Accept</text>
+<text x="478" y="124" class="m" font-size="12.5">own websites, own analytics</text>
+<rect x="680" y="70" width="180" height="76" rx="10" class="gd"/>
+<text x="698" y="100" font-weight="600" font-size="15">Production</text>
+<text x="698" y="124" class="m" font-size="12.5">what end users see</text>
+<path d="M200 108 L238 108" class="ara" marker-end="url(#ma)"/>
+<path d="M420 108 L458 108" class="ara" marker-end="url(#ma)"/>
+<path d="M640 108 L678 108" class="ara" marker-end="url(#ma)"/>
+<text x="219" y="98" class="a" font-size="11" text-anchor="middle">promote</text>
+<text x="439" y="98" class="a" font-size="11" text-anchor="middle">promote</text>
+<text x="659" y="98" class="a" font-size="11" text-anchor="middle">promote</text>
+</svg>
