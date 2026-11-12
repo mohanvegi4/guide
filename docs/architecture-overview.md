@@ -188,3 +188,18 @@ Prometheus and Alertmanager with the rules in `deploy/monitoring/`. Operating it
   throws into the host page.
 - The app key is public; real identity comes from the visitor ids the page passes, or a
   server-signed JWT when the app requires it.
+
+## Read more
+
+| Page | For |
+|---|---|
+| [Getting started](../README.md) | Running it locally, the repository, tests, known gaps |
+| [Installing Guide Engine](install.md) | The snippet, `data-guide-id`, signed identity, how a guide is chosen, the help center |
+| [Studio reference](../apps/studio/README.md) | Roles, authoring, environments and releases, saved pages, analytics |
+| [Identity, roles and security](security.md) | Sign-in, protections, keys, your data, platform admins and support access |
+| [Configuration and API reference](reference.md) | Every setting and endpoint, migrations |
+| [Deploying and operating](operations.md) | First install, go-live checklist, everyday tasks, backups, monitoring, troubleshooting |
+| [DevOps handoff](handoff-devops.md) | The first deployment: servers, decisions, settings, go-live steps |
+| [How Guide Engine is built](architecture.md) | The full walk-through: every RLS policy, who can do what, known gaps |
+| [Signed identity](integration/signed-identity.md) | The token contract for the backend that signs visitor identities |
+| [WISE integration](wise/index.md) | Guide Engine in the WISE staff console and the OPAC |
