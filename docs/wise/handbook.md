@@ -22,7 +22,6 @@ very short DevOps guide; the full one is the [DevOps quick guide](../devops.md).
 | ↳ `packages/backend` | Express + Postgres API: Studio API, public agent API, migrations, operator scripts | in the monorepo | |
 | ↳ `packages/core` | The browser engine: guide selection, step rendering, help widget (npm `@guide-engine/core`) | in the monorepo | |
 | ↳ `packages/agent` | The install-snippet script, served at `/agent/v1/<key>/guides.js` | in the monorepo | |
-| ↳ `packages/angular-wrapper`, `packages/vue-wrapper` | Optional npm alternatives to the snippet (`@guide-engine/angular`, `/vue`) | in the monorepo | |
 | ↳ `apps/studio` | The authoring Studio (Angular) | in the monorepo | |
 | ↳ `apps/demo` | A plain page that installs the snippet, for local testing | in the monorepo | |
 | ↳ `e2e` | Playwright smoke test | in the monorepo | |

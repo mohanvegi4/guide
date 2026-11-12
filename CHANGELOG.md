@@ -1,7 +1,8 @@
 # Changelog
 
-All notable changes to the public npm packages (`@guide-engine/core`, `@guide-engine/angular`,
-`@guide-engine/vue`) are documented here. The three packages share one version.
+All notable changes to the public npm package `@guide-engine/core` are documented here. Up to
+0.3.0 the Angular and Vue wrappers (`@guide-engine/angular`, `@guide-engine/vue`) shared its
+version; they were removed before ever being published.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). How a release is cut is in
@@ -11,6 +12,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). How a rel
 
 ### Removed
 
+- The Angular and Vue wrappers (`@guide-engine/angular`, `@guide-engine/vue`). Nothing used them
+  and they were never published; use the install snippet, or `@guide-engine/core` directly.
 - The guide and step `type` (core): `GuideType`, `Guide.type` and `Step.type` are gone. The type
   never changed how anything looked; every step is the same card, next to its anchor or centered.
   Walkthroughs still show before single tips: any guide with more than one step counts as one.

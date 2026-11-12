@@ -24,7 +24,7 @@ jobs:
     name: Publish to npm
     runs-on: ubuntu-latest
     env:
-      PACKAGES: packages/core packages/angular-wrapper packages/vue-wrapper
+      PACKAGES: packages/core
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -39,13 +39,13 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Test the public packages
+      - name: Test the public package
         run: |
           for dir in $PACKAGES; do
             npm test --workspace="$dir" --if-present
           done
 
-      - name: Verify the tag matches the package versions
+      - name: Verify the tag matches the package version
         id: version
         run: |
           tag="${GITHUB_REF_NAME#v}"
@@ -58,7 +58,7 @@ jobs:
           done
           echo "version=$tag" >> "$GITHUB_OUTPUT"
 
-      - name: Publish (core first, then the wrappers that depend on it)
+      - name: Publish
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |

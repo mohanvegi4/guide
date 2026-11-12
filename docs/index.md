@@ -18,8 +18,8 @@ an **organization** owns any number of **applications**, and everyone in it has 
 **Product and engineering teams installing Guide Engine on a site**
 
 - [Installing Guide Engine on a website](reference/README.md#installing-guide-engine-on-a-website):
-  the snippet, tagging elements, signed identity, and the npm packages for Angular, Vue or
-  plain TypeScript.
+  the snippet, tagging elements, signed identity, and the npm package for bundled
+  apps.
 - [How a guide is chosen and shown](reference/README.md#how-a-guide-is-chosen-and-shown): what the
   agent sends and when, route matching, fail-closed behaviour and error reporting.
 - [Agent API](reference/README.md#agent-api-public-app-key-cors-for-the-apps-websites) and

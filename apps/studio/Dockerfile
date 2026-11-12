@@ -12,8 +12,6 @@ COPY package.json package-lock.json ./
 COPY packages/core/package.json packages/core/
 COPY packages/agent/package.json packages/agent/
 COPY packages/backend/package.json packages/backend/
-COPY packages/angular-wrapper/package.json packages/angular-wrapper/
-COPY packages/vue-wrapper/package.json packages/vue-wrapper/
 COPY apps/studio/package.json apps/studio/
 COPY apps/demo/package.json apps/demo/
 RUN npm ci --no-audit --no-fund

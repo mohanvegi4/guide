@@ -1,9 +1,8 @@
 #!/usr/bin/env node
-// Sets the version of the three public npm packages (@guide-engine/core, /angular, /vue) in one
-// go, and points the wrappers' @guide-engine/core peer range at the same version, so a release is
-// one command (`npm run version:set 0.2.0`) and the packages can never drift apart. Then it
-// refreshes package-lock.json, because `npm ci` in the release workflow refuses a lock whose
-// workspace entries disagree with package.json. Dependency-free on purpose.
+// Sets the version of the public npm package (@guide-engine/core) and of the agent built from it
+// in one go, so a release is one command (`npm run version:set 0.2.0`) and they can never drift
+// apart. Then it refreshes package-lock.json, because `npm ci` refuses a lock whose workspace
+// entries disagree with package.json. Dependency-free on purpose.
 import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -12,8 +11,8 @@ import { fileURLToPath } from 'node:url';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const CORE = '@guide-engine/core';
 // The agent bundle is private but reports its version (banner, guideEngine.version, error
-// reports), so it follows the same number as the packages it is built from.
-const PACKAGES = ['packages/core', 'packages/angular-wrapper', 'packages/vue-wrapper', 'packages/agent'];
+// reports), so it follows the same number as the core it is built from.
+const PACKAGES = ['packages/core', 'packages/agent'];
 const DEPENDENCY_FIELDS = ['dependencies', 'peerDependencies', 'devDependencies', 'optionalDependencies'];
 
 const [version, ...rest] = process.argv.slice(2);

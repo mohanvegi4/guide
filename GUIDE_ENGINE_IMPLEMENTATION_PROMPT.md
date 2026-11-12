@@ -4,6 +4,8 @@ Copy everything below into your LLM/agent session (e.g. Claude Code) along with 
 
 **If running in Claude Code**: this repo includes a `CLAUDE.md` at its root with the same design decisions and conventions repeated in Claude Code's expected format — it will be picked up automatically. This prompt is the fuller task list; `CLAUDE.md` is the always-on reference. Keep them in sync if either changes.
 
+**Since then:** the original prompt also listed Angular and Vue wrappers (`packages/angular-wrapper`, `packages/vue-wrapper`). They were removed in November 2026, unused and never published. Host apps install Guide Engine through the install snippet (`packages/agent`), or use `@guide-engine/core` directly.
+
 ---
 
 ## Role & Objective
@@ -16,18 +18,17 @@ Work incrementally: implement one numbered task at a time, run builds/tests afte
 
 ## System Overview
 
-Four components:
+Three components:
 1. **Runtime SDK** (`packages/core`) — framework-agnostic TS engine + DOM renderer, embedded in the product
-2. **Framework wrappers** (`packages/angular-wrapper`, `packages/vue-wrapper`) — thin adapters exposing the engine idiomatically to each framework
-3. **Backend** (`packages/backend`) — Express + Postgres API: guide CRUD, publish/rollback, flag toggles, event ingestion
-4. **Authoring Studio** — admin UI for creating/editing/publishing guides (not yet built — this is a primary task below)
+2. **Backend** (`packages/backend`) — Express + Postgres API: guide CRUD, publish/rollback, flag toggles, event ingestion
+3. **Authoring Studio** — admin UI for creating/editing/publishing guides (not yet built — this is a primary task below)
 
 ## Core Design Decisions (do not relitigate these — they were made deliberately)
 
 - **Multi-tenant**: every guide belongs to a tenant, or is `is_global` (visible to all tenants). Tenant isolation is enforced twice — application-level (`WHERE tenant_id = ...` on every query) and database-level (Postgres Row-Level Security policies keyed on a `current_setting('app.current_tenant_id')` session variable). Never trust a client-supplied tenant id; it must come from the authenticated session only.
 - **Flag-driven enablement, not segment targeting**: the primary control is a boolean `enabled` flag per guide, plus a global kill switch and a per-tenant kill switch. Audience/segment rules (by user attribute) are explicitly deferred — do not build them unless a task below asks for it.
 - **No external analytics integration**: guide events (`guide_shown`, `guide_step_viewed`, etc.) are stored in the engine's own Postgres tables. There is no webhook/export requirement.
-- **Selector convention**: guides target elements via `data-guide-id="..."` attributes (set by framework directives), not raw CSS classes — this is intentional for resilience against markup refactors.
+- **Selector convention**: guides target elements via `data-guide-id="..."` attributes (written into the host app's markup), not raw CSS classes — this is intentional for resilience against markup refactors.
 - **Fail closed, fail silent**: if the backend is unreachable or a kill switch check fails, the SDK disables itself rather than risk showing something unverified, and never throws into or blocks the host app.
 - **Scale is intentionally unoptimized for v1**: single Postgres instance, no message queue, no analytics warehouse. Do not introduce Kafka/Kinesis/Redis/etc. unless a task explicitly calls for it — resist over-engineering.
 
@@ -35,12 +36,10 @@ Four components:
 
 ## Current State of the Starter Repo (read `README.md` in the zip for full detail)
 
-**Implemented and type-checks clean (`tsc` passes for all 4 packages):**
+**Implemented and type-checks clean (`tsc` passes for every package):**
 - `packages/core`: `GuideEngine` state machine (matching → showing → step progression → completed/dismissed/error), route re-evaluation on SPA navigation, target-not-found retry with backoff, batched fire-and-forget event queue, a default Shadow-DOM renderer
 - `packages/backend`: Express routes for guide CRUD, `/guides/:id/publish`, `/guides/:id/rollback/:version`, `PATCH /guides/:id/flag`, `GET /guides/active`, `POST /events` (batched via `UNNEST`), `GET /system/flag` (global + tenant kill switch)
 - `packages/backend/migrations/001_init.sql`: full multi-tenant schema with RLS policies, an `active_guide` view, and appropriate indexes
-- `packages/angular-wrapper`: `GuideService` (hooks `Router` `NavigationEnd`), `GuideAnchorDirective` (`[guideAnchor]="'id'"` → `data-guide-id`)
-- `packages/vue-wrapper`: `GuidePlugin` (hooks `vue-router` `afterEach`), `vGuideAnchor` directive, `useGuideEngine()` composable
 
 **Explicitly stubbed — these are your first tasks:**
 - `packages/backend/src/middleware/tenant.ts`: `verifyAndDecodeToken()` throws by default; only a `GUIDE_ENGINE_DEV_AUTH=true` dev bypass exists (parses `tenantId:userId` from the bearer token — insecure, dev-only)

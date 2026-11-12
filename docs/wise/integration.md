@@ -230,7 +230,7 @@ side has.
 3. ☐ `deploy/render-realm.sh` for the production Keycloak realm (no demo users, brute-force protection);
    create the first Studio user and the first platform admin (`UPDATE studio_user SET platform_admin`).
 4. ☐ **(you)** Add the `NPM_TOKEN` repository secret, then `git tag v0.3.0 && git push origin main v0.3.0`
-   (publishes `@guide-engine/core` and the wrappers; the agent script itself is served by the backend).
+   (publishes `@guide-engine/core`; the agent script itself is served by the backend).
 5. ☐ Rehearse `deploy/restore.sh` once on a scratch host; set `BACKUP_COPY_CMD` for off-host copies.
 6. ☐ Point Alertmanager at a real receiver and watch the rules for a week; adjust thresholds.
 7. ☐ Run the Playwright smoke test against the deployed stack (`STUDIO_URL`, `API_URL`,

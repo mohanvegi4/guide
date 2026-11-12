@@ -170,8 +170,6 @@ packages/
   core/              the engine, DOM renderer and help widget (framework-agnostic TypeScript)
   agent/             the install-snippet agent: core bundled into one IIFE file
   backend/           Express + Postgres: Studio API, agent API, migrations, operator scripts
-  angular-wrapper/   @guide-engine/angular: optional npm alternative to the snippet
-  vue-wrapper/       @guide-engine/vue: optional npm alternative to the snippet
 apps/
   studio/            the authoring Studio (Angular 21, zoneless)
   demo/              a plain Vite page that installs Guide Engine through the snippet
@@ -184,14 +182,13 @@ docs/                this site
 It is an npm workspaces monorepo. `npm run build` builds `packages/core` first, then every
 workspace. TypeScript runs in strict mode everywhere from `tsconfig.base.json` (ES2020, CommonJS).
 
-**How core is consumed.** The agent and the wrappers take core in different ways, which matters
+**How core is consumed.** The agent takes core in two ways, which matters
 when you change core:
 
 | Consumer | How it gets core |
 |---|---|
 | Agent typecheck and tests | TypeScript `paths` and a vitest alias to `packages/core/src` |
 | Agent bundle | esbuild `alias` to `packages/core/src`; core is inlined into the IIFE |
-| Angular and Vue wrappers | the workspace symlink to `packages/core/dist` (CommonJS), so core must be built first |
 | Demo | nothing; it uses the snippet only |
 
 **The agent bundle.** `packages/agent/build.mjs` runs esbuild with `bundle`, `minify`,
@@ -220,7 +217,7 @@ about 10 KB gzipped. It is a build artefact and is not committed; the backend im
 | studio | Angular unit-test builder (vitest) | 45 |
 | e2e | Playwright, Chromium, against Keycloak + backend + Studio | 1 end-to-end flow |
 
-The wrappers and the demo have no tests.
+The demo has no tests.
 
 ---
 
@@ -852,11 +849,6 @@ waits for it. When `guides.js` runs ([`agent/src/index.ts`](../packages/agent/sr
 
 Every public method is wrapped in try/catch. A second `initialize` acts as `identify`.
 
-The npm wrappers do the same wiring without the snippet: the Angular `GuideService` follows the
-router's `NavigationEnd`, the Vue plugin uses `router.afterEach`. Both expose a directive that
-writes `data-guide-id`. The Angular package is compiled with plain `tsc`, so AOT apps should copy
-its source or use the snippet.
-
 ### 10.2 Starting up
 
 `GuideEngine.init()` ([`engine.ts`](../packages/core/src/engine.ts)) never rejects. In order:
@@ -1392,8 +1384,6 @@ Things that are true of the code today and worth knowing before you rely on or c
 - `guide_event` is not partitioned; very large volumes would need it.
 - Forgetting a visitor is a hard delete; there is no anonymization path, and `user_guide_state` is
   never aged out.
-- The Angular wrapper is not built with ng-packagr, so AOT apps must copy its source or use the
-  snippet.
 
 ---
 

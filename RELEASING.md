@@ -1,15 +1,10 @@
-# Releasing the npm packages
+# Releasing the npm package
 
-Three packages are public on npm; everything else in the monorepo is `private`:
+One package is public on npm, `@guide-engine/core` (`packages/core`); everything else in the
+monorepo is `private`.
 
-| Package | Directory |
-|---|---|
-| `@guide-engine/core` | `packages/core` |
-| `@guide-engine/angular` | `packages/angular-wrapper` |
-| `@guide-engine/vue` | `packages/vue-wrapper` |
-
-They are released together, always at the same version: a pushed tag `vX.Y.Z` runs
-[`.github/workflows/release.yml`](.github/workflows/release.yml), which publishes them and creates
+A pushed tag `vX.Y.Z` runs
+[`.github/workflows/release.yml`](.github/workflows/release.yml), which publishes it and creates
 the GitHub Release. The agent, backend and Studio are not versioned by this process (they deploy
 as Docker images from `ci.yml`).
 
@@ -27,7 +22,7 @@ as Docker images from `ci.yml`).
 
 ```sh
 git checkout main && git pull
-npm run version:set 0.2.0          # sets the three package versions + the wrappers' core range, refreshes the lock
+npm run version:set 0.2.0          # sets the core and agent versions, refreshes the lock
 #   add a "## [0.2.0] - YYYY-MM-DD" section to CHANGELOG.md (move the Unreleased notes under it)
 git add -A && git commit -m "Release 0.2.0"
 git tag v0.2.0
@@ -37,18 +32,18 @@ git push origin main v0.2.0
 Then watch the **Release** workflow on GitHub.
 
 Before tagging, you can check what would be shipped: `npm run build`, then
-`npm pack --dry-run --workspace=packages/core` (and the two wrappers) lists the tarball contents;
+`npm pack --dry-run --workspace=packages/core` lists the tarball contents;
 only `dist/`, `README.md`, `LICENSE` and `package.json` should appear.
 
 ## What the workflow does
 
-1. `npm ci`, `npm run build`, and the tests of the three packages (`npm test --if-present`).
-2. **Verifies the tag:** every package's `version` must equal the tag without its `v`. A mismatch
+1. `npm ci`, `npm run build`, and the core tests (`npm test --if-present`).
+2. **Verifies the tag:** the package `version` must equal the tag without its `v`. A mismatch
    fails the run before anything is published.
-3. **Publishes** `@guide-engine/core` first, then the two wrappers, each with
-   `npm publish --workspace=<dir> --provenance --access public`. A package whose version is
-   already on the registry is skipped (`npm view <name>@<version> version`), so re-running the
-   workflow after a partial failure publishes only what is missing.
+3. **Publishes** `@guide-engine/core` with
+ `npm publish --workspace=<dir> --provenance --access public`. If that version is
+   already on the registry it is skipped (`npm view <name>@<version> version`), so the workflow
+   can be re-run safely.
 4. **Creates the GitHub Release** for the tag with auto-generated notes (skipped if it exists).
 
 Re-run a failed workflow from the Actions tab; nothing needs to be deleted first.
@@ -59,7 +54,7 @@ npm versions are immutable, and a version that was once published can never be p
 so a fix is always a **new patch version** (`npm run version:set 0.2.1`, tag `v0.2.1`).
 
 - **Deprecate** the bad version so installs warn about it:
-  `npm deprecate @guide-engine/core@0.2.0 "Broken, use 0.2.1"` (and the wrappers).
+  `npm deprecate @guide-engine/core@0.2.0 "Broken, use 0.2.1"`.
   Deprecation can be undone with an empty message.
 - **Unpublish only within 72 hours** of publishing, and only when no other package depends on
   it (`npm unpublish @guide-engine/core@0.2.0`). Never unpublish after 72 hours: npm refuses,
@@ -71,15 +66,13 @@ so a fix is always a **new patch version** (`npm run version:set 0.2.1`, tag `v0
 
 If `guide-engine` is not available on npm, pick another scope (say `@oclc-guides`) and change:
 
-- the `name` in `packages/core/package.json`, `packages/angular-wrapper/package.json` and
-  `packages/vue-wrapper/package.json`, plus the `@guide-engine/core` entry in the wrappers'
-  `peerDependencies` (and in `scripts/set-version.mjs`, the `CORE` constant);
-- the imports of `@guide-engine/core` in `packages/angular-wrapper/src/guide.service.ts`,
-  `packages/vue-wrapper/src/plugin.ts`, the alias in `packages/agent/build.mjs`,
+- the `name` in `packages/core/package.json` (and in `scripts/set-version.mjs`, the `CORE`
+  constant);
+- the alias for `@guide-engine/core` in `packages/agent/build.mjs`,
   `packages/agent/tsconfig.json` and `packages/agent/vitest.config.mts`;
-- the package names in the READMEs (root "Alternative: npm packages", the three package READMEs)
+- the package names in the READMEs (root "Alternative: the npm package", `packages/core/README.md`)
   and `CHANGELOG.md`.
 
 The private packages (`@guide-engine/backend`, `/agent`, `/studio`, `/demo`) are never published,
 so their names can stay. The agent's browser global stays `window.guideEngine` whatever the scope
-is called: it is part of the install snippet, not of the npm packages.
+is called: it is part of the install snippet, not of the npm package.

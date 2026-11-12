@@ -105,8 +105,6 @@ packages/
   core/              @guide-engine/core: engine (matching, retries, events, preview) + Shadow-DOM renderer
   agent/             the install-snippet agent: one ~10 KB IIFE served at /agent/v1/<key>/guides.js
   backend/           @guide-engine/backend: Express + Postgres — Studio API, agent API, migrations, scripts
-  angular-wrapper/   @guide-engine/angular: optional npm alternative to the snippet ([guideAnchor] directive)
-  vue-wrapper/       @guide-engine/vue: optional npm alternative to the snippet (v-guide-anchor directive)
 apps/
   studio/            Guide Studio (Angular 21) — see apps/studio/README.md
   demo/              a plain host page that installs Guide Engine via the snippet (no SDK import)
@@ -269,33 +267,18 @@ The full contract for your backend team — claims, algorithm, the endpoint patt
 example, rotation and acceptance checks — is in
 [docs/integration/signed-identity.md](docs/integration/signed-identity.md).
 
-### Alternative: npm packages
+### Alternative: the npm package
 
-For bundled apps that prefer a dependency over a script tag, three packages are published to
-npm, always together at one version (currently **0.3.0**; see [CHANGELOG.md](CHANGELOG.md)):
-
-| Package | For |
-|---|---|
-| [`@guide-engine/core`](packages/core/README.md) | any framework: the engine, DOM renderer and help center |
-| [`@guide-engine/angular`](packages/angular-wrapper/README.md) | Angular 17–21: `GuideService`, `GuideAnchorDirective`, `GuideModule` |
-| [`@guide-engine/vue`](packages/vue-wrapper/README.md) | Vue 3: `GuidePlugin`, `useGuideEngine()`, `vGuideAnchor` |
+For bundled apps that prefer a dependency over a script tag, the engine is published to npm as
+[`@guide-engine/core`](packages/core/README.md) (currently **0.3.0**; see
+[CHANGELOG.md](CHANGELOG.md)). It works with any framework: wire it to your router and your
+elements yourself.
 
 ```sh
-npm install @guide-engine/core            # plus @guide-engine/angular or @guide-engine/vue
+npm install @guide-engine/core
 ```
 
 ```ts
-// Angular
-import { GuideService, GuideAnchorDirective } from '@guide-engine/angular';
-inject(GuideService).init({ apiBaseUrl: 'https://guides.example.com', appKey: 'ge_pk_…', visitor: { id } });
-// template: <button [guideAnchor]="'invite-button'">…</button>
-
-// Vue 3
-import { GuidePlugin, vGuideAnchor } from '@guide-engine/vue';
-app.use(GuidePlugin, { router, apiBaseUrl: 'https://guides.example.com', appKey: 'ge_pk_…', visitor: { id } });
-app.directive('guide-anchor', vGuideAnchor);   // <button v-guide-anchor="'invite-button'">
-
-// Anything else
 import { GuideEngine, createDomRenderer } from '@guide-engine/core';
 const engine = new GuideEngine();
 void engine.init({ apiBaseUrl, appKey, visitor, account, jwt },
@@ -308,21 +291,12 @@ void engine.init({ apiBaseUrl, appKey, visitor, account, jwt },
 // engine.identify(...) after login
 ```
 
-`provideAppInitializer` needs Angular 19+. On older versions, call `init` from an
-`APP_INITIALIZER` or the root component's `ngOnInit`. The packages build to CommonJS; Angular
-CLI may ask you to list `@guide-engine/core` in `allowedCommonJsDependencies`.
+The package builds to CommonJS; Angular CLI may ask you to list `@guide-engine/core` in
+`allowedCommonJsDependencies`.
 
-**Angular packaging limitation.** `@guide-engine/angular` is compiled with plain `tsc`, not
-ng-packagr, so it carries no Ivy partial-compilation metadata and Angular's AOT compiler (the
-default build) can't compile its service and directive from the published output. Either copy
-the three files of [`packages/angular-wrapper/src`](packages/angular-wrapper/src) into your app
-and let its compiler build them (recommended, they're about 100 lines over `@guide-engine/core`),
-or add `import '@angular/compiler'` to `main.ts` for JIT. Details in the
-[package README](packages/angular-wrapper/README.md#packaging-limitation).
-
-**Releasing.** A pushed tag `vX.Y.Z` publishes the three packages and creates the GitHub Release
+**Releasing.** A pushed tag `vX.Y.Z` publishes `@guide-engine/core` and creates the GitHub Release
 ([`.github/workflows/release.yml`](.github/workflows/release.yml)); `npm run version:set X.Y.Z`
-bumps them together. See [RELEASING.md](RELEASING.md).
+bumps it. See [RELEASING.md](RELEASING.md).
 
 ---
 

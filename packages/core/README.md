@@ -3,8 +3,8 @@
 The framework-agnostic engine behind [Guide Engine](https://github.com/mohanvegi4/guide), a
 lightweight in-app guide product (tooltips, tours, modals, banners, a help center). This package
 holds the state machine, the transport to the Guide Engine backend, the DOM renderer and the help
-widget. The Angular and Vue wrappers (`@guide-engine/angular`, `@guide-engine/vue`) and the
-install snippet sit on top of it.
+widget.
+The install snippet is built on it.
 
 Most websites don't need this package: paste the **install snippet** from the Studio into your
 `<head>` instead. Use the npm package when you bundle your app and prefer a dependency over a

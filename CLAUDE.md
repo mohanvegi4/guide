@@ -18,14 +18,20 @@ packages/
   core/              framework-agnostic engine (state machine, transport, DOM renderer)
   agent/             the install-snippet agent: IIFE bundle served at /agent/v1/<key>/guides.js
   backend/           Express + Postgres API (Studio API + public agent API)
-  angular-wrapper/   @guide-engine/angular (optional npm alternative to the snippet)
-  vue-wrapper/       @guide-engine/vue (optional npm alternative to the snippet)
 apps/
   studio/            Authoring Studio (Angular 21)
   demo/              a plain host page that installs Guide Engine via the snippet
 ```
 This is an npm workspaces monorepo. Run commands from the repo root unless a
 task is scoped to one package (`npm run build --workspace=packages/backend`).
+
+Host apps install Guide Engine through the install snippet (`packages/agent`); the only public npm
+package is `@guide-engine/core`. There are no framework wrappers.
+
+This repository is GitHub `mohanvegi4/guide`, branch `main`: GitHub Actions runs CI (build,
+tests, end-to-end, images to ghcr.io), the npm release and the docs site (GitHub Pages, built by
+`scripts/build-docs.mjs`). The OCLC Bitbucket copy, `~vegim/guide-engine`, is a separate
+repository and is not kept in sync with this one.
 
 ## Non-negotiable design decisions
 Do not relitigate or "improve" these without being asked. They were chosen
