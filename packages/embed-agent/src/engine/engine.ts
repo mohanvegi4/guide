@@ -1,6 +1,6 @@
 /**
  * Guide Runtime SDK — Core Engine
- * Framework-agnostic. The install-snippet agent (packages/agent) sits on top of
+ * Framework-agnostic. The install-snippet agent (packages/embed-agent) sits on top of
  * this and only handles: (1) calling init()
  * at startup, (2) calling onRouteChange() on navigation, (3) identify() after
  * login. Rendering is injected — this file owns state, not DOM painting.

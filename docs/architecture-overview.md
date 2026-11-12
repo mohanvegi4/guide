@@ -17,7 +17,7 @@ page asks the **backend** which guides apply and shows them.
 
 | Piece | Where | What it does |
 |---|---|---|
-| Agent | `packages/agent` | The browser side: the framework-agnostic engine (`src/engine`: picks guides, follows navigation, draws cards in a Shadow DOM, runs the help center) and the snippet runtime, bundled into one IIFE served as `guides.js`. Nothing is published to npm. |
+| Agent | `packages/embed-agent` | The browser side: the framework-agnostic engine (`src/engine`: picks guides, follows navigation, draws cards in a Shadow DOM, runs the help center) and the snippet runtime, bundled into one IIFE served as `guides.js`. Nothing is published to npm. |
 | Backend | `apps/backend` | Express on Node 22: the public agent API, the Studio API, auth, releases, analytics, operator scripts. |
 | Studio | `apps/studio` | Angular 21 authoring app behind nginx: guides, saved pages, environments, members, analytics. |
 | Database | PostgreSQL 16 | The only store. Row-level security on every tenant table; rate limits and retention live here too. |
@@ -44,7 +44,7 @@ runs in strict mode everywhere from `tsconfig.base.json`.
 
 ```text
 packages/
-  agent/                 the browser side, bundled into guides.js
+  embed-agent/           the browser side, bundled into guides.js
     src/engine/engine.ts         state machine: fetch → match route → wait for anchor → show → complete
     src/engine/dom-renderer.ts   cards in a Shadow DOM beside [data-guide-id] anchors
     src/engine/help-widget.ts    floating Help button and searchable guide list

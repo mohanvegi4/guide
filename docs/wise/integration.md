@@ -32,7 +32,7 @@ Repository [`mohanvegi4/guide`](https://github.com/mohanvegi4/guide), branch `ma
 | Part | What it is |
 |---|---|
 | `apps/backend` | Express + Postgres 16 API: the Studio API (`/v1/…`, OIDC-authenticated) and the public agent API (`/v1/agent/<key>/…`, `/agent/v1/<key>/guides.js`). Row-level security on every tenant table. Migrations are applied by the backend on boot (advisory-locked) and refused in production if pending. |
-| `packages/agent` | The engine and the install-snippet runtime (one IIFE served by the backend, cached 5 min / ETag). |
+| `packages/embed-agent` | The engine and the install-snippet runtime (one IIFE served by the backend, cached 5 min / ETag). |
 | `apps/studio` | The authoring Studio (Angular 21), signed in through Keycloak. Organizations → applications → guides, pages, help center, members, analytics, platform administration. |
 | `deploy/` | Single-host production stack: Caddy (TLS, HSTS, security headers, Keycloak admin allowlist), Keycloak, Postgres, backend, Studio, nightly backups + restore script, optional Prometheus + Alertmanager profile. |
 | `docs/` | This docs site: the reference, the Studio reference, architecture, DevOps, the [signed identity contract](../integration/signed-identity.md), legal templates, and these WISE pages. |

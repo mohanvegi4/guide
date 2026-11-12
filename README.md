@@ -72,7 +72,7 @@ An npm workspaces monorepo; run commands from the repo root.
 
 ```
 packages/
-  agent/             the browser side: the engine (src/engine) and the install-snippet runtime,
+  embed-agent/       the browser side: the engine (src/engine) and the install-snippet runtime,
                      bundled into one ~10 KB IIFE served at /agent/v1/<key>/guides.js
 apps/
   backend/           @guide-engine/backend: Express + Postgres — Studio API, agent API, migrations, scripts
@@ -165,7 +165,7 @@ npm run idp:up      # Keycloak on http://localhost:8081 with the guide-engine re
 ```bash
 npm run db:up && npm test                 # every workspace
 npm test --workspace=apps/backend         # real Postgres (DB guide_engine_test, rebuilt each run)
-npm test --workspace=packages/agent       # engine + snippet runtime: vitest + jsdom
+npm test --workspace=packages/embed-agent       # engine + snippet runtime: vitest + jsdom
 npm test --workspace=apps/studio          # Studio components and services
 ```
 

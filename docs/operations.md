@@ -151,7 +151,7 @@ curl -s https://API_HOST/ready            # {"ok":true} when the backend reaches
 curl -s https://API_HOST/agent/v1/version # {"version":"…","hash":"…"}: the agent customers get
 ```
 The version must match the banner of the image you shipped
-(`head -1 packages/agent/dist/guide-engine.js` in the container). It answers 503 when the bundle
+(`head -1 packages/embed-agent/dist/guide-engine.js` in the container). It answers 503 when the bundle
 is missing, so it also works as an uptime probe.
 
 **Read the logs.** One JSON line per request; add `| npx pino-pretty` to read them comfortably.
@@ -392,8 +392,8 @@ The snippet customers paste loads `https://<api>/agent/v1/<key>/guides.js`. That
 **permanent contract**: it must keep working for every snippet ever pasted, so versioning lives in
 the response, not the URL.
 
-- `packages/agent/build.mjs` writes the bundle with a first-line banner,
-  `/* guide-engine agent <version> <hash> */` (`<version>` from `packages/agent/package.json`,
+- `packages/embed-agent/build.mjs` writes the bundle with a first-line banner,
+  `/* guide-engine agent <version> <hash> */` (`<version>` from `packages/embed-agent/package.json`,
   `<hash>` the first 16 hex characters of the SHA-256 of the code that follows). The backend
   recomputes the hash from the file it serves.
 - The script is served with a **strong `ETag`** (`"<hash>"`), `If-None-Match` → `304`, and

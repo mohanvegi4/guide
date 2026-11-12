@@ -9,7 +9,7 @@
 FROM node:22-alpine AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
-COPY packages/agent/package.json packages/agent/
+COPY packages/embed-agent/package.json packages/embed-agent/
 COPY apps/backend/package.json apps/backend/
 COPY apps/studio/package.json apps/studio/
 COPY apps/demo/package.json apps/demo/

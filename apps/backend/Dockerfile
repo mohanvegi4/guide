@@ -10,22 +10,22 @@ FROM node:22-alpine AS build
 WORKDIR /app
 # Workspace manifests first, so dependency installation is cached across code changes.
 COPY package.json package-lock.json ./
-COPY packages/agent/package.json packages/agent/
+COPY packages/embed-agent/package.json packages/embed-agent/
 COPY apps/backend/package.json apps/backend/
 COPY apps/studio/package.json apps/studio/
 COPY apps/demo/package.json apps/demo/
 RUN npm ci --no-audit --no-fund
 COPY tsconfig.base.json ./
-COPY packages/agent packages/agent
+COPY packages/embed-agent packages/embed-agent
 COPY apps/backend apps/backend
-RUN npm run build --workspace=packages/agent \
+RUN npm run build --workspace=packages/embed-agent \
  && npm run build --workspace=apps/backend
 
 FROM node:22-alpine
 ENV NODE_ENV=production
 WORKDIR /app
 COPY package.json package-lock.json ./
-COPY packages/agent/package.json packages/agent/
+COPY packages/embed-agent/package.json packages/embed-agent/
 COPY apps/backend/package.json apps/backend/
 COPY apps/studio/package.json apps/studio/
 COPY apps/demo/package.json apps/demo/
@@ -33,7 +33,7 @@ RUN npm ci --omit=dev --no-audit --no-fund --workspace=apps/backend \
  && npm cache clean --force
 COPY --from=build /app/apps/backend/dist apps/backend/dist
 COPY --from=build /app/apps/backend/migrations apps/backend/migrations
-COPY --from=build /app/packages/agent/dist packages/agent/dist
+COPY --from=build /app/packages/embed-agent/dist packages/embed-agent/dist
 COPY apps/backend/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 USER node

@@ -50,7 +50,7 @@ const KEY_PATTERN = /^ge_pk_[0-9a-f]{32}$/;
 // ------------------------------------------------------------
 interface AgentBundle {
   js: string;
-  /** package.json version of packages/agent, from the build banner ('unknown' without one). */
+  /** package.json version of packages/embed-agent, from the build banner ('unknown' without one). */
   version: string;
   /** First 16 hex chars of sha256 over the code after the banner line (the whole file without one). */
   hash: string;
@@ -72,7 +72,7 @@ export function describeBundle(js: string): AgentBundle {
 let bundle: Promise<AgentBundle> | null = null;
 function loadBundle(): Promise<AgentBundle> {
   const path =
-    process.env.AGENT_BUNDLE_PATH ?? join(__dirname, '..', '..', '..', '..', 'packages', 'agent', 'dist', 'guide-engine.js');
+    process.env.AGENT_BUNDLE_PATH ?? join(__dirname, '..', '..', '..', '..', 'packages', 'embed-agent', 'dist', 'guide-engine.js');
   bundle ??= readFile(path, 'utf-8')
     .then(describeBundle)
     .catch((err) => {

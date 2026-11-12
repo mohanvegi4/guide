@@ -14,7 +14,7 @@ See `README.md` for setup and `docs/` for the full reference.
 ## Repo layout
 ```
 packages/
-  agent/             the browser side: engine (src/engine: state machine, transport, DOM renderer)
+  embed-agent/       the browser side: engine (src/engine: state machine, transport, DOM renderer)
                      + the install-snippet runtime, bundled into the IIFE served at /agent/v1/<key>/guides.js
 apps/
   backend/           Express + Postgres API (Studio API + public agent API)
@@ -24,7 +24,7 @@ apps/
 This is an npm workspaces monorepo. Run commands from the repo root unless a
 task is scoped to one package (`npm run build --workspace=apps/backend`).
 
-Host apps install Guide Engine only through the install snippet (`packages/agent`, served by the
+Host apps install Guide Engine only through the install snippet (`packages/embed-agent`, served by the
 backend). Nothing is published to npm, and there are no framework wrappers.
 
 This repository is GitHub `mohanvegi4/guide`, branch `main`: GitHub Actions runs CI (build,

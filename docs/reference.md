@@ -34,7 +34,7 @@ process at boot.
 | `METRICS_TOKEN` | — | Bearer token that `GET /metrics` requires. Unset: the endpoint is open in development/test and absent (404) elsewhere. |
 | `SENTRY_DSN` | — | Optional. Set to report 5xx errors to Sentry (tagged with the request id, route and status; `environment` = `NODE_ENV`, `release` = the backend version). |
 | `RUN_MIGRATIONS` | `true` | Container only: apply pending migrations before starting. `false` when a release step runs `node apps/backend/dist/migrate.js`. Either way the backend checks at boot that no migration is pending: in production it refuses to start and lists the files; elsewhere it logs a warning. |
-| `AGENT_BUNDLE_PATH` | `packages/agent/dist/guide-engine.js` | Where the backend reads the agent script from. |
+| `AGENT_BUNDLE_PATH` | `packages/embed-agent/dist/guide-engine.js` | Where the backend reads the agent script from. |
 | `SMTP_URL` | — | Invitation emails: `smtp://user:pass@host:587` or `smtps://…`. Unset: invitations are links to copy. `json://` logs messages instead of sending (development/tests). |
 | `MAIL_FROM` | — | Required with `SMTP_URL`: the From header, e.g. `Guide Engine <no-reply@example.com>`. |
 | `STUDIO_URL` | — | The Studio's public origin (`https://studio.example.com`), for links in emails. Invitations are only emailed when it is set. |
