@@ -19,7 +19,7 @@ Copy the snippet from **Studio → your app → Install & settings**. It contain
 <script>
 (function(w,d,k){var g=w.guideEngine=w.guideEngine||{_q:[]};
 ['initialize','identify','openHelp','closeHelp','toggleHelp'].forEach(function(m){g[m]=g[m]||function(){g._q.push([m].concat([].slice.call(arguments)))}});
-var s=d.createElement('script');s.async=1;s.src='https://guides.example.com/agent/v1/'+k+'/guides.js';d.head.appendChild(s);
+var s=d.createElement('script');s.async=1;s.src='https://guides.example.com/embed-agent/v1/'+k+'/guides.js';d.head.appendChild(s);
 })(window,document,'ge_pk_0123456789abcdef0123456789abcdef');
 guideEngine.initialize({
   visitor: { id: 'USER_ID' },      // your signed-in user's id
@@ -96,7 +96,7 @@ example, rotation and acceptance checks — is in
 2. **Preview links.** If the URL has `?guidePreview=<token>`, the agent asks the backend to
    verify it. If valid, it renders **only** that version, with a "Preview" badge and no
    analytics. If invalid, it carries on normally.
-3. **One request** returns everything needed: `POST /v1/agent/<key>/guides` with the visitor's
+3. **One request** returns everything needed: `POST /v1/embed-agent/<key>/guides` with the visitor's
    identity returns `{ enabled, guides }`. The server checks:
    - the global kill switch and the app's own switch;
    - the [environment](../apps/studio/README.md#environments-and-releases) the page's `Origin` belongs to, and the
@@ -142,7 +142,7 @@ example, rotation and acceptance checks — is in
    and flushed on `pagehide`. Dismiss and complete are sent immediately.
 8. **Errors.** Fail silent also means the agent reports what it swallowed: an exception in
    startup, route evaluation, rendering or a click handler goes to
-   `POST /v1/agent/<key>/errors` with its message, stack, the page URL and the agent version.
+   `POST /v1/embed-agent/<key>/errors` with its message, stack, the page URL and the agent version.
    Sampled client-side (10 %, at most 5 per page load, `keepalive`) and capped server-side
    (1000 per app per hour, beyond which reports are acknowledged and dropped), so a page that
    throws in a loop can't flood anything. The newest show up under **Recent agent errors** in the

@@ -101,7 +101,7 @@ export function installSnippet(publicKey: string): string {
   return `<script>
 (function(w,d,k){var g=w.guideEngine=w.guideEngine||{_q:[]};
 ['initialize','identify','openHelp','closeHelp','toggleHelp'].forEach(function(m){g[m]=g[m]||function(){g._q.push([m].concat([].slice.call(arguments)))}});
-var s=d.createElement('script');s.async=1;s.src='${publicApiUrl()}/agent/v1/'+k+'/guides.js';d.head.appendChild(s);
+var s=d.createElement('script');s.async=1;s.src='${publicApiUrl()}/embed-agent/v1/'+k+'/guides.js';d.head.appendChild(s);
 })(window,document,'${publicKey}');
 guideEngine.initialize({
   visitor: { id: 'USER_ID' },      // your signed-in user's id

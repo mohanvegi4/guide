@@ -54,7 +54,7 @@ function hostPage(appKey: string): string {
 <script>
 (function(w,d,k,a){var g=w.guideEngine=w.guideEngine||{_q:[]};
 ['initialize','identify','openHelp','closeHelp','toggleHelp'].forEach(function(m){g[m]=g[m]||function(){g._q.push([m].concat([].slice.call(arguments)))}});
-var s=d.createElement('script');s.async=1;s.src=a+'/agent/v1/'+k+'/guides.js';d.head.appendChild(s);
+var s=d.createElement('script');s.async=1;s.src=a+'/embed-agent/v1/'+k+'/guides.js';d.head.appendChild(s);
 })(window,document,${JSON.stringify(appKey)},${JSON.stringify(API_URL)});
 guideEngine.initialize({ visitor: { id: ${JSON.stringify(`e2e-visitor-${STAMP}`)} } });
 </script>

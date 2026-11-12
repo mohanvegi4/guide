@@ -57,7 +57,7 @@ apps/
     src/app.ts             middleware order, routers, central error handler
     src/db.ts              with*Session helpers: one transaction, RLS variables set
     src/auth/              oidc.ts, studio.ts, visitor.ts (signed identity)
-    src/routes/agent.ts    guides.js and /v1/agent/:key/*
+    src/routes/agent.ts    guides.js and /v1/embed-agent/:key/*
     src/routes/studio/     context.ts (role checks), orgs, members, guides, pages,
                            environments, analytics, visitors, errors, platform
     src/services/          environments, versions, orgs, lifecycle
@@ -148,7 +148,7 @@ loads asynchronously and queues calls until the agent arrives.
 <script>
 (function(w,d,k){var g=w.guideEngine=w.guideEngine||{_q:[]};
 ['initialize','identify','openHelp','closeHelp','toggleHelp'].forEach(function(m){g[m]=g[m]||function(){g._q.push([m].concat([].slice.call(arguments)))}});
-var s=d.createElement('script');s.async=1;s.src='https://guides.example.com/agent/v1/'+k+'/guides.js';d.head.appendChild(s);
+var s=d.createElement('script');s.async=1;s.src='https://guides.example.com/embed-agent/v1/'+k+'/guides.js';d.head.appendChild(s);
 })(window,document,'ge_pk_…');
 guideEngine.initialize({
   visitor: { id: 'USER_ID' },      // your signed-in user's id

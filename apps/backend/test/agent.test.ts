@@ -25,7 +25,7 @@ const ids = (res: request.Response) => res.body.guides.map((g: { id: string }) =
 describe('the install script', () => {
   it('serves the agent bundle for a well-formed key, cacheable and cross-origin', async () => {
     const { key } = await signUp('owner');
-    const res = await request(app).get(`/agent/v1/${key}/guides.js`);
+    const res = await request(app).get(`/embed-agent/v1/${key}/guides.js`);
     expect(res.status).toBe(200);
     expect(res.headers['content-type']).toMatch(/javascript/);
     expect(res.headers['cache-control']).toBe(
@@ -36,7 +36,7 @@ describe('the install script', () => {
   });
 
   it('404s a malformed key', async () => {
-    expect((await request(app).get('/agent/v1/not-a-key/guides.js')).status).toBe(404);
+    expect((await request(app).get('/embed-agent/v1/not-a-key/guides.js')).status).toBe(404);
   });
 });
 
@@ -66,7 +66,7 @@ describe('keys and websites', () => {
 
   it('answers CORS preflights for allowed origins', async () => {
     const { key } = await signUp('owner');
-    const res = await request(app).options(`/v1/agent/${key}/guides`).set('Origin', SITE);
+    const res = await request(app).options(`/v1/embed-agent/${key}/guides`).set('Origin', SITE);
     expect(res.status).toBe(204);
     expect(res.headers['access-control-allow-origin']).toBe(SITE);
   });
@@ -92,7 +92,7 @@ describe('keys and websites', () => {
   it('accepts application/json too', async () => {
     const { key, appId } = await signUp('owner');
     await liveGuide('owner', appId);
-    const res = await request(app).post(`/v1/agent/${key}/guides`).set('Origin', SITE).send(visitor());
+    const res = await request(app).post(`/v1/embed-agent/${key}/guides`).set('Origin', SITE).send(visitor());
     expect(res.body.guides).toHaveLength(1);
   });
 });
@@ -384,7 +384,7 @@ describe('events and per-visitor state', () => {
     const { key } = await setup();
     expect((await agent(key, '/events', { ...visitor(), events: [] })).status).toBe(400);
     const raw = await request(app)
-      .post(`/v1/agent/${key}/events`)
+      .post(`/v1/embed-agent/${key}/events`)
       .set('Origin', SITE)
       .set('Content-Type', 'text/plain')
       .send('{not json');

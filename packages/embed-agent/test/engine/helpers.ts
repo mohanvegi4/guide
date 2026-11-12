@@ -6,10 +6,10 @@ export const KEY = `ge_pk_${'a'.repeat(32)}`;
 
 /** Agent API paths for KEY (what mockFetch routes and callsTo match on). */
 export const R = {
-  guides: `/v1/agent/${KEY}/guides`,
-  events: `/v1/agent/${KEY}/events`,
-  preview: `/v1/agent/${KEY}/preview`,
-  errors: `/v1/agent/${KEY}/errors`,
+  guides: `/v1/embed-agent/${KEY}/guides`,
+  events: `/v1/embed-agent/${KEY}/events`,
+  preview: `/v1/embed-agent/${KEY}/preview`,
+  errors: `/v1/embed-agent/${KEY}/errors`,
 };
 
 export const baseOptions: SdkInitOptions = {

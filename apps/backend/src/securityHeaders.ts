@@ -7,8 +7,8 @@ import type { RequestHandler } from 'express';
  * 'self' CSP) would have to be unpicked for the agent surface anyway.
  *
  * Two kinds of response:
- *  - The agent surface — the script at /agent/v1/<key>/guides.js and the API
- *    under /v1/agent/<key>/ — is loaded and called from customers' own
+ *  - The agent surface — the script at /embed-agent/v1/<key>/guides.js and the API
+ *    under /v1/embed-agent/<key>/ — is loaded and called from customers' own
  *    origins. It only gets nosniff (a script or JSON body must never be
  *    sniffed into HTML); nothing that could interfere with cross-origin use.
  *    Its CORS and caching headers are set by the agent routers themselves.
@@ -18,7 +18,7 @@ import type { RequestHandler } from 'express';
  *
  * Mounted first, so error responses and 404s carry the headers too.
  */
-const AGENT_SURFACE = [/^\/agent\/v1\//, /^\/v1\/agent\//];
+const AGENT_SURFACE = [/^\/embed-agent\/v1\//, /^\/v1\/embed-agent\//];
 
 /** @internal exported for unit tests */
 export function isAgentSurface(path: string): boolean {

@@ -60,8 +60,8 @@ JSON throughout. Studio responses that are database rows use snake_case.
 |---|---|
 | `GET /health` | `{ ok: true }` |
 | `GET /auth/config` | `{ oidc: { issuer, clientId, scope } \| null, tokenPaste, mailEnabled }`: how the Studio signs in, and whether invitations are emailed. |
-| `GET /agent/v1/:key/guides.js` | The agent script. The same static file for every key, with a strong `ETag` (its content hash), `Cache-Control: public, max-age=300, s-maxage=3600, stale-while-revalidate=86400` and `Cross-Origin-Resource-Policy: cross-origin`; `If-None-Match` is answered with `304`. |
-| `GET /agent/v1/version` | `{ version, hash }` of the script this backend serves (no key): a cheap uptime and deploy check. `Cache-Control: no-store`. |
+| `GET /embed-agent/v1/:key/guides.js` | The agent script. The same static file for every key, with a strong `ETag` (its content hash), `Cache-Control: public, max-age=300, s-maxage=3600, stale-while-revalidate=86400` and `Cross-Origin-Resource-Policy: cross-origin`; `If-None-Match` is answered with `304`. |
+| `GET /embed-agent/v1/version` | `{ version, hash }` of the script this backend serves (no key): a cheap uptime and deploy check. `Cache-Control: no-store`. |
 
 ### Agent API (public app key; CORS for the app's websites)
 
@@ -72,11 +72,11 @@ plain `visitor` and `account`, and anything else sent beside it is ignored. Tags
 
 | Method & path | Body → response |
 |---|---|
-| `POST /v1/agent/:key/guides` | identity → `{ enabled, routeMode, theme: { color, matchSite }, guides: [{ id, versionId, name, steps, routeMatch }] }`. `routeMode` is `path` or `hash`; `theme` is the app's color and whether to match the website's Bootstrap theme ([Help center](install.md#help-center)). |
-| `POST /v1/agent/:key/events` | identity + `{ events: [{ guideId, guideVersionId, stepId?, sessionId, eventType, occurredAt, metadata? }] }` (1–100) → `202 { accepted }`. Stored under the environment of the page's `Origin`; when that environment's analytics are off, the events update show-once state only and are not stored. Help-center events (`help_opened`, `help_searched`) carry no `guideId` / `guideVersionId`; a `help_searched` event's `metadata` is `{ query, results }` (the query is cut to 200 characters; other keys are dropped). |
-| `POST /v1/agent/:key/preview` | `{ token }` → the previewed guide with `preview: true` and the app's `theme` |
-| `POST /v1/agent/:key/errors` | `{ message (1–500 chars), stack? (≤ 4000), url? (≤ 2000), agentVersion? }` → `202 { accepted }`. `accepted: false` once the app already has 1000 reports in the last hour. |
-| `POST /v1/agent/:key/help` | identity → `{ enabled, routeMode, theme, button: { label, color, position }, guides: [{ …guide, help: { title, description, keywords, startPath } }] }`. The help-center list; not route-filtered, and includes guides the visitor already finished. Account and tag rules still apply. |
+| `POST /v1/embed-agent/:key/guides` | identity → `{ enabled, routeMode, theme: { color, matchSite }, guides: [{ id, versionId, name, steps, routeMatch }] }`. `routeMode` is `path` or `hash`; `theme` is the app's color and whether to match the website's Bootstrap theme ([Help center](install.md#help-center)). |
+| `POST /v1/embed-agent/:key/events` | identity + `{ events: [{ guideId, guideVersionId, stepId?, sessionId, eventType, occurredAt, metadata? }] }` (1–100) → `202 { accepted }`. Stored under the environment of the page's `Origin`; when that environment's analytics are off, the events update show-once state only and are not stored. Help-center events (`help_opened`, `help_searched`) carry no `guideId` / `guideVersionId`; a `help_searched` event's `metadata` is `{ query, results }` (the query is cut to 200 characters; other keys are dropped). |
+| `POST /v1/embed-agent/:key/preview` | `{ token }` → the previewed guide with `preview: true` and the app's `theme` |
+| `POST /v1/embed-agent/:key/errors` | `{ message (1–500 chars), stack? (≤ 4000), url? (≤ 2000), agentVersion? }` → `202 { accepted }`. `accepted: false` once the app already has 1000 reports in the last hour. |
+| `POST /v1/embed-agent/:key/help` | identity → `{ enabled, routeMode, theme, button: { label, color, position }, guides: [{ …guide, help: { title, description, keywords, startPath } }] }`. The help-center list; not route-filtered, and includes guides the visitor already finished. Account and tag rules still apply. |
 
 `eventType` is one of `guide_shown`, `guide_step_viewed`, `guide_step_completed`,
 `guide_dismissed`, `guide_completed`, `guide_error`, `survey_response`, `help_opened`,

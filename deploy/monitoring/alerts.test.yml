@@ -16,9 +16,9 @@ tests:
   # Below 1% it stays quiet.
   - interval: 1m
     input_series:
-      - series: 'http_requests_total{job="guide-engine-backend",instance="172.18.0.5:3000",route="/v1/agent/:key/guides",method="POST",status="200"}'
+      - series: 'http_requests_total{job="guide-engine-backend",instance="172.18.0.5:3000",route="/v1/embed-agent/:key/guides",method="POST",status="200"}'
         values: '0+95x20'
-      - series: 'http_requests_total{job="guide-engine-backend",instance="172.18.0.5:3000",route="/v1/agent/:key/guides",method="POST",status="500"}'
+      - series: 'http_requests_total{job="guide-engine-backend",instance="172.18.0.5:3000",route="/v1/embed-agent/:key/guides",method="POST",status="500"}'
         values: '0+5x20'
     alert_rule_test:
       - eval_time: 3m
@@ -39,9 +39,9 @@ tests:
 
   - interval: 1m
     input_series:
-      - series: 'http_requests_total{job="guide-engine-backend",instance="172.18.0.5:3000",route="/v1/agent/:key/guides",method="POST",status="200"}'
+      - series: 'http_requests_total{job="guide-engine-backend",instance="172.18.0.5:3000",route="/v1/embed-agent/:key/guides",method="POST",status="200"}'
         values: '0+199x20'
-      - series: 'http_requests_total{job="guide-engine-backend",instance="172.18.0.5:3000",route="/v1/agent/:key/guides",method="POST",status="500"}'
+      - series: 'http_requests_total{job="guide-engine-backend",instance="172.18.0.5:3000",route="/v1/embed-agent/:key/guides",method="POST",status="500"}'
         values: '0+1x20'
     alert_rule_test:
       - eval_time: 10m

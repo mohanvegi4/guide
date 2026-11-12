@@ -106,7 +106,7 @@ export async function liveGuide(
 
 /** An agent call as a browser on `origin` would make it (JSON as text/plain). */
 export function agent(key: string, path: string, body: unknown, origin: string | null = SITE) {
-  const r = request(app).post(`/v1/agent/${key}${path}`).set('Content-Type', 'text/plain');
+  const r = request(app).post(`/v1/embed-agent/${key}${path}`).set('Content-Type', 'text/plain');
   if (origin) r.set('Origin', origin);
   return r.send(JSON.stringify(body));
 }

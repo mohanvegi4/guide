@@ -112,12 +112,12 @@ groups:
             key prefix (`keyPrefix`) to find the app. See README, Operations.
 
       - alert: AgentGuidesLatencyHigh
-        expr: route:http_request_duration_seconds:p95_5m{route="/v1/agent/:key/guides"} > 0.25
+        expr: route:http_request_duration_seconds:p95_5m{route="/v1/embed-agent/:key/guides"} > 0.25
         for: 10m
         labels:
           severity: warn
         annotations:
-          summary: "p95 latency on /v1/agent/:key/guides is {{ $value | humanizeDuration }}"
+          summary: "p95 latency on /v1/embed-agent/:key/guides is {{ $value | humanizeDuration }}"
           description: >-
             Guide lookups should take tens of milliseconds; a p95 above 250 ms for 10 minutes
             points at a slow or overloaded database (check db_pool_waiting and Postgres load)

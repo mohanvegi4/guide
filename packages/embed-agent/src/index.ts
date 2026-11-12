@@ -4,7 +4,7 @@ import { GuideEngine, IdentityOptions, createDomRenderer, createHelpWidget } fro
  * The install-snippet agent. A host page adds the snippet to its <head>:
  *
  *   (function(w,d,k){ … w.guideEngine = stub that queues calls; loads
- *     https://<api>/agent/v1/<k>/guides.js … })(window, document, 'ge_pk_…');
+ *     https://<api>/embed-agent/v1/<k>/guides.js … })(window, document, 'ge_pk_…');
  *   guideEngine.initialize({ visitor: { id: 'u-1' }, account: { id: 'oclc' } });
  *
  * This script then: works out its app key and API origin from its own URL,
@@ -53,7 +53,7 @@ declare global {
 declare const __GUIDE_ENGINE_VERSION__: string | undefined;
 export const AGENT_VERSION: string =
   typeof __GUIDE_ENGINE_VERSION__ === 'string' && __GUIDE_ENGINE_VERSION__ ? __GUIDE_ENGINE_VERSION__ : 'dev';
-const SCRIPT_SRC = /\/agent\/v1\/(ge_pk_[0-9a-f]{32})\/guides\.js(?:[?#].*)?$/;
+const SCRIPT_SRC = /\/embed-agent\/v1\/(ge_pk_[0-9a-f]{32})\/guides\.js(?:[?#].*)?$/;
 
 /** Finds this script's <script> tag and reads the app key + API origin from its src. */
 export function locateInstall(doc: Document): { apiBaseUrl: string; appKey: string } | null {

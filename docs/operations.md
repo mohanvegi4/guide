@@ -121,8 +121,8 @@ Once the first install works, before real customers depend on it:
    ([Backups and restore](#backups-and-restore)).
 4. **Event retention.** `EVENT_RETENTION_DAYS` (default 400 in production; `0` is off). Write the
    number into the privacy policy and the DPA.
-5. **The agent script.** `https://API_HOST/agent/v1/<key>/guides.js` is a permanent contract. A
-   CDN in front of `/agent/v1/*` is optional; purge it on a rollback
+5. **The agent script.** `https://API_HOST/embed-agent/v1/<key>/guides.js` is a permanent contract. A
+   CDN in front of `/embed-agent/v1/*` is optional; purge it on a rollback
    ([caching and rollbacks](#the-agent-script-caching-and-rollbacks)).
 6. **Security headers** need nothing inside the compose stack. A Studio image run elsewhere needs
    `OIDC_ORIGIN`, and a replacement for Caddy or nginx must set the headers itself
@@ -148,7 +148,7 @@ Once the first install works, before real customers depend on it:
 ```bash
 docker compose ps
 curl -s https://API_HOST/ready            # {"ok":true} when the backend reaches the database
-curl -s https://API_HOST/agent/v1/version # {"version":"…","hash":"…"}: the agent customers get
+curl -s https://API_HOST/embed-agent/v1/version # {"version":"…","hash":"…"}: the agent customers get
 ```
 The version must match the banner of the image you shipped
 (`head -1 packages/embed-agent/dist/guide-engine.js` in the container). It answers 503 when the bundle
@@ -262,7 +262,7 @@ docker compose run --rm backup now                                     # before 
 **Logs** are JSON lines on stdout (pino), one per request when its response finishes:
 
 ```json
-{"level":"info","time":"2026-10-19T09:12:44.120Z","service":"guide-engine-backend","requestId":"5f0c…","method":"POST","route":"/v1/agent/:key/guides","status":200,"durationMs":14,"keyPrefix":"ge_pk_3f9a1c2b","msg":"request completed"}
+{"level":"info","time":"2026-10-19T09:12:44.120Z","service":"guide-engine-backend","requestId":"5f0c…","method":"POST","route":"/v1/embed-agent/:key/guides","status":200,"durationMs":14,"keyPrefix":"ge_pk_3f9a1c2b","msg":"request completed"}
 ```
 
 `route` is the Express route pattern, never the raw URL; agent requests carry only the start of the
@@ -362,7 +362,7 @@ Use the two images with these guarantees in place:
   (an audience mapper on a client scope).
 - The Studio served statically with an SPA fallback, and `/api/*` proxied to the backend with the
   prefix removed (`apps/studio/nginx.conf.template` does both).
-- A CDN in front of `/agent/v1/*` is a drop-in (see below).
+- A CDN in front of `/embed-agent/v1/*` is a drop-in (see below).
 - The security headers below, if you replace nginx or Caddy.
 
 ## Security headers
@@ -383,12 +383,12 @@ Each layer sets the headers it is placed to know about:
 - **Express** (`apps/backend/src/securityHeaders.ts`): `X-Content-Type-Options: nosniff` on
   every response; `X-Frame-Options: DENY`, `Content-Security-Policy: frame-ancestors 'none'`
   and `Referrer-Policy: no-referrer` on the Studio API and other first-party endpoints. The
-  **agent surface** (`/agent/v1/*` and `/v1/agent/*`, loaded cross-origin by customers' pages)
+  **agent surface** (`/embed-agent/v1/*` and `/v1/embed-agent/*`, loaded cross-origin by customers' pages)
   gets nosniff only, and keeps its per-app CORS, `ETag` and `Cache-Control`.
 
 ## The agent script: caching and rollbacks
 
-The snippet customers paste loads `https://<api>/agent/v1/<key>/guides.js`. That URL is a
+The snippet customers paste loads `https://<api>/embed-agent/v1/<key>/guides.js`. That URL is a
 **permanent contract**: it must keep working for every snippet ever pasted, so versioning lives in
 the response, not the URL.
 
@@ -403,7 +403,7 @@ the response, not the URL.
   else in the API is cacheable.
 - **Deploys and rollbacks** are the same mechanism: a new image serves a file with a different
   hash, and every visitor has it within about 5 minutes (a CDN copy at most an hour later; purge
-  `/agent/v1/*` to make it immediate). On the page, `guideEngine.version` says which build a
+  `/embed-agent/v1/*` to make it immediate). On the page, `guideEngine.version` says which build a
   customer runs.
 
 ---
@@ -421,7 +421,7 @@ the response, not the URL.
 | `https://AUTH_HOST/admin` answers 403 | Your address isn't in `ADMIN_ALLOW_CIDRS` (empty = nobody). Add it and `docker compose up -d caddy`. |
 | Certificates fail | DNS for the three hostnames; ports 80 and 443 open; `docker compose logs caddy`. |
 | Disk filling up | `deploy/backups/` (lower `BACKUP_KEEP_DAYS`), `EVENT_RETENTION_DAYS`. |
-| `/agent/v1/<key>/guides.js` returns 503 | The agent isn't built. Run `npm run build` (or set `AGENT_BUNDLE_PATH`). |
+| `/embed-agent/v1/<key>/guides.js` returns 503 | The agent isn't built. Run `npm run build` (or set `AGENT_BUNDLE_PATH`). |
 | Agent requests fail with 403 `origin_not_allowed` | Add the site's origin (scheme + host + port) to the app's **Websites**. |
 | Agent requests fail with 401 `signed_identity_required` / `identity_invalid` | The app requires signed identity. Pass a valid, unexpired `jwt` signed with the current secret. |
 | `Could not prepare the test database` | Run `npm run db:up`. |
@@ -440,4 +440,4 @@ the response, not the URL.
    reset their state.
 6. Is the element on the page with exactly that `data-guide-id`? A missing one shows up as
    `guide_error` in Analytics after about 16 s.
-7. In the browser's Network tab, what did `POST /v1/agent/<key>/guides` return?
+7. In the browser's Network tab, what did `POST /v1/embed-agent/<key>/guides` return?

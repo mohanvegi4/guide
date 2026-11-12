@@ -31,7 +31,7 @@ Repository [`mohanvegi4/guide`](https://github.com/mohanvegi4/guide), branch `ma
 
 | Part | What it is |
 |---|---|
-| `apps/backend` | Express + Postgres 16 API: the Studio API (`/v1/…`, OIDC-authenticated) and the public agent API (`/v1/agent/<key>/…`, `/agent/v1/<key>/guides.js`). Row-level security on every tenant table. Migrations are applied by the backend on boot (advisory-locked) and refused in production if pending. |
+| `apps/backend` | Express + Postgres 16 API: the Studio API (`/v1/…`, OIDC-authenticated) and the public agent API (`/v1/embed-agent/<key>/…`, `/embed-agent/v1/<key>/guides.js`). Row-level security on every tenant table. Migrations are applied by the backend on boot (advisory-locked) and refused in production if pending. |
 | `packages/embed-agent` | The engine and the install-snippet runtime (one IIFE served by the backend, cached 5 min / ETag). |
 | `apps/studio` | The authoring Studio (Angular 21), signed in through Keycloak. Organizations → applications → guides, pages, help center, members, analytics, platform administration. |
 | `deploy/` | Single-host production stack: Caddy (TLS, HSTS, security headers, Keycloak admin allowlist), Keycloak, Postgres, backend, Studio, nightly backups + restore script, optional Prometheus + Alertmanager profile. |
@@ -52,7 +52,7 @@ Both live on the branch `poc/guide-engine` in their repository, pushed to Bitbuc
 | | Staff console (`application-ng-staff`) | OPAC (`application-ng-patron`) |
 |---|---|---|
 | Commits | `cd4c5d2` install · `6cddf49` env config · `ec805b1` anchors · `cb802a8` permission tags | `2ec35bd` install · `c2bb01b` env config · `02cfae1` anchors · `1a83b43` visitor tags |
-| Agent install | `GuideEngineService` (`src/app/services/guide-engine/`) creates the `window.guideEngine` queue and injects `<script async src="<apiUrl>/agent/v1/<appKey>/guides.js">` at startup, **from `environment.guideEngine`** (`{ apiUrl, appKey } | null`). `index.html` is untouched. | Same, in `projects/opac/src/app/services/guide-engine/`. Loading from code (not `index.html`) also keeps `opac-create-filelist.js` from copying the script into `integration.json` for embedded mode. |
+| Agent install | `GuideEngineService` (`src/app/services/guide-engine/`) creates the `window.guideEngine` queue and injects `<script async src="<apiUrl>/agent/v1/<appKey>/guides.js">` at startup (the path before the rename; it must become `/embed-agent/v1/`, TODO 11), **from `environment.guideEngine`** (`{ apiUrl, appKey } | null`). `index.html` is untouched. | Same, in `projects/opac/src/app/services/guide-engine/`. Loading from code (not `index.html`) also keeps `opac-create-filelist.js` from copying the script into `integration.json` for embedded mode. |
 | Identity passed | `visitor.id` = staff actor UUID (`patronSystemId` in the auth store, Keycloak `wiseUuid`); `visitor.tags` = the user's branch-level permissions from `GET /authorities` (`SERVICE_CASH_REGISTER`, `SERVICE_CASH_REGISTER:edit`, …); `account.id` = library id (`libraryId`). Called once the user **and** their authorizations have loaded (without tags if authorizations fail); `identify()` when either changes. | `account.id` = `branch.instance`; `visitor.id` = patron system id when signed in, otherwise none (the agent uses an anonymous per-browser id); `visitor.tags` = `anonymous` until a patron signs in, then `signed-in` plus every active authority (`MA_RENEW`, `MA_VIEW_WISHLIST`, …), the authorities the My account menu and hold buttons check. |
 | Environment files | `environment.template.ts` (dev values; `environment.ts` is git-ignored and copied from it), `environment.prod.ts` → **`null`** (guides off until filled), `environment.cypress.ts` → `null`. | `environment.default.ts` (dev values; `environment.dev.ts` is git-ignored and spreads it), `environment.prod.ts` → **`null`**, `environment.cypress.ts` → `null`. |
 | Anchors | ~85 `data-guide-id` attributes across landing, navigation, catalog search/results/title drawer, hold dialog, check in/out, on-the-fly dialog, picklist, holds shelf, customer search/record (summary, tabs, checked out, financial, holds), item request manager, point of sale, peripherals, profile menu. The design-system table component gained `guideId` / `selectAllGuideId` inputs for row actions and select-all. | ~90 across search bar/results/filters/sorting, title detail, hold and add-to-list modals, top bar and menu, new arrivals, recommendations, community, and every My account screen (checkouts, holds, financial, personal data, notifications, lost card, requests, lists, wishlist). |
@@ -154,14 +154,14 @@ wish list, Community list).
 
 ```
 WISE page (console / OPAC)                     Guide Engine backend
-┌──────────────────────────────┐   script      ┌─────────────────────────────┐
-│ GuideEngineService           │ ───────────▶  │ GET /agent/v1/<key>/guides.js│
-│  window.guideEngine = {_q}   │               │                             │
-│  <script src=…/guides.js>    │   JSON/text   │ POST /v1/agent/<key>/guides │  ← kill switches, app switch,
-│  initialize({visitor,account})│ ───────────▶ │ POST /v1/agent/<key>/help   │    date window, account
-│  identify(...) on user change│               │ POST /v1/agent/<key>/events │    allowlist, shown/finished
-│  [data-guide-id="…"] anchors │               │ (per-app CORS, rate limit)  │    state per visitor
-└──────────────────────────────┘               └─────────────────────────────┘
+┌───────────────────────────────┐   script     ┌─────────────────────────────────────┐
+│ GuideEngineService            │ ───────────▶ │ GET /embed-agent/v1/<key>/guides.js │
+│  window.guideEngine = {_q}    │              │                                     │
+│  <script src=…/guides.js>     │  JSON/text   │ POST /v1/embed-agent/<key>/guides   │  ← kill switches, app switch,
+│  initialize({visitor,account})│ ───────────▶ │ POST /v1/embed-agent/<key>/help     │    date window, account
+│  identify(...) on user change │              │ POST /v1/embed-agent/<key>/events   │    allowlist, shown/finished
+│  [data-guide-id="…"] anchors  │              │ (per-app CORS, rate limit)          │    state per visitor
+└───────────────────────────────┘              └─────────────────────────────────────┘
           ▲ authors                                        ▲
           │                                                │ Studio API (OIDC → org roles, RLS)
      Guide Studio (Angular) ────────────────────────────────┘
@@ -250,7 +250,9 @@ side has.
     analytics stay per stage (switch **Record analytics** off for Dev and Test if their numbers
     aren't wanted). Set `identityMode: required` on the console once
     [section 4](#4-signed-identity-specified-not-built) is live.
-11. ☐ Fill `environment.prod.ts` (and the other WISE environment files) in both apps with the
+11. ☐ Change the script path in both `GuideEngineService`s from `/agent/v1/` to `/embed-agent/v1/`:
+    the old path was removed from the backend, so until then neither app loads guides.
+    Then fill `environment.prod.ts` (and the other WISE environment files) in both apps with the
     production API origin and that product's key (today `null` = guides off). Both apps are build-time configured; if you want per-deployment config,
     add a field to `/restapi/opac/configuration` (OPAC) / an app-config endpoint (console) and read it in
     `GuideEngineService` — the natural runtime alternative.

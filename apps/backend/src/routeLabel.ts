@@ -17,8 +17,8 @@ import type { Request, Response } from 'express';
 export const AGENT_ENDPOINTS = ['guides', 'help', 'events', 'preview'] as const;
 export type AgentEndpoint = (typeof AGENT_ENDPOINTS)[number] | 'script' | 'other';
 
-const AGENT_API = /^\/v1\/agent\/[^/]+(?:\/([^/?#]*))?/;
-const AGENT_SCRIPT = /^\/agent\/v1\/[^/]+\/guides\.js$/;
+const AGENT_API = /^\/v1\/embed-agent\/[^/]+(?:\/([^/?#]*))?/;
+const AGENT_SCRIPT = /^\/embed-agent\/v1\/[^/]+\/guides\.js$/;
 
 function pathOf(req: Request): string {
   const url = req.originalUrl || req.url || '';
@@ -72,8 +72,8 @@ export function routeLabel(req: Request, res: Response): string {
   const matched = matchedRoutePattern(req);
   if (matched) return matched;
   const endpoint = agentEndpoint(req);
-  if (endpoint === 'script') return '/agent/v1/:key/guides.js';
-  if (endpoint) return `/v1/agent/:key/${endpoint === 'other' ? '*' : endpoint}`;
+  if (endpoint === 'script') return '/embed-agent/v1/:key/guides.js';
+  if (endpoint) return `/v1/embed-agent/:key/${endpoint === 'other' ? '*' : endpoint}`;
   const path = pathOf(req);
   if (path.startsWith('/v1/')) return '/v1/*';
   if (path.startsWith('/auth/')) return '/auth/*';
@@ -84,7 +84,7 @@ const KEY_PREFIX_LENGTH = 'ge_pk_'.length + 8;
 
 /** The first characters of an agent request's public key — enough to find the app, never the key. */
 export function agentKeyPrefix(req: Request): string | null {
-  const match = /^\/v1\/agent\/([^/?#]+)|^\/agent\/v1\/([^/?#]+)\//.exec(pathOf(req));
+  const match = /^\/v1\/embed-agent\/([^/?#]+)|^\/embed-agent\/v1\/([^/?#]+)\//.exec(pathOf(req));
   const key = match?.[1] ?? match?.[2];
   return key ? key.slice(0, KEY_PREFIX_LENGTH) : null;
 }

@@ -9,7 +9,7 @@ import { KEY, R, baseOptions, fakeRenderer, makeGuide, makeStep, mockFetch, serv
  * navigation.
  */
 
-const HELP = `/v1/agent/${KEY}/help`;
+const HELP = `/v1/embed-agent/${KEY}/help`;
 const accepted = () => ({ status: 202 });
 
 const tip = makeGuide({

@@ -73,7 +73,7 @@ An npm workspaces monorepo; run commands from the repo root.
 ```
 packages/
   embed-agent/       the browser side: the engine (src/engine) and the install-snippet runtime,
-                     bundled into one ~10 KB IIFE served at /agent/v1/<key>/guides.js
+                     bundled into one ~10 KB IIFE served at /embed-agent/v1/<key>/guides.js
 apps/
   backend/           @guide-engine/backend: Express + Postgres — Studio API, agent API, migrations, scripts
   studio/            Guide Studio (Angular 21) — see apps/studio/README.md

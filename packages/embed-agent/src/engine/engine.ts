@@ -306,7 +306,7 @@ export class AgentClient {
 
   post(path: string, body: Record<string, unknown> = {}, keepalive = false): Promise<Response> {
     const json = JSON.stringify({ ...identityFor(path, this.identity()), ...body });
-    return fetch(`${this.apiBaseUrl.replace(/\/$/, '')}/v1/agent/${encodeURIComponent(this.appKey)}${path}`, {
+    return fetch(`${this.apiBaseUrl.replace(/\/$/, '')}/v1/embed-agent/${encodeURIComponent(this.appKey)}${path}`, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain' },
       body: json,
@@ -382,7 +382,7 @@ export class EventQueue {
 /**
  * The engine fails silent towards the host page, which also means nobody
  * hears about a bug unless it's reported somewhere. reportError (below)
- * sends a sampled, capped trickle of them to POST /v1/agent/:key/errors.
+ * sends a sampled, capped trickle of them to POST /v1/embed-agent/:key/errors.
  * @internal exported for unit tests
  */
 export const ERROR_SAMPLE_RATE = 0.1;

@@ -31,7 +31,7 @@ const FIXTURE_HASH = createHash('sha256').update(FIXTURE_CODE).digest('hex').sli
 describe('the agent script: ETag and revalidation', () => {
   it('carries a strong ETag made from the content hash, and CDN-friendly cache headers', async () => {
     const { key } = await signUp('owner');
-    const res = await request(app).get(`/agent/v1/${key}/guides.js`);
+    const res = await request(app).get(`/embed-agent/v1/${key}/guides.js`);
     expect(res.status).toBe(200);
     expect(res.headers['etag']).toBe(`"${FIXTURE_HASH}"`);
     expect(res.headers['cache-control']).toBe(
@@ -43,7 +43,7 @@ describe('the agent script: ETag and revalidation', () => {
 
   it('answers If-None-Match with 304 (strong or weak form, in a list), and a stale tag with the file', async () => {
     const { key } = await signUp('owner');
-    const url = `/agent/v1/${key}/guides.js`;
+    const url = `/embed-agent/v1/${key}/guides.js`;
     for (const tag of [`"${FIXTURE_HASH}"`, `W/"${FIXTURE_HASH}"`, `"other", "${FIXTURE_HASH}"`]) {
       const res = await request(app).get(url).set('If-None-Match', tag);
       expect(res.status, tag).toBe(304);
@@ -69,16 +69,16 @@ describe('the agent script: ETag and revalidation', () => {
   });
 });
 
-describe('GET /agent/v1/version', () => {
+describe('GET /embed-agent/v1/version', () => {
   it('reports the served build without a key, uncached', async () => {
-    const res = await request(app).get('/agent/v1/version');
+    const res = await request(app).get('/embed-agent/v1/version');
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ version: '0.0.0-test', hash: FIXTURE_HASH });
     expect(res.headers['cache-control']).toBe('no-store');
   });
 });
 
-describe('POST /v1/agent/:key/errors', () => {
+describe('POST /v1/embed-agent/:key/errors', () => {
   const report = {
     message: 'render: Cannot read properties of null',
     stack: 'TypeError: Cannot read properties of null\n    at renderStep (guides.js:1:2)',

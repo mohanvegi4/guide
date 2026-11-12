@@ -14,7 +14,7 @@ backend side.
 
 ## What Guide Engine verifies
 
-Every agent request (`POST /v1/agent/<app key>/guides`, `/help`, `/events`) carries the visitor's
+Every agent request (`POST /v1/embed-agent/<app key>/guides`, `/help`, `/events`) carries the visitor's
 identity in its JSON body. With signed identity, the body carries a `jwt` instead of plain ids:
 
 ```json
@@ -133,7 +133,7 @@ id per browser.
 With a token from your endpoint, against the environment's Guide Engine API:
 
 ```bash
-curl -s -X POST "https://<api host>/v1/agent/<app key>/guides" \
+curl -s -X POST "https://<api host>/v1/embed-agent/<app key>/guides" \
   -H "Origin: https://<your site origin>" -H "Content-Type: text/plain" \
   -d '{"jwt":"<token>"}'
 ```

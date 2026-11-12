@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url';
 // where <version> is this package's version and <hash> the first 16 hex
 // chars of the sha256 of the code that follows the banner. The backend reads
 // the version from that line and recomputes the same hash when it serves the
-// file (ETag, GET /agent/v1/version), so a deploy or a rollback is visible
+// file (ETag, GET /embed-agent/v1/version), so a deploy or a rollback is visible
 // from the outside without either side trusting the other's bookkeeping.
 const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf-8'));
 const outfile = fileURLToPath(new URL('./dist/guide-engine.js', import.meta.url));

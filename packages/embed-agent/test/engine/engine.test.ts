@@ -53,7 +53,7 @@ describe('talking to the agent API', () => {
     await new GuideEngine().init(baseOptions, fakeRenderer().renderer);
 
     const [url, init] = fetchMock.mock.calls[0];
-    expect(url).toBe(`${API}/v1/agent/${KEY}/guides`);
+    expect(url).toBe(`${API}/v1/embed-agent/${KEY}/guides`);
     expect(init).toMatchObject({
       method: 'POST',
       headers: { 'Content-Type': 'text/plain' },

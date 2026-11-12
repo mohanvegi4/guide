@@ -139,7 +139,7 @@ completed or dismissed, kept for `EVENT_RETENTION_DAYS` (400 by default). As a r
 | 10 | Logs | JSON lines on stdout | Ship to your log platform |
 | 11 | Email | SMTP relay for Studio invitations | Optional; without it, invitations are links to copy |
 | 12 | Error tracking | Sentry DSN | Optional |
-| 13 | CDN for the agent script | None, or a CDN in front of `API_HOST/agent/v1/*` | Not needed at first |
+| 13 | CDN for the agent script | None, or a CDN in front of `API_HOST/embed-agent/v1/*` | Not needed at first |
 | 14 | Sizing | Section 2 | Confirm after a staging load test |
 
 ---
@@ -211,7 +211,7 @@ values to provide per environment.
 ```bash
 curl -s https://API_HOST/health                 # {"ok":true}
 curl -s https://API_HOST/ready                  # {"ok":true} when the database is reachable
-curl -s https://API_HOST/agent/v1/version       # {"version":"…","hash":"…"} = the deployed agent
+curl -s https://API_HOST/embed-agent/v1/version       # {"version":"…","hash":"…"} = the deployed agent
 ```
 
 | Check | Expected |

@@ -15,7 +15,7 @@ See `README.md` for setup and `docs/` for the full reference.
 ```
 packages/
   embed-agent/       the browser side: engine (src/engine: state machine, transport, DOM renderer)
-                     + the install-snippet runtime, bundled into the IIFE served at /agent/v1/<key>/guides.js
+                     + the install-snippet runtime, bundled into the IIFE served at /embed-agent/v1/<key>/guides.js
 apps/
   backend/           Express + Postgres API (Studio API + public agent API)
   studio/            Authoring Studio (Angular 21)

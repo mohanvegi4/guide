@@ -53,7 +53,7 @@ describe('the Studio API and other first-party responses', () => {
 describe('the agent script', () => {
   it('gets nosniff only, keeping its cross-origin, caching and ETag behaviour', async () => {
     const { key } = await signUp('owner');
-    const res = await request(app).get(`/agent/v1/${key}/guides.js`);
+    const res = await request(app).get(`/embed-agent/v1/${key}/guides.js`);
     expect(res.status).toBe(200);
     expect(res.headers['content-type']).toMatch(/^application\/javascript/);
     expect(res.headers['x-content-type-options']).toBe('nosniff');
@@ -72,7 +72,7 @@ describe('the agent script', () => {
   });
 
   it('answers an unknown key the same way (no header tells the two apart)', async () => {
-    const res = await request(app).get('/agent/v1/not-a-key/guides.js');
+    const res = await request(app).get('/embed-agent/v1/not-a-key/guides.js');
     expect(res.status).toBe(404);
     expect(res.headers['x-content-type-options']).toBe('nosniff');
     expect(res.headers['content-security-policy']).toBeUndefined();
@@ -93,7 +93,7 @@ describe('the agent API', () => {
     expect(res.headers['referrer-policy']).toBeUndefined();
     expect(res.headers['cross-origin-resource-policy']).toBeUndefined();
 
-    const preflight = await request(app).options(`/v1/agent/${key}/guides`).set('Origin', SITE);
+    const preflight = await request(app).options(`/v1/embed-agent/${key}/guides`).set('Origin', SITE);
     expect(preflight.status).toBe(204);
     expect(preflight.headers['access-control-allow-origin']).toBe(SITE);
     expect(preflight.headers['access-control-allow-methods']).toBe('POST');
@@ -101,10 +101,10 @@ describe('the agent API', () => {
   });
 
   it('classifies paths the way the routers are mounted', () => {
-    expect(isAgentSurface('/agent/v1/ge_pk_0123/guides.js')).toBe(true);
-    expect(isAgentSurface('/agent/v1/version')).toBe(true);
-    expect(isAgentSurface('/v1/agent/ge_pk_0123/guides')).toBe(true);
-    expect(isAgentSurface('/v1/agents')).toBe(false);
+    expect(isAgentSurface('/embed-agent/v1/ge_pk_0123/guides.js')).toBe(true);
+    expect(isAgentSurface('/embed-agent/v1/version')).toBe(true);
+    expect(isAgentSurface('/v1/embed-agent/ge_pk_0123/guides')).toBe(true);
+    expect(isAgentSurface('/v1/embed-agents')).toBe(false);
     expect(isAgentSurface('/v1/me')).toBe(false);
     expect(isAgentSurface('/auth/config')).toBe(false);
   });

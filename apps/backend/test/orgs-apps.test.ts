@@ -67,7 +67,7 @@ describe('app settings', () => {
     expect(res.body.public_key).not.toBe(key);
     // the install snippet always carries the current key and the agent URL
     expect(res.body.snippet).toContain(`'${res.body.public_key}'`);
-    expect(res.body.snippet).toContain('/agent/v1/');
+    expect(res.body.snippet).toContain('/embed-agent/v1/');
     const fetched = await request(app).get(`/v1/apps/${appId}`).set('Authorization', as('owner'));
     expect(fetched.body.snippet).toContain(res.body.public_key);
   });

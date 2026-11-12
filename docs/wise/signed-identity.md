@@ -117,7 +117,7 @@ tokens, then these WISE-specific ones:
 |---|---|
 | valid staff token for someone with the cash register at branch edit level | the response includes "Sell at Point of sale" (tagged `SERVICE_CASH_REGISTER:edit` in the dev Studio) |
 | valid staff token for someone without it | that guide is absent |
-| valid patron token with `MA_RENEW` | `/v1/agent/<OPAC key>/help` lists "Renew a loan"; without it, it is absent |
+| valid patron token with `MA_RENEW` | `/v1/embed-agent/<OPAC key>/help` lists "Renew a loan"; without it, it is absent |
 | OPAC endpoint without a patron session | `204`, no body |
 
 To compare claims with a known-good token, mint one from the Guide Engine repository with the same

@@ -136,7 +136,7 @@ describe('GET /metrics', () => {
     expect((await agent(key, '/guides', visitor())).status).toBe(200);
     expect((await agent('ge_pk_' + 'f'.repeat(32), '/guides', visitor())).status).toBe(404); // rejected before any route
     expect((await agent(key, '/events', { ...visitor(), events: [] })).status).toBe(400);
-    expect((await request(app).get(`/agent/v1/${key}/guides.js`)).status).toBe(200);
+    expect((await request(app).get(`/embed-agent/v1/${key}/guides.js`)).status).toBe(200);
     await runRetention(400, () => undefined);
 
     const text = (await request(app).get('/metrics')).text;
@@ -146,9 +146,9 @@ describe('GET /metrics', () => {
     expect(text).toContain(
       'http_requests_total{route="/v1/apps/:appId/guides/:id",method="GET",status="404"}',
     );
-    expect(text).toContain('http_requests_total{route="/v1/agent/:key/guides",method="POST",status="200"}');
-    expect(text).toContain('http_requests_total{route="/v1/agent/:key/guides",method="POST",status="404"}');
-    expect(text).toContain('http_requests_total{route="/agent/v1/:key/guides.js",method="GET",status="200"}');
+    expect(text).toContain('http_requests_total{route="/v1/embed-agent/:key/guides",method="POST",status="200"}');
+    expect(text).toContain('http_requests_total{route="/v1/embed-agent/:key/guides",method="POST",status="404"}');
+    expect(text).toContain('http_requests_total{route="/embed-agent/v1/:key/guides.js",method="GET",status="200"}');
     expect(text).toContain(
       'http_request_duration_seconds_bucket{le="+Inf",route="/v1/apps/:appId/guides/:id",method="GET"}',
     );
@@ -193,7 +193,7 @@ describe('request logging and the error handler', () => {
       .set('Authorization', as('owner'))
       .set('X-Request-Id', 'r-1');
     await request(logged)
-      .post(`/v1/agent/${key}/guides`)
+      .post(`/v1/embed-agent/${key}/guides`)
       .set('Content-Type', 'text/plain')
       .set('Origin', SITE)
       .send(JSON.stringify(visitor()));
@@ -211,7 +211,7 @@ describe('request logging and the error handler', () => {
     expect(typeof lines[0].durationMs).toBe('number');
     expect(lines[1]).toMatchObject({
       method: 'POST',
-      route: '/v1/agent/:key/guides',
+      route: '/v1/embed-agent/:key/guides',
       status: 200,
       keyPrefix: key.slice(0, 14),
     });
@@ -271,7 +271,7 @@ describe('request logging and the error handler', () => {
     delete process.env.PREVIEW_TOKEN_SECRET;
     try {
       const res = await request(observed)
-        .post(`/v1/agent/${key}/preview`)
+        .post(`/v1/embed-agent/${key}/preview`)
         .set('Content-Type', 'text/plain')
         .set('Origin', SITE)
         .send(JSON.stringify({ token: 'x' }));
@@ -283,7 +283,7 @@ describe('request logging and the error handler', () => {
       level: 'error',
       status: 503,
       code: 'preview_not_configured',
-      route: '/v1/agent/:key/preview',
+      route: '/v1/embed-agent/:key/preview',
     });
     expect(reported).toHaveLength(1);
 

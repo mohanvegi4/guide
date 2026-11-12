@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const KEY = `ge_pk_${'b'.repeat(32)}`;
-const SRC = `https://guides.example.com/agent/v1/${KEY}/guides.js`;
+const SRC = `https://guides.example.com/embed-agent/v1/${KEY}/guides.js`;
 
 /** Installs the snippet's stub + script tag the way the real snippet does. */
 function installSnippet(calls: unknown[][] = []) {
@@ -55,7 +55,7 @@ describe('install snippet agent', () => {
     await vi.waitFor(() => expect(guidesCalls(fetchMock).length).toBeGreaterThanOrEqual(2));
 
     const [first, second] = guidesCalls(fetchMock);
-    expect(first[0]).toBe(`https://guides.example.com/v1/agent/${KEY}/guides`);
+    expect(first[0]).toBe(`https://guides.example.com/v1/embed-agent/${KEY}/guides`);
     expect(body(first)).toEqual({ visitor: { id: 'u-1' }, account: { id: 'oclc' } });
     expect(body(second)).toMatchObject({ visitor: { id: 'later-user' } }); // the identify that came after
     // The package version, injected at build time (vitest.config defines it the same way).

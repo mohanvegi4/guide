@@ -25,8 +25,8 @@ text{font-family:-apple-system,"Segoe UI",Helvetica,Arial,sans-serif;fill:#15212
 <text x="536" y="113" class="mono">/api/* proxied to the backend</text>
 <rect x="120" y="214" width="640" height="150" rx="10" class="acc"/>
 <text x="140" y="244" font-weight="600" font-size="16">Backend · Express, Node 22</text>
-<text x="140" y="276" class="mono a">/agent/v1/&lt;key&gt;/guides.js</text><text x="430" y="276" class="m" font-size="13">agent bundle, 5-min cache + ETag</text>
-<text x="140" y="302" class="mono a">/v1/agent/&lt;key&gt;/…</text><text x="430" y="302" class="m" font-size="13">active guides, events, visitor state</text>
+<text x="140" y="276" class="mono a">/embed-agent/v1/&lt;key&gt;/guides.js</text><text x="430" y="276" class="m" font-size="13">agent bundle, 5-min cache + ETag</text>
+<text x="140" y="302" class="mono a">/v1/embed-agent/&lt;key&gt;/…</text><text x="430" y="302" class="m" font-size="13">active guides, events, visitor state</text>
 <text x="140" y="328" class="mono a">/v1/…</text><text x="430" y="328" class="m" font-size="13">Studio API: orgs, apps, guides, releases</text>
 <text x="140" y="352" class="mono m" font-size="12">/auth/config · /health · /ready · /metrics</text>
 <rect x="120" y="408" width="300" height="56" rx="10" class="sunk"/>

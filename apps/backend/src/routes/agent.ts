@@ -16,12 +16,12 @@ import { RESOLVED_ROUTE_MATCH_SQL } from './studio/context';
 /**
  * The public side: what the install snippet on customers' pages talks to.
  *
- *   GET  /agent/v1/:key/guides.js      the agent script (same file for every key)
- *   GET  /agent/v1/version             which build of the script this backend serves
- *   POST /v1/agent/:key/guides         kill switches + this visitor's active guides
- *   POST /v1/agent/:key/events         analytics batch (+ dismiss/complete state)
- *   POST /v1/agent/:key/errors         a sampled report of an exception inside the agent
- *   POST /v1/agent/:key/preview        resolve a signed preview link
+ *   GET  /embed-agent/v1/:key/guides.js      the agent script (same file for every key)
+ *   GET  /embed-agent/v1/version             which build of the script this backend serves
+ *   POST /v1/embed-agent/:key/guides         kill switches + this visitor's active guides
+ *   POST /v1/embed-agent/:key/events         analytics batch (+ dismiss/complete state)
+ *   POST /v1/embed-agent/:key/errors         a sampled report of an exception inside the agent
+ *   POST /v1/embed-agent/:key/preview        resolve a signed preview link
  *
  * The key is public, so: CORS only for the app's own websites, a per-key and
  * per-client rate limit, optional signed visitor identity (auth/visitor.ts),
@@ -42,7 +42,7 @@ const KEY_PATTERN = /^ge_pk_[0-9a-f]{32}$/;
 // The snippet customers paste loads a STABLE URL, so that URL must keep
 // working forever; what changes between deploys is the content. The content
 // hash identifies it: a strong ETag, so browsers and a CDN revalidate with a
-// cheap 304, and GET /agent/v1/version reports it so a deploy (or a
+// cheap 304, and GET /embed-agent/v1/version reports it so a deploy (or a
 // rollback: redeploying an older image changes the hash back) can be
 // confirmed from outside. The hash is recomputed from the file as served,
 // not read from the banner build.mjs wrote — the two agree, but only the
@@ -113,7 +113,7 @@ agentScriptRouter.get('/:key/guides.js', (req, res) => {
     .catch(() => res.status(503).type('application/javascript').send('/* agent bundle not built */'));
 });
 
-// GET /agent/v1/version — no key needed: a cheap uptime / deploy check.
+// GET /embed-agent/v1/version — no key needed: a cheap uptime / deploy check.
 // Never cached, so it always says what this origin serves right now.
 agentScriptRouter.get('/version', (_req, res) => {
   loadBundle()
@@ -231,7 +231,7 @@ function visitorFrom(req: Request, app: AgentApp): Visitor {
 }
 
 // ------------------------------------------------------------
-// POST /v1/agent/:key/guides — one round trip: kill switches + every guide
+// POST /v1/embed-agent/:key/guides — one round trip: kill switches + every guide
 // this visitor should see right now in the environment the page belongs to
 // (released there, enabled, in its date window,
 // their account allowed, at least one of their tags listed when the guide
@@ -281,7 +281,7 @@ agentApiRouter.post(
 );
 
 // ------------------------------------------------------------
-// POST /v1/agent/:key/help — the help center: settings for the default button
+// POST /v1/embed-agent/:key/help — the help center: settings for the default button
 // plus every guide authors listed in the help center that this visitor may
 // start (published, enabled, in its date window, account and tags allowed). Unlike
 // /guides, finished guides stay listed: help is on demand, so they can be
@@ -347,7 +347,7 @@ agentApiRouter.post(
 );
 
 // ------------------------------------------------------------
-// POST /v1/agent/:key/events — fire-and-forget analytics batch. Two shapes:
+// POST /v1/embed-agent/:key/events — fire-and-forget analytics batch. Two shapes:
 // guide events (always name a guide and version) and help-center events
 // (never do — they're about the help panel itself).
 // ------------------------------------------------------------
@@ -515,7 +515,7 @@ async function recordFinishedGuides(
 }
 
 // ------------------------------------------------------------
-// POST /v1/agent/:key/errors — an exception the agent swallowed (sampled
+// POST /v1/embed-agent/:key/errors — an exception the agent swallowed (sampled
 // client-side, at most a few per page load). Free text from a public
 // endpoint: length-capped here, stored as is, and only ever rendered as
 // text. Per app, at most ERROR_CAP_PER_HOUR rows an hour are kept, so one
@@ -556,7 +556,7 @@ agentApiRouter.post(
 );
 
 // ------------------------------------------------------------
-// POST /v1/agent/:key/preview — resolve a signed preview link to the exact
+// POST /v1/embed-agent/:key/preview — resolve a signed preview link to the exact
 // version it names (draft or published, enabled or not). The token must
 // belong to THIS app; kill switches still apply.
 // ------------------------------------------------------------

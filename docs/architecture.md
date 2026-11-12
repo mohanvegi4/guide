@@ -46,8 +46,8 @@ Guide Engine has three surfaces and one store.
  Customer's website (any framework)               Guide Engine service
 ┌──────────────────────────────────────┐         ┌────────────────────────────────────────┐
 │ <script> install snippet (app key)   │  GET    │ Backend (Node, Express)                │
-│   └─ loads guides.js (the agent) ────┼────────▶│  /agent/v1/<key>/guides.js  (script)   │
-│ agent = core engine + renderer       │  POST   │  /v1/agent/<key>/guides|help|events|…  │
+│   └─ loads guides.js (the agent) ────┼────────▶│  /embed-agent/v1/<key>/guides.js  (script)   │
+│ agent = core engine + renderer       │  POST   │  /v1/embed-agent/<key>/guides|help|events|…  │
 │   + help widget, in Shadow DOM ──────┼────────▶│        public, per-app CORS            │
 │ elements tagged data-guide-id="…"    │         │                                        │
 └──────────────────────────────────────┘         │  /v1/…  Studio API (OIDC bearer token) │
@@ -124,7 +124,7 @@ the single draft `guide_version` row.
 
 **3. The author previews it.** `POST …/:id/preview-token` signs a 15-minute token bound to that
 app, guide and version. The Studio opens the customer's site with `?guidePreview=<token>`. The
-agent sees the parameter, sends the token to `/v1/agent/<key>/preview`, and shows exactly that
+agent sees the parameter, sends the token to `/v1/embed-agent/<key>/preview`, and shows exactly that
 version to that browser only, recording nothing.
 
 **4. The author publishes, enables and promotes it.** Publishing stamps `published_at` on the
@@ -136,7 +136,7 @@ for example Test → Accept → Production; the production release is mirrored i
 
 **5. A visitor loads a page.** The snippet defines a tiny `window.guideEngine` queue, injects
 `guides.js`, and queues `initialize({ visitor, account })`. The agent loads, finds its own script
-tag to learn the API host and app key, replays the queue, and calls `POST /v1/agent/<key>/guides`.
+tag to learn the API host and app key, replays the queue, and calls `POST /v1/embed-agent/<key>/guides`.
 
 **6. The backend decides what this visitor may get.** It checks the app key, the page's Origin
 against the app's websites, and the rate limit. It checks the kill switches. The Origin also names
@@ -245,8 +245,8 @@ Middleware runs in this order ([`app.ts`](../apps/backend/src/app.ts)):
 | 5 | `/health`, `/ready` | Liveness (no database) and readiness (`SELECT 1` within 2 s). |
 | 6 | `/metrics` | Prometheus text, behind `METRICS_TOKEN`. |
 | 7 | `/auth/config` | Public sign-in configuration for the Studio. |
-| 8 | `/agent/v1` | The agent script. |
-| 9 | `/v1/agent/:key` | The agent API, with its own CORS, rate limit and text body parser. |
+| 8 | `/embed-agent/v1` | The agent script. |
+| 9 | `/v1/embed-agent/:key` | The agent API, with its own CORS, rate limit and text body parser. |
 | 10 | `/v1` | The Studio API; every route first passes `requireStudioUser`. |
 | 11 | Error handler | Turns errors into JSON. |
 
@@ -601,7 +601,7 @@ public key, and designed so that a bad or hostile page can't hurt anyone else.
 
 ### 8.1 The script
 
-`GET /agent/v1/<key>/guides.js` serves the same file for every well-formed key. The key is checked
+`GET /embed-agent/v1/<key>/guides.js` serves the same file for every well-formed key. The key is checked
 only for shape (`ge_pk_` + 32 hex characters); the agent reads its own key from its URL later.
 
 | Header | Value | Why |
@@ -612,7 +612,7 @@ only for shape (`ge_pk_` + 32 hex characters); the agent reads its own key from 
 
 The file is read from `AGENT_BUNDLE_PATH` (default `packages/embed-agent/dist/guide-engine.js`) on first
 request and kept in memory, so **a new agent build needs a backend restart** to be served. A missing
-bundle answers `503`. `GET /agent/v1/version` returns `{ version, hash }` uncached.
+bundle answers `503`. `GET /embed-agent/v1/version` returns `{ version, hash }` uncached.
 
 ### 8.2 What every agent request passes through
 
@@ -645,7 +645,7 @@ All are `POST`. `/guides`, `/help` and `/events` carry the identity fields descr
 [section 9](#9-visitors-accounts-and-audience-targeting); the agent sends tags only to `/guides` and
 `/help`, and no identity at all to `/errors` and `/preview`, which never read one.
 
-**`/v1/agent/<key>/guides`**: the automatic guides for this visitor.
+**`/v1/embed-agent/<key>/guides`**: the automatic guides for this visitor.
 
 ```sql
 SELECT a.id, a.app_id, a.name, a.version_id, a.steps, a.route_match
@@ -665,13 +665,13 @@ WHERE a.app_id = $1                                            -- this app
 Response: `{ enabled: true, routeMode, theme, guides: [{ id, versionId, name, steps, routeMatch }] }`.
 Route matching is left to the browser, so one response serves every page of a single-page app.
 
-**`/v1/agent/<key>/help`**: the help center. If the app's help center is off, `{ enabled: false }`.
+**`/v1/embed-agent/<key>/help`**: the help center. If the app's help center is off, `{ enabled: false }`.
 Otherwise the button settings and every listed guide (automatic and help-only), filtered by the
 account allowlist but **not** by visitor state, so finished guides can be replayed. Each item gets a
 `startPath`: the listing's own, else the saved page's start, else the exact route. Searching
 happens in the browser; there is no search endpoint.
 
-**`/v1/agent/<key>/events`**: 1 to 100 events per call. Guide events carry `guideId`,
+**`/v1/embed-agent/<key>/events`**: 1 to 100 events per call. Guide events carry `guideId`,
 `guideVersionId`, optional `stepId`, `sessionId`, `occurredAt` and an event type (`guide_shown`,
 `guide_step_viewed`, `guide_step_completed`, `guide_dismissed`, `guide_completed`, `guide_error`).
 Help events (`help_opened`, `help_searched`) have no guide; a search query is cut to 200
@@ -688,11 +688,11 @@ in which case nothing is stored. Either way the visitor's state in that environm
 
 Answer: `202 { accepted: n }`.
 
-**`/v1/agent/<key>/errors`**: `{ message, stack?, url?, agentVersion? }`, length-capped, at most
+**`/v1/embed-agent/<key>/errors`**: `{ message, stack?, url?, agentVersion? }`, length-capped, at most
 1,000 per app per hour (extra reports are accepted and dropped). No visitor identity needed.
 The Studio lists the latest ones in the app's settings for editors and above.
 
-**`/v1/agent/<key>/preview`**: `{ token }`. Verifies the preview token (HS256 with
+**`/v1/embed-agent/<key>/preview`**: `{ token }`. Verifies the preview token (HS256 with
 `PREVIEW_TOKEN_SECRET`, audience `guide-preview`, 15-minute lifetime) and that it was minted for
 *this* app. Returns that exact version, draft or not, ignoring enabled, published, dates, audience,
 activation and visitor state. The kill switches still apply. `503 preview_not_configured` when the
@@ -1255,7 +1255,7 @@ Things that are true of the code today and worth knowing before you rely on or c
 **Backend and operations**
 
 - No graceful shutdown on `SIGTERM`, and unknown paths get Express's default HTML 404.
-- `/v1/agent/<key>/errors` is counted under the endpoint label `other` in metrics, and agent-error
+- `/v1/embed-agent/<key>/errors` is counted under the endpoint label `other` in metrics, and agent-error
   deletions by retention are logged but not counted in `retention_deleted_total`.
 - Rate-limit responses carry no `Retry-After` header, and in production each agent request costs
   one Postgres upsert for the counter.

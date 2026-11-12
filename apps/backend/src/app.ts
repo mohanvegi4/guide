@@ -54,8 +54,8 @@ export function createApp(options: AppOptions = {}): express.Express {
   app.use('/auth', authRouter);
 
   // Public agent: the install snippet's script and API (per-app CORS inside).
-  app.use('/agent/v1', agentScriptRouter);
-  app.use('/v1/agent/:key', agentApiRouter);
+  app.use('/embed-agent/v1', agentScriptRouter);
+  app.use('/v1/embed-agent/:key', agentApiRouter);
 
   // Studio API: same-origin via the Studio's /api proxy, so no CORS here.
   app.use('/v1', studioRouter);
