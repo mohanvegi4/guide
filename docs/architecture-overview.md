@@ -84,7 +84,7 @@ apps.
 |---|---|---|
 | Tenancy | `organization`, `org_member`, `invitation`, `studio_user` | Customers, people, their one org-wide role |
 | Apps | `application`, `app_environment`, `app_page` | Websites with a public key, release stages that own origins, named URL rules |
-| Content | `guide`, `guide_version`, `step` | Guides with immutable published versions; steps point at `data-guide-id` anchors |
+| Content | `guide`, `guide_version` | Guides with immutable published versions; their steps (JSON) point at `data-guide-id` anchors |
 | Releases | `guide_release`, `guide_release_event` | Which version is live in which environment, with an append-only history |
 | Runtime | `guide_event`, `user_guide_state`, `agent_error` | Analytics, per-visitor show-once and progress state, agent exceptions |
 | Platform | `system_config`, `support_access_log`, `agent_rate_limit` | Global kill switch, support audit trail, rate-limit counters |
@@ -110,7 +110,7 @@ columns). Step content is sanitized on the server.
    selects the environment.
 3. The agent asks for active guides; `withAgentSession` reads `active_guide` and filters by the app
    switch, the kill switch, `enabled`, the account allowlist, visitor tags and show-once state.
-4. Core matches the route, waits for the `data-guide-id` anchor and shows the steps.
+4. The engine matches the route, waits for the `data-guide-id` anchor and shows the steps.
 5. Events are sent in batches, unless analytics is off for that environment. Any failure shows
    nothing and never touches the host page.
 
@@ -168,7 +168,7 @@ The five stubbed methods are exactly the agent's API. With **Require signed iden
 
 `deploy/` runs this on one host with Docker Compose; an optional monitoring profile adds
 Prometheus and Alertmanager with the rules in `deploy/monitoring/`. Operating it:
-[DevOps quick guide](devops.md).
+[Deploying and operating](operations.md).
 
 | Step | How |
 |---|---|

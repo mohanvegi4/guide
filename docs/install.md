@@ -5,8 +5,8 @@ nav_order: 2.2
 
 # Installing Guide Engine
 
-Putting Guide Engine on a website: the snippet, tagging elements, signed identity, and how
-the agent picks and shows a guide.
+Putting Guide Engine on a website: the snippet, tagging elements, signed identity, how the agent
+picks and shows a guide, and the help center visitors see.
 
 ## Installing Guide Engine on a website
 
@@ -99,7 +99,7 @@ example, rotation and acceptance checks — is in
 3. **One request** returns everything needed: `POST /v1/agent/<key>/guides` with the visitor's
    identity returns `{ enabled, guides }`. The server checks:
    - the global kill switch and the app's own switch;
-   - the [environment](using-the-studio.md#environments-and-releases) the page's `Origin` belongs to, and the
+   - the [environment](../apps/studio/README.md#environments-and-releases) the page's `Origin` belongs to, and the
      version released there (a guide with no release in it isn't served);
    - published, enabled and in the date window;
    - the account allowlist and the visitor tags;
@@ -147,3 +147,55 @@ example, rotation and acceptance checks — is in
    (1000 per app per hour, beyond which reports are acknowledged and dropped), so a page that
    throws in a loop can't flood anything. The newest show up under **Recent agent errors** in the
    app's settings; the visitor never sees any of it.
+
+---
+
+## Help center
+
+A floating **Help** button (bottom right by default; the corner is an app setting) opens
+**"How can we help?"**, a searchable list of guides. Authors choose what's listed and how it looks
+in the Studio ([Help center settings](../apps/studio/README.md#install--settings)).
+
+**How it looks.** With **Match the website's theme** on (the default), guide cards and the help
+center take the page's own Bootstrap 5 theme: `--bs-primary` for buttons, the spotlight ring and
+focus rings, `--bs-body-font-family`, `--bs-body-color`, `--bs-body-bg` and `--bs-border-radius`.
+They are read live through the shadow DOM, page by page, so a site whose theme differs per tenant
+(the WISE OPAC's library themes) shows each tenant's colors. The app's color is the fallback for
+pages without a Bootstrap theme. With it off, the app's color styles the help button and the
+cards' main buttons, with Guide Engine's own font and corners.
+
+**What's listed.** The guides authors marked **List in the help center**, filtered like everything
+else: published, enabled, inside their dates, and the visitor's account allowed. Guides set to
+start **only from the help center** never pop up on their own. Guides a visitor already finished
+stay listed, so they can replay them any time. The button only appears when the visitor has at
+least one topic.
+
+**Searching.** Every word must appear in the title, description or keywords, with title matches
+first. **↑/↓** move, **Enter** starts a topic, **Esc** closes; focus stays inside the dialog, and
+clicking outside closes it.
+
+**Starting a guide**
+- **On the guide's own page**, or when its start page is the current page, it starts right away.
+- **Anywhere else**, the list says so ("Opens on `/team`"), and choosing the topic first asks
+  **"Go to another page?"** (*Take me there* / *Stay here*), since leaving is a page load that can
+  drop unsaved work. On *Take me there* the visitor gets a normal page load to the guide's
+  **start page** (the guide's own, else the saved page's, else the page's exact URL), and the
+  agent starts the guide on arrival. Which guide to start travels in the tab's session storage
+  (`guideEngine.launch`, for this app key, valid for a minute), never in the URL, so a router that
+  rewrites the URL as it boots can't lose it. If the visitor lands elsewhere first (a sign-in
+  redirect), the guide starts once a route change brings them to its page. Only a browser with
+  session storage blocked falls back to `?guideEngine=help:<guide id>`.
+- **Hash-routed apps** send the visitor to `#/team` on the same document: no page load, and the
+  guide starts on the route change.
+- A plain `?guideEngine=<guide id>` link (for example from support staff) does the same for any
+  help-center guide.
+
+**Your own button.** Hide ours and call the same action from yours:
+
+```js
+guideEngine.initialize({ visitor: { id: 'USER_ID' }, helpButton: false });
+document.querySelector('#my-help').addEventListener('click', () => guideEngine.openHelp());
+// also: guideEngine.closeHelp(), guideEngine.toggleHelp()
+```
+
+The calls are queued like `initialize`, so they work even before the agent has loaded.

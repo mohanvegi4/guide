@@ -11,8 +11,10 @@ It is written for engineers who will run, extend or review the system, and it de
 as it is on `main` (version 0.3.0, migrations `001_schema.sql` to `004_drop_guide_type.sql`). Where the code and the intent differ, the
 guide says so in [Known gaps and quirks](#16-known-gaps-and-quirks).
 
-For *using* the product, read the [Guide Engine reference](../README.md) and the
-[Studio reference](../apps/studio/README.md). This page is about the machinery.
+For *using* the product, read [Installing Guide Engine](install.md) and the
+[Studio reference](../apps/studio/README.md); for running it, [Deploying and operating](operations.md).
+The [Architecture overview](architecture-overview.md) is the one-page version of this page, with
+the folder layout and diagrams. This page is about the machinery.
 
 ## Contents
 
@@ -30,7 +32,7 @@ For *using* the product, read the [Guide Engine reference](../README.md) and the
 12. [The Studio application](#12-the-studio-application)
 13. [Analytics and the data lifecycle](#13-analytics-and-the-data-lifecycle)
 14. [Deployment and operations](#14-deployment-and-operations)
-15. [CI, releases and the docs site](#15-ci-releases-and-the-docs-site)
+15. [CI and the docs site](#15-ci-and-the-docs-site)
 16. [Known gaps and quirks](#16-known-gaps-and-quirks)
 17. [Where to look in the code](#17-where-to-look-in-the-code)
 
@@ -165,20 +167,7 @@ delete the whole organization.
 
 ## 3. Repository, packages and build
 
-```
-packages/
-  agent/             the browser side: src/engine (engine, DOM renderer, help widget) and the
-                     install-snippet runtime, bundled into one IIFE file
-apps/
-  backend/           Express + Postgres: Studio API, agent API, migrations, operator scripts
-  studio/            the authoring Studio (Angular 21, zoneless)
-  demo/              a plain Vite page that installs Guide Engine through the snippet
-e2e/                 Playwright smoke test against a running stack
-deploy/              single-host production stack (compose, Caddy, backups, monitoring)
-docker/              local dev: docker-compose.yml, Postgres init, the dev Keycloak realm
-docs/                this site
-```
-
+The folders are listed in the [Architecture overview](architecture-overview.md#repository-layout).
 It is an npm workspaces monorepo. `npm run build` builds every
 workspace. TypeScript runs in strict mode everywhere from `tsconfig.base.json` (ES2020, CommonJS).
 
@@ -201,16 +190,10 @@ about 10 KB gzipped. It is a build artefact and is not committed; the backend im
 **Versions.** The agent's version is the `version` in `packages/agent/package.json`; the build
 stamps it into the bundle banner and `guideEngine.version`. Nothing is published to npm.
 
-**Tests.**
-
-| Package | Runner | Tests |
-|---|---|---|
-| backend | vitest against a real Postgres (`guide_engine_test`) | 258 |
-| agent (engine + runtime) | vitest + jsdom | 142 |
-| studio | Angular unit-test builder (vitest) | 45 |
-| e2e | Playwright, Chromium, against Keycloak + backend + Studio | 1 end-to-end flow |
-
-The demo has no tests.
+**Tests.** The backend runs vitest against a real Postgres (`guide_engine_test`), the agent vitest
+with jsdom, the Studio the Angular unit-test builder, and `e2e/` one Playwright flow against
+Keycloak, the backend and the Studio. The demo has no tests. What each suite covers is in the
+[README](../README.md#testing).
 
 ---
 
@@ -324,10 +307,6 @@ has RLS **enabled and forced**, so even the table owner is subject to it.
 | `agent_rate_limit` | Rate-limit windows (unscoped) | `(bucket, window_start)`, `count` |
 | `schema_migrations` | Applied migrations (unscoped) | `filename`, `applied_at` |
 
-Migration 002 dropped the development-era leftovers: the `app_member` table and `app_role` type
-(per-app roles), `invitation.app_roles`, the never-used `step` table, the retired `admin` /
-`member` values of `org_role` and the unused `snoozed` value of `user_guide_status`.
-
 **Constraints that encode rules.** A few business rules live in the schema, not only in code:
 
 - One draft per guide: a partial unique index on `guide_version (guide_id) WHERE published_at IS NULL`.
@@ -349,7 +328,7 @@ their own route snapshot.
 Everything that serves guides to visitors reads this view, so the rules for "live" are in one place:
 
 ```sql
-SELECT g.id, g.app_id, g.name, g.type,
+SELECT g.id, g.app_id, g.name,
        gv.id AS version_id, gv.version_number, gv.steps,
        CASE WHEN p.id IS NOT NULL
             THEN jsonb_build_object('type', p.match_type::text, 'value', p.match_value)
@@ -404,9 +383,9 @@ schema matched the chain's object for object. The old files are in git history (
 | 019 | `shown` visitor state | An automatic guide shows once per visitor per version |
 | 020 | `visitor_tags` on versions | Target guides by what the visitor may do in the host application |
 | 021 | Environments, releases and the release log; events and visitor state per environment; `active_guide` on releases | Dev → Test → Accept → Prod promotion with revert, from one Studio and one key; analytics that never mix environments and can be switched off per environment. Existing apps got one *Production* environment |
-| 002 (after the squash) | Leftovers dropped: `app_member`, `app_role`, `invitation.app_roles`, `step`, the retired `org_role` values, `snoozed` | The first migration after the squash; the enums are rebuilt because Postgres can't drop an enum value |
-| 003 (after the squash) | `match_site_theme` on applications | Cards and the help center look like the customer's site (its Bootstrap theme), per page and per tenant theme |
-| 004 (after the squash) | `guide.type` dropped | The type (tooltip, modal, banner, …) never changed how a guide looked; walkthroughs come first because they have several steps |
+
+The files written since the squash are listed in the [Migrations](reference.md#migrations)
+reference.
 
 ---
 
@@ -536,14 +515,9 @@ on brute-force protection.
 
 ### 7.2 Roles
 
-Each person has **one role per organization**, and it applies to every app of that organization.
-
-| Role | In one sentence |
-|---|---|
-| Viewer | Reads the organization's apps: guides, pages, analytics and the install snippet. |
-| Editor | Runs the apps day to day: authors, publishes and deletes guides and pages, changes app settings. |
-| Manager | Everything an editor does, plus people, new apps, and destructive or security-sensitive app actions. |
-| Owner | Everything a manager does, plus the organization itself: ownership, support access, export and deletion. |
+Each person has **one role per organization**, and it applies to every app of that organization:
+viewer < editor < manager < owner. The [Studio reference](../apps/studio/README.md#organizations-apps-and-roles)
+describes them for users; the matrix below is what the backend enforces.
 
 Internally the backend still has a per-app ladder (`viewer < editor < publisher < app_admin`) from
 the older per-app model. It is derived from the org role: viewer becomes `viewer`, and every other
@@ -674,7 +648,7 @@ All are `POST`. `/guides`, `/help` and `/events` carry the identity fields descr
 **`/v1/agent/<key>/guides`**: the automatic guides for this visitor.
 
 ```sql
-SELECT a.id, a.app_id, a.name, a.type, a.version_id, a.steps, a.route_match
+SELECT a.id, a.app_id, a.name, a.version_id, a.steps, a.route_match
 FROM active_guide a
 WHERE a.app_id = $1                                            -- this app
   AND a.environment_id = $5                                    -- released in the page's environment
@@ -815,21 +789,10 @@ Source: [`packages/agent/src`](../packages/agent/src) (the engine is in `src/eng
 
 ### 10.1 The snippet and the agent
 
-The Studio shows each app's snippet, generated by the backend with the app's key and
-`PUBLIC_API_URL`:
-
-```html
-<script>
-(function(w,d,k){var g=w.guideEngine=w.guideEngine||{_q:[]};
-['initialize','identify','openHelp','closeHelp','toggleHelp'].forEach(function(m){g[m]=g[m]||function(){g._q.push([m].concat([].slice.call(arguments)))}});
-var s=d.createElement('script');s.async=1;s.src='https://guides.example.com/agent/v1/'+k+'/guides.js';d.head.appendChild(s);
-})(window,document,'ge_pk_…');
-guideEngine.initialize({ visitor: { id: 'USER_ID' }, account: { id: 'ACCOUNT_ID' } });
-</script>
-```
-
-The stub records calls into `window.guideEngine._q` until the real agent arrives, so the page never
-waits for it. When `guides.js` runs ([`agent/src/index.ts`](../packages/agent/src/index.ts)):
+The Studio shows each app's snippet ([Installing Guide Engine](install.md#1-add-the-snippet)),
+generated by `installSnippet()` in [`services/orgs.ts`](../apps/backend/src/services/orgs.ts) with
+the app's key and `PUBLIC_API_URL`. The stub records calls into `window.guideEngine._q` until
+the real agent arrives, so the page never waits for it. When `guides.js` runs ([`agent/src/index.ts`](../packages/agent/src/index.ts)):
 
 1. If `window.guideEngine.version` already exists (snippet included twice), it stops.
 2. It finds its own `<script>` (via `document.currentScript`, else by scanning for the URL
@@ -1172,34 +1135,24 @@ rate-limit windows older than an hour. It runs under `app.retention`, the only s
 bulk-delete events. Several replicas may run it at once harmlessly. `npm run retention -- --days N`
 runs it by hand. `user_guide_state` has no age limit.
 
-### 13.3 One visitor's data
+### 13.3 Exports and deletion
 
-A manager can, from the app's settings:
+What an owner's export contains, what deletion removes and who may do it is in
+[Your data](security.md#your-data). Underneath:
 
-- **Export** a visitor: their events and guide state as a JSON download;
-- **Forget** a visitor: delete their events and guide state in one transaction. The log records the
-  counts, never the id.
-
-Removal is a hard delete; nothing is anonymized. After forgetting, that visitor is served every
-automatic guide again.
-
-### 13.4 A whole organization
-
-- **Export** (owner): one JSON file with the organization, members, pending invitations, every app's
-  settings, saved pages, every guide with all its versions, and lifetime totals per guide. It never
-  includes signing secrets, invitation tokens, raw events or visitor state.
-- **Delete** (owner, or a platform admin on the customer's request): type the name to confirm; one
-  `DELETE` and the foreign keys remove everything. Studio user rows remain.
+- **One visitor** (manager): export is their events and guide state as JSON; forget deletes both in
+  one transaction, and the log records the counts, never the id. It is a hard delete, with no
+  anonymization; afterwards that visitor is served every automatic guide again.
+- **A whole organization**: one `DELETE` and the foreign keys remove everything beneath it
+  (referential actions bypass RLS, which is what lets them take published versions and events).
+  `studio_user` rows remain.
 
 ---
 
 ## 14. Deployment and operations
 
-Source: [`deploy/`](../deploy). The reference covers the steps in
-[Deploying](operations.md#deploying) and the [Go-live checklist](operations.md#go-live-checklist);
-this section explains the shape.
-
-### 14.1 The single-host stack
+Source: [`deploy/`](../deploy). How to install, operate, back up and monitor it is in
+[Deploying and operating](operations.md); this section explains the shape.
 
 ```
                  Internet :80/:443
@@ -1231,91 +1184,27 @@ this section explains the shape.
   limit is in Postgres, migrations take a lock, and retention tolerates concurrency.
 - **Caddy** obtains certificates, adds HSTS, and routes the three hostnames. The backend and nginx
   set their own security headers.
-- **Backups** dump both databases nightly at `BACKUP_AT` (UTC) with `pg_dump -Fc`, keep
-  `BACKUP_KEEP_DAYS`, and can copy each file off the host through `BACKUP_COPY_CMD`.
-  `deploy/restore.sh` restores one database, stopping the services that use it and taking a
-  safety dump first.
+- **Backups** dump both databases together, because either is useless without the other.
 
-### 14.2 Monitoring
-
-With the `monitoring` profile, Prometheus scrapes every backend replica (discovered by DNS) with
-`METRICS_TOKEN`, and Alertmanager sends to `ALERT_WEBHOOK_URL`. The rules in
-`deploy/monitoring/alerts.yml` (unit-tested in `alerts.test.yml` with `promtool`):
-
-| Alert | Fires when | Severity |
-|---|---|---|
-| BackendDown | A replica's scrape fails for 2 minutes | page |
-| BackendNotDiscovered | No replica is found for 2 minutes | page |
-| HighErrorRate | Over 1% of requests answer 5xx for 5 minutes | page |
-| DbPoolSaturated | Requests wait for a database connection for 1 minute | page |
-| BackendRestarted | A process restarted in the last hour | warning |
-| AgentEndpointFailing | Over 5% of `/guides` or `/events` calls fail for 10 minutes | warning |
-| AgentGuidesLatencyHigh | `/guides` p95 above 250 ms for 10 minutes | warning |
-| AgentRateLimitSaturated | Over 5% of agent calls are rate limited for 10 minutes | warning |
-| RetentionNotRunning | Retention deleted nothing for 2 days | warning |
-
-### 14.3 Secrets and keys
-
-| Secret | Made by | Stored | If lost or leaked |
-|---|---|---|---|
-| App public key `ge_pk_…` | Backend, 16 random bytes, on app creation or rotation | Plain text; it is public | Rotate: old snippets stop working immediately |
-| App signing secret `ge_sk_…` | Backend, 32 random bytes, on request | AES-256-GCM under `SECRETS_KEY` | Rotate: tokens signed with the old one stop verifying |
-| Invitation token | Backend, 32 random bytes | SHA-256 hash only | Revoke the invitation |
-| `SECRETS_KEY` | Operator | Environment | Every app's signing secret becomes unreadable: signed identities fail closed until each app generates a new one |
-| `PREVIEW_TOKEN_SECRET` | Operator | Environment | Change it: outstanding preview links stop working |
-| `METRICS_TOKEN`, `ALERT_WEBHOOK_URL` | Operator | Environment, mounted as files for Prometheus and Alertmanager | Change them |
-
-`npm run encrypt-secrets` re-writes any signing secrets stored before `SECRETS_KEY` was turned on.
-
-### 14.4 Configuration
-
-The full table is in the [Configuration reference](reference.md#configuration-reference). The
-settings that change behaviour in production:
-
-| Variable | Effect |
-|---|---|
-| `NODE_ENV=production` | Turns on every boot refusal, rejects development tokens, hides `/metrics` without a token, defaults retention to 400 days and the rate limiter to Postgres |
-| `DATABASE_URL` | Must be a role without superuser or `BYPASSRLS` |
-| `PUBLIC_API_URL` | Where snippets load the agent; must be `https://` |
-| `TRUST_PROXY=true` | Makes the client IP real behind Caddy, for rate limiting |
-| `OIDC_ISSUER`, `OIDC_AUDIENCE`, `OIDC_JWKS_URI`, `OIDC_STUDIO_CLIENT_ID` | Studio sign-in |
-| `SECRETS_KEY`, `PREVIEW_TOKEN_SECRET` | Required in production |
-| `RATE_LIMIT_STORE`, `AGENT_RATE_LIMIT_PER_MIN`, `AGENT_APP_CACHE_MS` | Agent protection |
-| `EVENT_RETENTION_DAYS` | Data retention |
-| `SMTP_URL`, `MAIL_FROM`, `STUDIO_URL` | Invitation emails (all three needed) |
-| `METRICS_TOKEN`, `SENTRY_DSN`, `LOG_LEVEL` | Observability |
-| `AGENT_BUNDLE_PATH`, `RUN_MIGRATIONS` | Packaging |
-
-### 14.5 Operating the agent script
-
-Browsers cache the agent for 5 minutes and revalidate by ETag, so a new agent reaches visitors
-within minutes of a deploy, and a rollback is simply deploying the previous image. Customers never
-change their snippet for an agent update. The script URL contains the key, so rotating a key is the
-only change that requires customers to edit their pages.
+**Why the agent can be rolled back.** Browsers cache the agent for 5 minutes and revalidate by
+ETag, so a new or previous image reaches visitors within minutes and customers never change their
+snippet. The script URL contains the key, so rotating a key is the only change that requires
+customers to edit their pages. The [operations page](operations.md#the-agent-script-caching-and-rollbacks)
+has the headers.
 
 ---
 
-## 15. CI, releases and the docs site
+## 15. CI and the docs site
 
-**CI** (`.github/workflows/ci.yml`, on every push to `main` and every pull request):
+**CI** (`.github/workflows/ci.yml`) builds and tests every workspace, runs the Playwright flow
+against Keycloak, the backend and the Studio (sign in, create an organization and app, read the key
+from the snippet, publish and enable a guide, see it on a page, delete the organization), and
+publishes the two images: see [Images and CI](operations.md#what-runs). Everything ships as those
+two images; nothing is published to npm.
 
-1. *Build and test*: Postgres 16 service, `docker/init.sql`, `npm run build`, migrations against the
-   test database, `npm test`.
-2. *End-to-end*: starts Postgres and Keycloak with compose, the built backend and the Studio, then
-   runs the Playwright smoke test: sign in through Keycloak, create an organization and app, read the
-   key from the snippet, create and publish a modal, enable it, load a page with the snippet in a
-   fresh browser and check the card and its buttons, then delete the organization.
-3. *Docker images*: builds the backend and Studio images and, on pushes, publishes them to
-   `ghcr.io/mohanvegi4/guide/{backend,studio}` tagged with the commit SHA and `latest`.
-
-**Releases.** Everything ships as the two Docker images (backend with the agent bundle, and the
-Studio); nothing is published to npm.
-
-**Docs** (`.github/workflows/docs.yml`, on changes to the READMEs, `docs/` or the build script):
-`scripts/build-docs.mjs` assembles the site: everything in `docs/`, plus the root README and the
-Studio README as the two reference pages, with repository links rewritten to GitHub. Every page in
-`docs/` must start with front matter (`title`, `nav_order`) or the build stops. Jekyll with the
-Just the Docs theme renders it to GitHub Pages.
+**Docs** (`.github/workflows/docs.yml`): `scripts/build-docs.mjs` assembles the site from `docs/`
+plus the root and Studio READMEs, and Jekyll with the Just the Docs theme renders it to GitHub
+Pages. How it works and how to add a page: `docs/README.md`.
 
 ---
 
@@ -1345,9 +1234,10 @@ Things that are true of the code today and worth knowing before you rely on or c
   production alone means withdrawing it there.
 - Releases (like publishing) are content writes: RLS lets any member write `guide_release`, and the
   editor check is in code.
-- The agent's CORS check uses a 10-second app cache, the environment lookup does not. For up to
-  10 seconds after a website is moved out of every environment, its pages pass CORS and get
-  `{ enabled: false }`; a website moved *into* an environment may get `403` for as long.
+- The agent's CORS check uses a per-process app cache (10 seconds), the environment lookup does
+  not. So a website added or moved, or a rotated key, can take up to 10 seconds to be honoured by
+  every replica: for that long a website moved out of every environment passes CORS and gets
+  `{ enabled: false }`, and one moved *into* an environment may get `403`.
 - Deleting an environment keeps its events, with `environment_id` null; no analytics view shows
   them any more.
 
@@ -1359,10 +1249,8 @@ Things that are true of the code today and worth knowing before you rely on or c
 - The step card has no dialog role and does not move focus; Escape works only while focus is inside
   it. The help panel, by contrast, is fully labelled and traps focus.
 - There is no placement flipping and no arrow; cards are clamped into the viewport instead.
-- `survey_response`, the `custom` step action and the `checklist`, `survey` and `beacon` types exist
-  in the type lists but have no dedicated behaviour; they render like any other step.
-- The app-by-key cache (10 seconds per process) means a website added in settings, or a rotated key,
-  can take up to 10 seconds to be honoured by every replica.
+- The `survey_response` event and the `custom` step action exist in the type lists but have no
+  behaviour behind them.
 
 **Backend and operations**
 
@@ -1372,7 +1260,6 @@ Things that are true of the code today and worth knowing before you rely on or c
 - Rate-limit responses carry no `Retry-After` header, and in production each agent request costs
   one Postgres upsert for the counter.
 - Signed-identity tokens are checked for signature and expiry only (no issuer or audience).
-- `guide_event` is not partitioned; very large volumes would need it.
 - Forgetting a visitor is a hard delete; there is no anonymization path, and `user_guide_state` is
   never aged out.
 

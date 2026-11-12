@@ -17,19 +17,17 @@ an **organization** owns any number of **applications**, and everyone in it has 
 
 **Product and engineering teams installing Guide Engine on a site**
 
-- [Installing Guide Engine](install.md):
-  the snippet, tagging elements, signed identity.
-- [How a guide is chosen and shown](install.md#how-a-guide-is-chosen-and-shown): what the
-  agent sends and when, route matching, fail-closed behaviour and error reporting.
+- [Installing Guide Engine](install.md): the snippet, tagging elements, signed identity,
+  [how a guide is chosen and shown](install.md#how-a-guide-is-chosen-and-shown) and the
+  [help center](install.md#help-center) visitors see.
 - [Agent API](reference.md#agent-api-public-app-key-cors-for-the-apps-websites) and
   [Troubleshooting](operations.md#troubleshooting).
 
 **Authors using the Studio**
 
 - [Studio reference](../apps/studio/README.md): signing in, organizations, apps and roles, working
-  with a guide, saved pages, the help center and analytics.
-- [Using the Studio](using-the-studio.md), including
-  [Saved pages](using-the-studio.md#saved-pages) and the [Help center](using-the-studio.md#help-center).
+  with a guide, [environments and releases](../apps/studio/README.md#environments-and-releases),
+  saved pages, the help center settings and analytics.
 
 **Engineers running, extending or reviewing Guide Engine**
 
@@ -42,19 +40,17 @@ an **organization** owns any number of **applications**, and everyone in it has 
 
 **Operators running Guide Engine**
 
-- [DevOps quick guide](devops.md): what runs, the files you touch, first install, deploys,
-  rollbacks, backups, secrets and a symptom table, in a few commands each.
+- [Deploying and operating](operations.md): what runs, first install, the go-live checklist,
+  everyday tasks, secrets, backups, observability, other platforms, the agent script's caching
+  and rollback contract, and [troubleshooting](operations.md#troubleshooting).
 - [DevOps handoff](handoff-devops.md): for the first deployment, the servers to provision for the
   whole stack, the decisions we need from DevOps, settings, go-live steps and checks.
-- [Deploying](operations.md#deploying): CI, images, the single-host stack, any other
-  platform, and the agent script's caching and rollback contract.
 - [Signed identity](integration/signed-identity.md): the contract for the backend that signs
   visitor identities — claims, algorithm, the endpoint the page calls, rotation and acceptance.
-- [Identity, roles and security](security.md#identity-roles-and-security), including
+- [Identity, roles and security](security.md), including
   [Guide Engine administration](security.md#guide-engine-administration) (platform
   admins, suspension, support access).
-- [Configuration reference](reference.md#configuration-reference),
-  [Operations](operations.md#operations) and [Observability](operations.md#observability).
+- [Configuration and API reference](reference.md): every setting, every endpoint, migrations.
 - [Legal templates](legal/index.md): terms of service, privacy policy, data processing addendum
   and a subprocessor list to adapt before offering Guide Engine as a hosted service.
 

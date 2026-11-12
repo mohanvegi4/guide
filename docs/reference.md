@@ -72,7 +72,7 @@ plain `visitor` and `account`, and anything else sent beside it is ignored. Tags
 
 | Method & path | Body → response |
 |---|---|
-| `POST /v1/agent/:key/guides` | identity → `{ enabled, routeMode, theme: { color, matchSite }, guides: [{ id, versionId, name, steps, routeMatch }] }`. `routeMode` is `path` or `hash`; `theme` is the app's color and whether to match the website's Bootstrap theme ([Help center](using-the-studio.md#help-center)). |
+| `POST /v1/agent/:key/guides` | identity → `{ enabled, routeMode, theme: { color, matchSite }, guides: [{ id, versionId, name, steps, routeMatch }] }`. `routeMode` is `path` or `hash`; `theme` is the app's color and whether to match the website's Bootstrap theme ([Help center](install.md#help-center)). |
 | `POST /v1/agent/:key/events` | identity + `{ events: [{ guideId, guideVersionId, stepId?, sessionId, eventType, occurredAt, metadata? }] }` (1–100) → `202 { accepted }`. Stored under the environment of the page's `Origin`; when that environment's analytics are off, the events update show-once state only and are not stored. Help-center events (`help_opened`, `help_searched`) carry no `guideId` / `guideVersionId`; a `help_searched` event's `metadata` is `{ query, results }` (the query is cut to 200 characters; other keys are dropped). |
 | `POST /v1/agent/:key/preview` | `{ token }` → the previewed guide with `preview: true` and the app's `theme` |
 | `POST /v1/agent/:key/errors` | `{ message (1–500 chars), stack? (≤ 4000), url? (≤ 2000), agentVersion? }` → `202 { accepted }`. `accepted: false` once the app already has 1000 reports in the last hour. |
@@ -175,31 +175,19 @@ A `VersionBody` is:
 
 ---
 
-## Data model and migrations
+## Data model
 
-| Table | Purpose |
-|---|---|
-| `organization` | A customer workspace (`created_by`), plus `suspended_at` and the support window (`support_access_until`, `support_access_granted_by`). |
-| `application` | `public_key`, `allowed_origins` (the union of its environments' websites, kept in sync by the API; the CORS check reads it), `identity_mode`, `signing_secret`, `enabled` (the app switch), `route_mode` (`path` or `hash`), and the help center: `help_enabled`, `help_button_label`, `help_button_color`, `help_position`; `match_site_theme` (style guides with the website's Bootstrap theme, the color being the fallback). |
-| `studio_user` | People who use the Studio, keyed by (`oidc_issuer`, `oidc_sub`); created on first sign-in. `platform_admin` marks Guide Engine staff. |
-| `support_access_log` | Every request a platform admin made under an organization's support access (who, when, method, path). |
-| `org_member` | One role per person per organization (viewer / editor / manager / owner), applying to every app. |
-| `invitation` | Invite links: hashed token, role, expiry, single use. |
-| `app_page` | Saved pages per app: `name`, `match_type`, `match_value`, `start_path`. |
-| `app_environment` | An app's release stages: `name`, `position` (promotion order; the highest is production), `origins` (its websites) and `analytics_enabled`. |
-| `guide_release` | What each environment runs: one published `version_id` per (guide, environment). `guide.current_version_id` mirrors the production row. |
-| `guide_release_event` | The release log per (guide, environment): `release` (a version) or `withdraw`, who and when, and `reverted_at` / `reverted_by` once undone. Revert walks it back. |
-| `guide` / `guide_version` | Guides per app. Numbered versions hold steps (JSONB), `page_id` (a saved page) and/or `route_match` (a custom route, or the page's route snapshot), dates, `account_ids`, `visitor_tags`, `help` (the help-center listing) and `activation` (`auto`: pops up on its page; `manual`: help center only). `published_at IS NULL` means the draft, at most one per guide. Published rows are immutable. |
-| `guide_event` | Analytics: app, `environment_id`, guide, version, step, `visitor_id`, `account_id`. Help-center events (`help_opened`, `help_searched`) have no guide; a CHECK ties a NULL `guide_id` to exactly those two types. |
-| `agent_error` | Exceptions the agent reported from an app's pages: `message`, `stack`, `agent_version`, `url`, `occurred_at`. Written by the agent, read by the app's members and platform admins, deleted by retention. Free text: only ever rendered as text. |
-| `user_guide_state` | Per (app, environment, visitor, guide): shown, dismissed or completed, plus `last_seen_version`. A later `shown` never downgrades dismissed / completed at the same version. |
-| `system_config` | The global kill switch (`guide_engine_enabled`). |
-| `active_guide` (view) | One row per guide per environment it is released to (`environment_id`): the released version, enabled and inside its date window, with `route_match` resolved through the saved page when there is one (`security_invoker`). |
+The tables, their key columns, the constraints that encode business rules and the
+`active_guide` view are described in [How Guide Engine is built](architecture.md#5-the-database);
+the row-level security policies in [section 6](architecture.md#63-what-the-policies-say) of the
+same page.
 
 Every table under an organization references its parent with `ON DELETE CASCADE`, so deleting
 an `organization` (or one `application`) removes everything beneath it in one statement.
 Referential actions bypass Row-Level Security, which is what lets a deletion take published
 versions and events with it without any session being allowed to delete those directly.
+
+## Migrations
 
 Migration runs are serialized with a Postgres advisory lock (held for the whole run, released
 when it ends), so replicas that all run `migrate.js` at start can boot together: one applies the

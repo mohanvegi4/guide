@@ -31,12 +31,12 @@ Repository [`mohanvegi4/guide`](https://github.com/mohanvegi4/guide), branch `ma
 
 | Part | What it is |
 |---|---|
-| `apps/backend` | Express + Postgres 16 API: the Studio API (`/v1/…`, OIDC-authenticated) and the public agent API (`/v1/agent/<key>/…`, `/agent/v1/<key>/guides.js`). Row-level security on every tenant table. 20 migrations, applied by the backend on boot (advisory-locked) and refused in production if pending. |
+| `apps/backend` | Express + Postgres 16 API: the Studio API (`/v1/…`, OIDC-authenticated) and the public agent API (`/v1/agent/<key>/…`, `/agent/v1/<key>/guides.js`). Row-level security on every tenant table. Migrations are applied by the backend on boot (advisory-locked) and refused in production if pending. |
 | `packages/agent` | The engine and the install-snippet runtime (one IIFE served by the backend, cached 5 min / ETag). |
 | `apps/studio` | The authoring Studio (Angular 21), signed in through Keycloak. Organizations → applications → guides, pages, help center, members, analytics, platform administration. |
 | `deploy/` | Single-host production stack: Caddy (TLS, HSTS, security headers, Keycloak admin allowlist), Keycloak, Postgres, backend, Studio, nightly backups + restore script, optional Prometheus + Alertmanager profile. |
 | `docs/` | This docs site: the reference, the Studio reference, architecture, DevOps, the [signed identity contract](../integration/signed-identity.md), legal templates, and these WISE pages. |
-| CI | Build + tests (backend 265, core 105, Studio 47, agent 8), Docker images to GHCR, Playwright end-to-end smoke test (Keycloak sign-in → org → publish → snippet shows the guide), docs site. Green on `main`. |
+| CI | Build and tests, Docker images to GHCR, a Playwright end-to-end smoke test (Keycloak sign-in → org → publish → snippet shows the guide), docs site. |
 
 **Engine behaviour that matters for WISE** (all added during the POC, from watching real users):
 one automatic guide at a time per page (walkthroughs before tips); automatic guides show **once per
@@ -197,7 +197,7 @@ WISE page (console / OPAC)                     Guide Engine backend
 | Seeing a guide again | automatic guides show once per visitor; open it from Help, or publish a new version |
 | Authoring in bulk | the API: create guide → publish version body → enable (the POC used a script with a development token from `npm run mint-token`) |
 
-The [project handbook](handbook.md#5-devops-in-short) has the full start and stop commands.
+The full setup is the [quick start](../../README.md#quick-start-local); `npm run db:down` stops the containers. If your shell forces `DOCKER_DEFAULT_PLATFORM`, see the [project handbook](handbook.md#5-running-it-locally).
 
 ---
 
@@ -226,7 +226,7 @@ side has.
    The [DevOps handoff](../handoff-devops.md) lists the servers and decisions.
 2. ☐ Fill `deploy/.env` from `.env.example` (DB passwords, Keycloak admin, `SECRETS_KEY`,
    `PREVIEW_TOKEN_SECRET`, `METRICS_TOKEN`, `ALERT_WEBHOOK_URL`, SMTP + `MAIL_FROM`, `SENTRY_DSN`).
-   Work through the reference's [Go-live checklist](../operations.md#go-live-checklist) (13 items).
+   Work through the [Go-live checklist](../operations.md#go-live-checklist).
 3. ☐ `deploy/render-realm.sh` for the production Keycloak realm (no demo users, brute-force protection);
    create the first Studio user and the first platform admin (`UPDATE studio_user SET platform_admin`).
 4. ☑ No npm release needed: the engine ships only inside the agent script the backend serves.
@@ -243,7 +243,7 @@ side has.
 ### B. WISE applications
 
 10. ☐ **(you)** Create the two applications in the production Studio, one per product, each with
-    the [environments](../using-the-studio.md#environments-and-releases) **Dev → Test → Accept → Production**
+    the [environments](../../apps/studio/README.md#environments-and-releases) **Dev → Test → Accept → Production**
     holding that stage's WISE site origins (a website belongs to one stage). Every WISE environment
     then uses the same key and signing secret per product: the page's origin tells Guide Engine
     the stage, guides are published to Dev and promoted towards Production (with revert), and
@@ -292,7 +292,7 @@ side has.
   dialog, Customers tab behind a feature flag, OPAC custom menus) make a *first* step wait and give up
   silently; those guides are help-only or start with a lead-in step for that reason.
 - The app-key cache is per backend process (10 s); signing secrets are encrypted with one
-  `SECRETS_KEY`; `guide_event` is unpartitioned; invitation mail is plain SMTP — all documented under
-  [Known gaps and roadmap](../../README.md#known-gaps-and-roadmap) in the reference.
+  `SECRETS_KEY`; `guide_event` is unpartitioned; invitation mail is plain SMTP — all listed under
+  [Known gaps and roadmap](../../README.md#known-gaps-and-roadmap).
 - The local WISE development containers watch bind mounts; after large template changes, a container
   restart is sometimes needed for the dev server to pick them up.

@@ -9,8 +9,8 @@ nav_order: 3
 **Date:** 2026-10-25
 
 Every project built for Guide Engine and its WISE integration: where each one lives, the tools it
-uses, the hosts it runs on, and where its Docker and configuration files are. The last section is a
-very short DevOps guide; the full one is the [DevOps quick guide](../devops.md).
+uses, the hosts it runs on, and where its Docker and configuration files are. Running Guide Engine
+itself is in [Deploying and operating](../operations.md).
 
 ---
 
@@ -18,14 +18,7 @@ very short DevOps guide; the full one is the [DevOps quick guide](../devops.md).
 
 | Project | What it is | Where | Branch |
 |---|---|---|---|
-| **Guide Engine** (monorepo) | The product: API, agent, Studio, deploy stack, docs | GitHub [`mohanvegi4/guide`](https://github.com/mohanvegi4/guide) | `main` |
-| ↳ `apps/backend` | Express + Postgres API: Studio API, public agent API, migrations, operator scripts | in the monorepo | |
-| ↳ `packages/agent` | The browser engine and the install-snippet script, served at `/agent/v1/<key>/guides.js` | in the monorepo | |
-| ↳ `apps/studio` | The authoring Studio (Angular) | in the monorepo | |
-| ↳ `apps/demo` | A plain page that installs the snippet, for local testing | in the monorepo | |
-| ↳ `e2e` | Playwright smoke test | in the monorepo | |
-| ↳ `deploy` | Single-host production stack | in the monorepo | |
-| ↳ `docs` | This docs site's source | in the monorepo | |
+| **Guide Engine** (monorepo) | The product: API, agent, Studio, deploy stack, docs ([folder layout](../architecture-overview.md#repository-layout)) | GitHub [`mohanvegi4/guide`](https://github.com/mohanvegi4/guide) | `main` |
 | **WISE staff console** | Guide Engine installed: agent loader, permission tags, ~85 anchors | Bitbucket, project `APPS`, repository `application-ng-staff` | `poc/guide-engine` (pushed) |
 | **WISE OPAC** | Guide Engine installed: agent loader, patron tags, ~90 anchors | Bitbucket, project `APPS`, repository `application-ng-patron` | `poc/guide-engine` (pushed) |
 | Local WISE development stack (used, not ours) | The compose project (parliament) the two apps run in locally | outside these repositories | |
@@ -60,7 +53,7 @@ The Guide Engine code inside each WISE app is one service:
 | Agent | esbuild (one minified IIFE bundle) |
 | Tests | vitest + jsdom, supertest, Playwright |
 | Production stack | Docker Compose, Caddy 2, Prometheus v3, Alertmanager 0.34.1 |
-| CI/CD | GitHub Actions, GitHub Container Registry, GitHub Pages (Jekyll, Just the Docs), npm |
+| CI/CD | GitHub Actions, GitHub Container Registry, GitHub Pages (Jekyll, Just the Docs) |
 
 **WISE apps**
 
@@ -161,44 +154,17 @@ and `application-ng-patron-opac` mount the two checkouts read-only; `development
 
 ---
 
-## 5. DevOps in short
+## 5. Running it locally
 
-The full guide, for the production stack, is the [DevOps quick guide](../devops.md); the first
-deployment is the [DevOps handoff](../handoff-devops.md).
-
-**Run everything locally**, from the Guide Engine repository root:
-
-```bash
-npm run db:up                                       # Postgres 5433
-npm run idp:up                                      # Keycloak 8081
-npm run migrate
-npm run dev:backend                                 # 3000
-npm run dev:studio                                  # 4300
-```
+Start Guide Engine with the [quick start](../../README.md#quick-start-local) (`npm run db:up`,
+`npm run idp:up`, `npm run migrate`, then `npm run dev:backend` and `npm run dev:studio`), and the
+WISE apps with the local WISE development stack as usual; the WISE-specific details are in
+[Running it locally](integration.md#3-running-it-locally).
 
 If your shell sets `DOCKER_DEFAULT_PLATFORM` (for example to `linux/amd64` for the WISE images),
 unset it for the Guide Engine containers, which run natively:
-`env -u DOCKER_DEFAULT_PLATFORM npm run db:up` (and the same for `idp:up`). Start the WISE apps with
-the local WISE development stack as usual.
+`env -u DOCKER_DEFAULT_PLATFORM npm run db:up` (and the same for `idp:up`).
 
-**Stop it**
-
-```bash
-npm run db:down
-```
-
-**Release and deploy**
-
-| Step | How |
-|---|---|
-| Build images | Automatic on every push to `main` (GitHub Actions → GHCR) |
-| Deploy | On the server in `deploy/`: `docker compose run --rm backup now`, `docker compose pull backend studio`, `docker compose up -d --wait` |
-| Roll back | Set `BACKEND_IMAGE` / `STUDIO_IMAGE` in `.env` to the previous SHA, `docker compose up -d --wait` |
-| WISE apps | Through the usual Jenkins pipelines once the branches are merged; set production `guideEngine` values in `environment.prod.ts` first |
-
-**Health checks**
-
-```bash
-curl -s http://localhost:3000/ready
-curl -s http://localhost:3000/agent/v1/version
-```
+Deploying, rolling back and health checks: [Everyday tasks](../operations.md#everyday-tasks). The
+WISE apps ship through their usual Jenkins pipelines once the branches are merged, with production
+`guideEngine` values in `environment.prod.ts`.

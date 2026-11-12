@@ -1,6 +1,6 @@
 ---
 title: DevOps handoff
-parent: DevOps quick guide
+parent: Deploying and operating
 nav_order: 1
 ---
 
@@ -15,8 +15,8 @@ need from you, the settings, the go-live steps and how to check it works.
 
 Background reading, all optional:
 
-- [DevOps quick guide](devops.md): everyday commands for the `deploy/` stack
-- [Go-live checklist](operations.md#go-live-checklist) in the reference
+- [Deploying and operating](operations.md): the `deploy/` stack, first install, everyday commands,
+  backups, monitoring and troubleshooting
 - [How Guide Engine is built](architecture.md)
 - [WISE integration](wise/index.md): the [integration and production TODO](wise/integration.md),
   the [signed identity spec for the WISE API](wise/signed-identity.md) and the
@@ -46,15 +46,8 @@ A ready-made single-host stack is in this repository under `deploy/` (compose fi
 backup and restore scripts, alert rules). Use it as is, or as the reference for your platform.
 
 **The database schema.** The backend creates and upgrades the `guide_engine` schema itself; there
-is no separate schema tool or SQL to run by hand. The schema lives in
-`apps/backend/migrations/` (inside the backend image):
-
-| File | What it is |
-|---|---|
-| `001_schema.sql` | The whole schema: tables, constraints, indexes, the row-level security policies, the one view and the kill-switch row. The development history was squashed into this one file before this first deployment. |
-| `002_drop_leftovers.sql` | Removes unused development-era tables and values. |
-| `003_match_site_theme.sql` | Adds the per-app "match the website's theme" setting. |
-| `004_drop_guide_type.sql` | Removes the unused guide type. |
+is no separate schema tool or SQL to run by hand. The files are in `apps/backend/migrations/`
+(inside the backend image; [what each one does](reference.md#migrations)).
 
 - On start (or `node apps/backend/dist/migrate.js` as a release step, with
   `RUN_MIGRATIONS=false` on the containers), the backend applies the files its
@@ -63,7 +56,7 @@ is no separate schema tool or SQL to run by hand. The schema lives in
 - **Start from an empty `guide_engine` database.** A database created by an image older than the
   release in section 8 (a trial deployment, say) recorded the pre-squash file names and can't be
   upgraded: drop and recreate it. Production has never run them, so this only concerns trials.
-- Later schema changes arrive as new numbered files (`003_…`) in a new image and apply on its
+- Later schema changes arrive as new numbered files in a new image and apply on its
   first start. Take a backup before every deploy. The backend refuses to start in production while
   a file is unapplied, and names it.
 - The `guide_engine` role must own the schema it creates, and must not be a superuser or have
@@ -254,9 +247,6 @@ curl -s https://API_HOST/agent/v1/version       # {"version":"…","hash":"…"}
   the load balancer (readiness) before stopping it during a rolling deploy.
 - **Rate limiting** is counted in PostgreSQL: one small write per agent request.
 - **Retention** runs inside the backend once a day; the events table is not partitioned.
-- **Agent script** is cached by browsers for 5 minutes. A rollback is redeploying the previous
-  image; customers never change their snippet.
 - **Key rotation** in the Studio breaks the installed snippets until they are updated. Only do it
-  on purpose.
-- **Not done yet:** a load test (section 2), and an `npm` release of the optional packages (not
-  needed for this deployment).
+  on purpose. A rollback, by contrast, never needs a snippet change.
+- **Not done yet:** a load test (section 2).

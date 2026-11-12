@@ -80,7 +80,8 @@ mail configured the invitation is also emailed. Pending invitations can be revok
 an organization unless an **owner** opens a window here (1, 7, 30 or 90 days). While it's open,
 platform admins can view the organization's guides, pages, analytics and members **read-only**,
 and every page they open is listed in the card's access log, which managers can also see. **Close
-now** ends it early; otherwise it closes by itself.
+now** ends it early; otherwise it closes by itself. How it is enforced:
+[Guide Engine administration](../../docs/security.md#guide-engine-administration).
 
 ## Your data (org owners)
 
@@ -94,6 +95,8 @@ Below it, **Members** ends with a **Danger zone** card for owners:
   members and invitations. Type the organization's name to enable the button; the backend checks
   it again. Afterwards the Studio re-reads your organizations and takes you to your next one (or
   onboarding). Studio accounts stay.
+
+What the export contains and what deletion removes, in full: [Your data](../../docs/security.md#your-data).
 
 ## Administration (platform admins)
 
@@ -112,20 +115,21 @@ People with the platform-admin flag get an **Administration** link in the top ba
 - the global kill switch (every guide for every customer);
 - the list of platform admins, with grant-by-email and remove (never yourself).
 
-The first platform admin is created with SQL by the database owner (see the root README);
-after that, grants happen here.
+The first platform admin is created with SQL by the database owner
+([Guide Engine administration](../../docs/security.md#guide-engine-administration)); after that,
+grants happen here.
 
-## Install & settings (editors; the danger zone needs a manager)
+## Install & settings
+
+Editors and above change these settings; the danger zone needs a manager or owner.
+
 
 - **Install:** the exact `<head>` snippet for this app, with a copy button. Replace `USER_ID` /
   `ACCOUNT_ID` with your signed-in user's ids. SPAs need nothing else. After a later login, call
   `guideEngine.identify(...)`.
-- **Environments & websites:** the app's release stages in promotion order, for example Dev →
-  Test → Accept → Production; the last one (marked *production*) is what end users see. Each has
-  a name, its **websites** (the only origins where guides load; each website belongs to one
-  environment, which is how a page's environment is known) and a **Record analytics** switch
-  (off: no events are stored for it; guides still show once per visitor). **Save** each one
-  separately. **Add environment** creates a stage in front of production, or, with **Make it production**
+- **Environments & websites:** the app's [release stages](#environments-and-releases) in
+  promotion order. Each has a name, its **websites** (the only origins where guides load) and a
+  **Record analytics** switch. **Save** each one separately. **Add environment** creates a stage in front of production, or, with **Make it production**
   on, at the end as the new production (after a confirmation); the ↑ / ↓ arrows
   reorder them (moving a stage to the end makes it production, after a confirmation). **Delete**
   (managers and owners; type its name) removes the stage with its releases. Every app starts with
@@ -202,16 +206,8 @@ for that id).
    analytics.
 6. **Publish new version** saves it as the next version and releases it to the app's **first**
    environment. Published versions never change. With a single environment, that is production.
-7. **Environments** (the panel beside the form) shows what each stage runs, newest release first:
-   - **Promote to *next*** gives the next stage the version this one runs.
-   - **Release** puts any published version (picked in the list) in that environment directly.
-   - **Revert** undoes that environment's latest change and restores what it ran before; click
-     again to keep going back. **History** lists every change, with who made it and whether it
-     was reverted.
-   - **Withdraw** takes the guide out of that environment only.
-
-   Anything that changes production asks first. Visitors' show-once state is kept per
-   environment, so testing a tour in Accept doesn't use it up in production.
+7. **Environments** (the panel beside the form) shows what each stage runs and moves versions
+   between them: see [Environments and releases](#environments-and-releases).
 8. **Delete guide** (editors; the red button at the bottom of the editor, and on the guide list) removes the guide with
    all its versions, analytics and visitor state after a confirmation. There is no undo; to pause
    a guide instead, switch it off.
@@ -223,26 +219,65 @@ for that id).
 When a visitor dismisses or completes a guide, they don't see it again until you publish a
 **newer** version. Rolling back doesn't re-show it.
 
-### Pages
+## Environments and releases
 
-**Pages** (top bar, per app) is the app's library of named URL rules: a name, an exact path or
-pattern, and a start page (required for patterns: the concrete URL the help center opens). The
-table shows how many guides use each page and how many of those are live. Click the count to list
-them.
+An app's **environments** are its release stages in promotion order, for example
+Dev → Test → Accept → Production. The last one is production. Every app starts with one,
+*Production*, holding the websites it was created with; add the others in **Install & settings →
+Environments & websites**. **Add environment** creates a stage in front of production, or, with
+**Make it production** on, at the end as the new production; the ↑ / ↓ arrows reorder them
+(moving a stage to the end makes it production). Both ask for a confirmation. **Delete**
+(managers and owners; type its name) removes a stage with its releases.
 
-- **Edit** renames a page or changes its URL. Every guide on the page follows immediately, and
-  live guides are moved after a confirmation.
+- **Each environment owns its websites.** The agent tells which environment a page belongs to
+  from the page's `Origin` (which CORS already checks), so every environment uses the same
+  snippet and key. A website belongs to one environment only (`409 website_in_use`). A request
+  without an `Origin` (not a browser) counts as production.
+- **Releases.** A guide runs at most one published version per environment. **Publish** releases
+  the new version to the first environment. In the guide editor's **Environments** panel,
+  **Promote to …** gives the next stage what this one runs, **Release** puts any published
+  version in one environment directly, and **Withdraw** takes the guide out of one environment.
+  Drafts are never released anywhere. Changes to production ask for confirmation.
+- **Revert** undoes an environment's latest release change and restores what it ran before (a
+  version, or nothing). Reverting again keeps walking back; **History** lists every change, with
+  who made it and whether it was reverted.
+- **Production is what "live" means elsewhere.** The guide list's *Live versions* column shows
+  every stage; the guide's *live* badge, page usage, the export and **Roll back** all refer to
+  production.
+- **Show-once state is per environment**, so a tester finishing a tour in Accept still gets it in
+  production.
+- **Analytics are per environment** and can be switched off per environment (*Record
+  analytics*). Off, no events are stored for it; show-once state still is, since it keeps an
+  automatic guide from showing twice.
+- The guide's **enabled** switch, dates and audience apply in every environment; a release
+  decides *which version* each environment runs.
+
+## Pages
+
+**Pages** (top bar, per app) names the parts of your app once so every guide can reuse them, like
+Pendo's tagged pages. Each page has a name ("Team settings"), a URL rule (exact `/settings/team`,
+or a pattern like `/projects/*`) and a start page, required for patterns: the concrete URL the help
+center opens. The table shows how many guides use each page and how many of those are live; click
+the count to list them. Pages belong to one application; other apps don't see them.
+
+- **Guides follow their page.** **Edit** renames a page or changes its URL, and every guide on it,
+  live ones included, matches the new URL on the next page load without a republish. Live guides
+  are moved after a confirmation.
 - **Delete** is disabled while any guide's live version or draft uses the page. Move those guides
-  to another page or a custom route first.
+  to another page or a custom route first. Each version also keeps a snapshot of its page's
+  route, which older versions fall back to after a page is deleted (for example on a rollback).
 
-### Analytics
+## Analytics
 
 Analytics are kept per environment and never added up: every analytics view (this panel, the
 overview on the Guides page, help center analytics) shows production unless you pick another
 environment in its **Environment** list, which appears once the app has more than one.
 
-Event totals (shown, step viewed, step completed, completed, dismissed, errors), plus a
-**per-step** table: views, done and dismissed. Step ids survive edits, so their numbers carry
+The **Guides** page starts with an overview: shown, completed and completion rate per guide, and
+distinct visitors and accounts over the last 30 days. A guide's panel has event totals (shown,
+step viewed, step completed, completed, dismissed, errors), a **per-step** table (views, done and
+dismissed) and **By account**: the 50 accounts shown the guide most, with their distinct visitors
+("No account" is unidentified visitors). Step ids survive edits, so their numbers carry
 over between versions, and deleted steps are grouped as **Removed steps**. If a guide is in the
 help center, the panel also shows how many times it was started from there. `guide_error` usually
 means the anchor element wasn't on the page.

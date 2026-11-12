@@ -36,62 +36,33 @@ Guide Engine as a hosted service (terms, privacy policy, DPA, subprocessors) are
 
 | Read | For |
 |---|---|
-| [Installing Guide Engine](docs/install.md) | the snippet, `data-guide-id`, signed identity, how a guide is chosen |
-| [Using the Studio](docs/using-the-studio.md) and the [Studio reference](apps/studio/README.md) | authoring, environments and releases, saved pages, the help center |
+| [Installing Guide Engine](docs/install.md) | the snippet, `data-guide-id`, signed identity, how a guide is chosen, the help center |
+| [Studio reference](apps/studio/README.md) | signing in, roles, authoring, environments and releases, saved pages, analytics |
 | [Identity, roles and security](docs/security.md) | roles, sign-in, signed identity, platform administration and support access |
 | [Configuration and API reference](docs/reference.md) | environment variables, every endpoint, the data model |
-| [Deploying and operating](docs/operations.md) | go-live checklist, deploying, backups, monitoring, troubleshooting |
+| [Deploying and operating](docs/operations.md), [DevOps handoff](docs/handoff-devops.md) | first install, go-live checklist, everyday tasks, backups, monitoring, troubleshooting; the first deployment at OCLC |
 | [Architecture overview](docs/architecture-overview.md), [How Guide Engine is built](docs/architecture.md) | how it fits together, in one page and in depth |
-| [DevOps quick guide](docs/devops.md), [DevOps handoff](docs/handoff-devops.md) | running it, and the first deployment |
 | [WISE integration](docs/wise/index.md) | Guide Engine in the WISE staff console and the OPAC |
 
 ---
 
 ## How it works
 
-```
-  Your website (any framework)                  Guide Studio (apps/studio)
-  ┌────────────────────────────────┐            ┌──────────────────────────────┐
-  │ <head> install snippet          │            │ sign in with your identity   │
-  │   key ge_pk_…  (public)         │            │ provider (OIDC)              │
-  │ guideEngine.initialize({        │            │ orgs → apps → guides         │
-  │   visitor:{id}, account:{id} }) │            │ members, roles, invites      │
-  └───────────────┬────────────────┘            └──────────────┬───────────────┘
-   GET /agent/v1/<key>/guides.js                      /api/v1/… (same-origin proxy)
-   POST /v1/agent/<key>/guides|events|preview         │
-                  ▼                                   ▼
-        ┌──────────────────────────────────────────────────────────┐
-        │                  Backend (apps/backend)                  │
-        │ agent API: per-app CORS, rate limit, optional signed      │
-        │            visitor identity                               │
-        │ Studio API: OIDC identity → org/app memberships → roles   │
-        └──────────────────────────┬───────────────────────────────┘
-                                   │ withAgentSession / withStudioSession
-                                   ▼
-                    Postgres 16: Row-Level Security on every table,
-                    connected as a non-superuser role
-```
+An install snippet on the customer's website loads the **agent** from the **backend** with the
+app's public key. The agent asks which guides apply to this visitor, matches them to the current
+URL, waits for the `data-guide-id` element, draws the step in a Shadow DOM card and reports what the
+visitor did. Authors write and publish guides in the **Studio**, which talks to the same backend
+through its `/api` proxy and signs in through an OIDC provider (Keycloak). Postgres is the only
+store, with row-level security on every tenant table.
 
-**A guide's life:**
+- A guide is saved as a draft, previewed on the real site with a signed 15-minute link, published
+  as an immutable version, released stage by stage through the app's environments, and enabled.
+- Visitors see one guide at a time. An automatic guide shows **once per visitor** until a newer
+  version is published; the help center lets them replay any listed guide.
+- Anything that can't be verified shows nothing, and the agent never throws into the host page.
 
-1. **Create.** An author creates a guide in an app. It starts disabled, with nothing published.
-2. **Save draft.** Steps, route and audience are stored as the guide's single draft. HTML is
-   sanitized server-side.
-3. **Preview** (optional). This gives a signed 15-minute link to the app's website. It shows
-   that exact version, even while the guide is disabled or unpublished, and records no
-   analytics.
-4. **Publish.** The draft becomes an immutable, numbered version. **Enable** turns it on.
-5. **Show.** On the website, the agent asks for the visitor's active guides, matches the URL
-   path, finds the `data-guide-id` element and renders the step in a Shadow DOM card.
-   **One guide at a time:** when several match a page, walkthroughs (tours, multi-step guides)
-   go first, then single-step tips in the order they were created. The next one shows when the
-   current one completes; a dismissal ("Maybe later") ends the pop-ups for that page view, and
-   the rest return on the next navigation. A guide the visitor opens from the help center takes
-   over, and the automatic one comes back afterwards.
-6. **Record.** Events are batched to the backend. An automatic guide shows **once per visitor**:
-   being shown, dismissed or completed is remembered, so a reload never starts it over and they
-   don't see it again until a **newer version** is published. The help center ignores that state,
-   so any listed guide can be replayed on demand.
+The [Architecture overview](docs/architecture-overview.md) has the diagrams, and
+[How a guide is chosen and shown](docs/install.md#how-a-guide-is-chosen-and-shown) the details.
 
 ---
 
@@ -106,7 +77,7 @@ packages/
 apps/
   backend/           @guide-engine/backend: Express + Postgres — Studio API, agent API, migrations, scripts
   studio/            Guide Studio (Angular 21) — see apps/studio/README.md
-  demo/              a plain host page that installs Guide Engine via the snippet (no SDK import)
+  demo/              a plain host page that installs Guide Engine via the snippet
 e2e/                 Playwright smoke test: Keycloak sign-in → org, app, guide → the snippet on a page
 docker/              local dev: docker-compose.yml (Postgres :5433, Keycloak :8081), init.sql, keycloak/ realm
 deploy/              single-host staging/production: compose, Caddyfile, Keycloak realm rendering
@@ -200,9 +171,9 @@ npm test --workspace=apps/studio          # Studio components and services
 
 | Suite | Tests | Covers |
 |---|---|---|
-| **Backend** | 274 | self-serve orgs; apps and settings; the role matrix; invitations; members; saved pages; platform admins and support access (consent, read-only, logging, RLS); secrets at rest, the shared rate limiter, retention (events and agent errors), production boot checks; the agent script's ETag / 304 / cache headers and the version endpoint; the security headers (and that the agent surface keeps only nosniff); agent error reports (validation, the hourly cap, the Studio list, RLS isolation, platform counts); org/app isolation through the API **and directly in RLS** (including replaying the owner bootstrap and forging memberships); the agent API (origins, keys, identity modes, account targeting, kill switches, events and per-visitor state, preview); the guide lifecycle; sanitization; stable step ids; analytics; OIDC (a local JWKS server, algorithm confusion); environments, releases, promote / revert and per-environment analytics; concurrent migration runs (the advisory lock); and the pending-migrations boot check |
-| **Agent** | 142 | the engine (route matching, retries, events, preview) and the snippet runtime; includes the help widget (search, keyboard, safe rendering), help launches (same page, other page, arrival, shared links) and error reporting (sampling, the per-page cap, never throwing) |, `openHelp` queued before load and the build-time version |
-| **Studio** | 45 | guide list and editor (saved pages), Pages, app settings (including the agent-error list), the Administration page |
+| **Backend** | 277 | self-serve orgs; apps and settings; the role matrix; invitations; members; saved pages; platform admins and support access (consent, read-only, logging, RLS); secrets at rest, the shared rate limiter, retention (events and agent errors), production boot checks; the agent script's ETag / 304 / cache headers and the version endpoint; the security headers (and that the agent surface keeps only nosniff); agent error reports (validation, the hourly cap, the Studio list, RLS isolation, platform counts); org/app isolation through the API **and directly in RLS** (including replaying the owner bootstrap and forging memberships); the agent API (origins, keys, identity modes, account targeting, kill switches, events and per-visitor state, preview); the guide lifecycle; sanitization; stable step ids; analytics; OIDC (a local JWKS server, algorithm confusion); environments, releases, promote / revert and per-environment analytics; concurrent migration runs (the advisory lock); and the pending-migrations boot check |
+| **Agent** | 142 | the engine (route matching, retries, events, preview) and the snippet runtime; includes the help widget (search, keyboard, safe rendering), help launches (same page, other page, arrival, shared links), error reporting (sampling, the per-page cap, never throwing), `openHelp` queued before load and the build-time version |
+| **Studio** | 58 | guide list and editor (saved pages), Pages, app settings (including the agent-error list), the Administration page |
 
 Type-checking is part of every `test` script, with strict TypeScript throughout.
 
@@ -242,5 +213,5 @@ after the unit tests, starting the same services from `docker/docker-compose.yml
 - **Analytics have no per-visitor breakdown**, and the per-account one is a top-50 list, not
   a searchable one.
 - **Shared `?guideEngine=` links** work for help-center guides only.
-- **Deferred:** metadata segments, surveys, i18n, rollout percentages, cross-app guides, staging
-  environments, and a visual point-and-click designer.
+- **Deferred:** metadata segments, surveys, i18n, rollout percentages, cross-app guides and a
+  visual point-and-click designer.
