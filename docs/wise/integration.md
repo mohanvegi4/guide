@@ -51,8 +51,8 @@ Both live on the branch `poc/guide-engine` in their repository, pushed to Bitbuc
 
 | | Staff console (`application-ng-staff`) | OPAC (`application-ng-patron`) |
 |---|---|---|
-| Commits | `cd4c5d2` install · `6cddf49` env config · `ec805b1` anchors · `cb802a8` permission tags | `2ec35bd` install · `c2bb01b` env config · `02cfae1` anchors · `1a83b43` visitor tags |
-| Agent install | `GuideEngineService` (`src/app/services/guide-engine/`) creates the `window.guideEngine` queue and injects `<script async src="<apiUrl>/agent/v1/<appKey>/guides.js">` at startup (the path before the rename; it must become `/embed-agent/v1/`, TODO 11), **from `environment.guideEngine`** (`{ apiUrl, appKey } | null`). `index.html` is untouched. | Same, in `projects/opac/src/app/services/guide-engine/`. Loading from code (not `index.html`) also keeps `opac-create-filelist.js` from copying the script into `integration.json` for embedded mode. |
+| Commits (rebased on `master`, 2026-11-12) | `4868077` install · `a1323dc` env config · `b46ecf6` anchors · `0aec913` permission tags · `cde08fe` `/embed-agent/v1/` | `7d16d25` install · `72b9612` env config · `f4d7a4d` anchors · `5e84727` visitor tags · `481cb68` `/embed-agent/v1/` |
+| Agent install | `GuideEngineService` (`src/app/services/guide-engine/`) creates the `window.guideEngine` queue and injects `<script async src="<apiUrl>/embed-agent/v1/<appKey>/guides.js">` at startup, **from `environment.guideEngine`** (`{ apiUrl, appKey } | null`). `index.html` is untouched. | Same, in `projects/opac/src/app/services/guide-engine/`. Loading from code (not `index.html`) also keeps `opac-create-filelist.js` from copying the script into `integration.json` for embedded mode. |
 | Identity passed | `visitor.id` = staff actor UUID (`patronSystemId` in the auth store, Keycloak `wiseUuid`); `visitor.tags` = the user's branch-level permissions from `GET /authorities` (`SERVICE_CASH_REGISTER`, `SERVICE_CASH_REGISTER:edit`, …); `account.id` = library id (`libraryId`). Called once the user **and** their authorizations have loaded (without tags if authorizations fail); `identify()` when either changes. | `account.id` = `branch.instance`; `visitor.id` = patron system id when signed in, otherwise none (the agent uses an anonymous per-browser id); `visitor.tags` = `anonymous` until a patron signs in, then `signed-in` plus every active authority (`MA_RENEW`, `MA_VIEW_WISHLIST`, …), the authorities the My account menu and hold buttons check. |
 | Environment files | `environment.template.ts` (dev values; `environment.ts` is git-ignored and copied from it), `environment.prod.ts` → **`null`** (guides off until filled), `environment.cypress.ts` → `null`. | `environment.default.ts` (dev values; `environment.dev.ts` is git-ignored and spreads it), `environment.prod.ts` → **`null`**, `environment.cypress.ts` → `null`. |
 | Anchors | ~85 `data-guide-id` attributes across landing, navigation, catalog search/results/title drawer, hold dialog, check in/out, on-the-fly dialog, picklist, holds shelf, customer search/record (summary, tabs, checked out, financial, holds), item request manager, point of sale, peripherals, profile menu. The design-system table component gained `guideId` / `selectAllGuideId` inputs for row actions and select-all. | ~90 across search bar/results/filters/sorting, title detail, hold and add-to-list modals, top bar and menu, new arrivals, recommendations, community, and every My account screen (checkouts, holds, financial, personal data, notifications, lost card, requests, lists, wishlist). |
@@ -250,9 +250,9 @@ side has.
     analytics stay per stage (switch **Record analytics** off for Dev and Test if their numbers
     aren't wanted). Set `identityMode: required` on the console once
     [section 4](#4-signed-identity-specified-not-built) is live.
-11. ☐ Change the script path in both `GuideEngineService`s from `/agent/v1/` to `/embed-agent/v1/`:
-    the old path was removed from the backend, so until then neither app loads guides.
-    Then fill `environment.prod.ts` (and the other WISE environment files) in both apps with the
+11. ☑ Both `GuideEngineService`s load the agent from `/embed-agent/v1/` (staff `cde08fe`, OPAC
+    `481cb68`, on `poc/guide-engine`).
+    ☐ Still open: fill `environment.prod.ts` (and the other WISE environment files) in both apps with the
     production API origin and that product's key (today `null` = guides off). Both apps are build-time configured; if you want per-deployment config,
     add a field to `/restapi/opac/configuration` (OPAC) / an app-config endpoint (console) and read it in
     `GuideEngineService` — the natural runtime alternative.
