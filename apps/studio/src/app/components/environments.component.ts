@@ -79,7 +79,7 @@ interface Draft {
               }
             </div>
           </div>
-          <div class="inline-form">
+          <div class="environment-fields">
             <label
               >Name
               <input
@@ -87,18 +87,21 @@ interface Draft {
                 maxlength="40"
                 [attr.aria-label]="'Name of ' + d.savedName"
             /></label>
+            <label
+              >Websites (one per line)
+              <textarea
+                rows="2"
+                [(ngModel)]="d.websites"
+                [attr.aria-label]="'Websites of ' + d.savedName + ', one per line'"
+              ></textarea>
+            </label>
+          </div>
+          <div class="toolbar">
             <label class="switch">
               <input type="checkbox" [(ngModel)]="d.analyticsEnabled" />
               <span>Record analytics</span>
             </label>
-          </div>
-          <textarea
-            rows="2"
-            [(ngModel)]="d.websites"
-            [attr.aria-label]="'Websites of ' + d.savedName + ', one per line'"
-          ></textarea>
-          <div class="toolbar">
-            <button type="button" (click)="save(d)" [disabled]="busy()">
+            <button type="button" class="push-right" (click)="save(d)" [disabled]="busy()">
               Save {{ d.savedName }}
             </button>
           </div>
@@ -106,7 +109,7 @@ interface Draft {
       }
     </ol>
 
-    <form class="inline-form" (ngSubmit)="add()">
+    <form class="inline-form add-environment" (ngSubmit)="add()">
       <label
         >New environment
         <input name="newName" [(ngModel)]="newName" maxlength="40" placeholder="e.g. Test"
