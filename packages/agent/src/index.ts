@@ -1,4 +1,4 @@
-import { GuideEngine, IdentityOptions, createDomRenderer, createHelpWidget } from '@guide-engine/core';
+import { GuideEngine, IdentityOptions, createDomRenderer, createHelpWidget } from './engine';
 
 /**
  * The install-snippet agent. A host page adds the snippet to its <head>:

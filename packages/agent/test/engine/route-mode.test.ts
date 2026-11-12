@@ -7,7 +7,7 @@ import {
   createHelpWidget,
   currentRoutePath,
   displayRoutePath,
-} from '../src';
+} from '../../src/engine';
 import { R, baseOptions, callsTo, fakeRenderer, makeGuide, makeStep, mockFetch } from './helpers';
 
 const HELP = R.guides.replace(/\/guides$/, '/help');

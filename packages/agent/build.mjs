@@ -4,7 +4,7 @@ import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 // One self-contained, minified IIFE: no module loader, no globals besides
-// window.guideEngine. Bundles the core engine from source.
+// window.guideEngine. The engine (src/engine) is bundled in.
 //
 // The file on disk is self-describing: its first line is
 //   /* guide-engine agent <version> <hash> */
@@ -24,7 +24,6 @@ const result = await build({
   target: ['es2018'],
   legalComments: 'none',
   write: false,
-  alias: { '@guide-engine/core': fileURLToPath(new URL('../core/src/index.ts', import.meta.url)) },
   // The agent reports its version (window.guideEngine.version, error reports).
   define: { __GUIDE_ENGINE_VERSION__: JSON.stringify(pkg.version) },
 });

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { GuideEngine, HelpItem, HelpUi } from '../src';
+import { GuideEngine, HelpItem, HelpUi } from '../../src/engine';
 import { KEY, R, baseOptions, fakeRenderer, makeGuide, makeStep, mockFetch, serving } from './helpers';
 
 /**

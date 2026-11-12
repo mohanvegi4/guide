@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { GuideEngine, createDomRenderer } from '../src';
+import { GuideEngine, createDomRenderer } from '../../src/engine';
 import { R, baseOptions, eventsSent, fakeRenderer, makeGuide, makeStep, mockFetch, serving } from './helpers';
 
 afterEach(() => {

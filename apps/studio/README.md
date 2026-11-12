@@ -10,7 +10,7 @@ and reactive forms. For the overall system, see the [root README](../../README.m
 The backend must be running on `:3000` first (see the root README's quick start).
 
 ```bash
-npm run start --workspace=apps/studio -- --port 4300   # http://localhost:4300
+npm run dev:studio                                     # http://localhost:4300
 ```
 
 The dev server proxies `/api/*` to `http://localhost:3000` and strips the `/api` prefix
@@ -36,7 +36,7 @@ The login page asks the backend how to sign in (`GET /api/auth/config`):
 - **Paste a token** is for local development only. Get one from `npm run seed` (Mohan Vegi, the
   owner of the seeded Demo Org) or:
   ```bash
-  npm run mint-token --workspace=packages/backend -- --sub vegim --email vegim@oclc.org
+  npm run mint-token --workspace=apps/backend -- --sub vegim --email vegim@oclc.org
   ```
 - **Keycloak** (`npm run idp:up`): sign in as `vegim`, `editor` or `root` (password = username).
   The same provider is used in staging and production. See "Studio login details" in the root

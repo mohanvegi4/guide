@@ -1,8 +1,8 @@
 # Guide Engine backend: the Studio API, the public agent API and the agent
 # script. Built from the monorepo root:
-#   docker build -f packages/backend/Dockerfile -t guide-engine-backend .
+#   docker build -f apps/backend/Dockerfile -t guide-engine-backend .
 #
-# Stage 1 builds core -> agent bundle -> backend with the full workspace;
+# Stage 1 builds the agent bundle, then the backend, with the full workspace;
 # stage 2 keeps only the backend's production dependencies, its compiled
 # output, the migrations and the agent bundle it serves.
 
@@ -10,35 +10,31 @@ FROM node:22-alpine AS build
 WORKDIR /app
 # Workspace manifests first, so dependency installation is cached across code changes.
 COPY package.json package-lock.json ./
-COPY packages/core/package.json packages/core/
 COPY packages/agent/package.json packages/agent/
-COPY packages/backend/package.json packages/backend/
+COPY apps/backend/package.json apps/backend/
 COPY apps/studio/package.json apps/studio/
 COPY apps/demo/package.json apps/demo/
 RUN npm ci --no-audit --no-fund
 COPY tsconfig.base.json ./
-COPY packages/core packages/core
 COPY packages/agent packages/agent
-COPY packages/backend packages/backend
-RUN npm run build --workspace=packages/core \
- && npm run build --workspace=packages/agent \
- && npm run build --workspace=packages/backend
+COPY apps/backend apps/backend
+RUN npm run build --workspace=packages/agent \
+ && npm run build --workspace=apps/backend
 
 FROM node:22-alpine
 ENV NODE_ENV=production
 WORKDIR /app
 COPY package.json package-lock.json ./
-COPY packages/core/package.json packages/core/
 COPY packages/agent/package.json packages/agent/
-COPY packages/backend/package.json packages/backend/
+COPY apps/backend/package.json apps/backend/
 COPY apps/studio/package.json apps/studio/
 COPY apps/demo/package.json apps/demo/
-RUN npm ci --omit=dev --no-audit --no-fund --workspace=packages/backend \
+RUN npm ci --omit=dev --no-audit --no-fund --workspace=apps/backend \
  && npm cache clean --force
-COPY --from=build /app/packages/backend/dist packages/backend/dist
-COPY --from=build /app/packages/backend/migrations packages/backend/migrations
+COPY --from=build /app/apps/backend/dist apps/backend/dist
+COPY --from=build /app/apps/backend/migrations apps/backend/migrations
 COPY --from=build /app/packages/agent/dist packages/agent/dist
-COPY packages/backend/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+COPY apps/backend/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 USER node
 EXPOSE 3000
@@ -47,4 +43,4 @@ EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s \
   CMD wget -qO- http://127.0.0.1:3000/ready >/dev/null || exit 1
 ENTRYPOINT ["docker-entrypoint.sh"]
-CMD ["node", "packages/backend/dist/index.js"]
+CMD ["node", "apps/backend/dist/index.js"]

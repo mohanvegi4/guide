@@ -34,7 +34,7 @@ import { AuthService } from '../core/auth.service';
 
       <ng-template #paste>
         <p class="muted">Local development: mint a token (or run <code>npm run seed</code>):</p>
-        <pre class="snippet">npm run mint-token --workspace=packages/backend -- --sub you --email you&#64;example.com</pre>
+        <pre class="snippet">npm run mint-token --workspace=apps/backend -- --sub you --email you&#64;example.com</pre>
         <form (ngSubmit)="submit()">
           <label for="token">Bearer token</label>
           <textarea id="token" name="token" rows="5" [(ngModel)]="token" required spellcheck="false"></textarea>

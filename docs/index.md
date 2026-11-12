@@ -17,20 +17,19 @@ an **organization** owns any number of **applications**, and everyone in it has 
 
 **Product and engineering teams installing Guide Engine on a site**
 
-- [Installing Guide Engine on a website](reference/README.md#installing-guide-engine-on-a-website):
-  the snippet, tagging elements, signed identity, and the npm package for bundled
-  apps.
-- [How a guide is chosen and shown](reference/README.md#how-a-guide-is-chosen-and-shown): what the
+- [Installing Guide Engine](install.md):
+  the snippet, tagging elements, signed identity.
+- [How a guide is chosen and shown](install.md#how-a-guide-is-chosen-and-shown): what the
   agent sends and when, route matching, fail-closed behaviour and error reporting.
-- [Agent API](reference/README.md#agent-api-public-app-key-cors-for-the-apps-websites) and
-  [Troubleshooting](reference/README.md#troubleshooting).
+- [Agent API](reference.md#agent-api-public-app-key-cors-for-the-apps-websites) and
+  [Troubleshooting](operations.md#troubleshooting).
 
 **Authors using the Studio**
 
-- [Studio reference](reference/studio.md): signing in, organizations, apps and roles, working
+- [Studio reference](../apps/studio/README.md): signing in, organizations, apps and roles, working
   with a guide, saved pages, the help center and analytics.
-- [Using the Studio](reference/README.md#using-the-studio) in the main reference, including
-  [Saved pages](reference/README.md#saved-pages) and the [Help center](reference/README.md#help-center).
+- [Using the Studio](using-the-studio.md), including
+  [Saved pages](using-the-studio.md#saved-pages) and the [Help center](using-the-studio.md#help-center).
 
 **Engineers running, extending or reviewing Guide Engine**
 
@@ -47,15 +46,15 @@ an **organization** owns any number of **applications**, and everyone in it has 
   rollbacks, backups, secrets and a symptom table, in a few commands each.
 - [DevOps handoff](handoff-devops.md): for the first deployment, the servers to provision for the
   whole stack, the decisions we need from DevOps, settings, go-live steps and checks.
-- [Deploying](reference/README.md#deploying): CI, images, the single-host stack, any other
+- [Deploying](operations.md#deploying): CI, images, the single-host stack, any other
   platform, and the agent script's caching and rollback contract.
 - [Signed identity](integration/signed-identity.md): the contract for the backend that signs
   visitor identities — claims, algorithm, the endpoint the page calls, rotation and acceptance.
-- [Identity, roles and security](reference/README.md#identity-roles-and-security), including
-  [Guide Engine administration](reference/README.md#guide-engine-administration) (platform
+- [Identity, roles and security](security.md#identity-roles-and-security), including
+  [Guide Engine administration](security.md#guide-engine-administration) (platform
   admins, suspension, support access).
-- [Configuration reference](reference/README.md#configuration-reference),
-  [Operations](reference/README.md#operations) and [Observability](reference/README.md#observability).
+- [Configuration reference](reference.md#configuration-reference),
+  [Operations](operations.md#operations) and [Observability](operations.md#observability).
 - [Legal templates](legal/index.md): terms of service, privacy policy, data processing addendum
   and a subprocessor list to adapt before offering Guide Engine as a hosted service.
 
@@ -72,7 +71,6 @@ an **organization** owns any number of **applications**, and everyone in it has 
 
 ## Where the content comes from
 
-The reference pages are the repository's `README.md` and `apps/studio/README.md`, assembled at
-build time so there is one source of truth. To change them, edit the READMEs in the
-[repository](https://github.com/mohanvegi4/guide). Everything else on this site lives in
-[`docs/`](https://github.com/mohanvegi4/guide/tree/main/docs).
+Every page is Markdown in the [repository](https://github.com/mohanvegi4/guide): the pages in
+[`docs/`](https://github.com/mohanvegi4/guide/tree/main/docs), plus the root `README.md` (Getting
+started) and `apps/studio/README.md` (Studio reference), assembled at build time.

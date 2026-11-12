@@ -1,5 +1,5 @@
 import { vi } from 'vitest';
-import type { Guide, GuideRenderer, SdkInitOptions, Step } from '../src/engine';
+import type { Guide, GuideRenderer, SdkInitOptions, Step } from '../../src/engine/engine';
 
 export const API = 'https://api.test';
 export const KEY = `ge_pk_${'a'.repeat(32)}`;

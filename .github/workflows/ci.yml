@@ -46,7 +46,7 @@ jobs:
       - name: Build
         run: npm run build
       - name: Migrate the test database (exactly what tests do, surfaced as its own step)
-        run: node packages/backend/dist/migrate.js
+        run: node apps/backend/dist/migrate.js
         env:
           DATABASE_URL: postgres://guide_engine:guide_engine@localhost:5433/guide_engine_test
           NODE_ENV: test
@@ -58,7 +58,7 @@ jobs:
   # The whole product once, through a browser (e2e/): sign in to the Studio
   # through Keycloak, create an organization and an app, publish a guide, and
   # see it on a page that installs the snippet. The stack is the one developers
-  # run locally: docker-compose.yml for Postgres and Keycloak (with the dev
+  # run locally: docker/docker-compose.yml for Postgres and Keycloak (with the dev
   # realm), the built backend, and ng serve proxying /api to it.
   e2e:
     name: End-to-end (Playwright)
@@ -76,18 +76,18 @@ jobs:
           cache: npm
       - name: Install
         run: npm ci --no-audit --no-fund
-      - name: Start Postgres and Keycloak (docker-compose.yml; they boot while we build)
-        run: docker compose --profile sso up -d
+      - name: Start Postgres and Keycloak (docker/docker-compose.yml; they boot while we build)
+        run: docker compose -f docker/docker-compose.yml --project-directory . --profile sso up -d
       - name: Build
         run: npm run build
       - name: Install Playwright's Chromium
         run: npx playwright install --with-deps chromium
       - name: Wait for Postgres and Keycloak
-        run: docker compose --profile sso up -d --wait
+        run: docker compose -f docker/docker-compose.yml --project-directory . --profile sso up -d --wait
       - name: Migrate
-        run: node packages/backend/dist/migrate.js
+        run: node apps/backend/dist/migrate.js
       - name: Start the backend (the built one, like the Docker image)
-        run: nohup node packages/backend/dist/index.js > backend.log 2>&1 &
+        run: nohup node apps/backend/dist/index.js > backend.log 2>&1 &
         env:
           NODE_ENV: development
           PORT: "3000"
@@ -98,7 +98,7 @@ jobs:
           OIDC_STUDIO_SCOPE: openid profile email
           RATE_LIMIT_STORE: memory
       - name: Start the Studio (ng serve, proxying /api to the backend)
-        run: nohup npm run start --workspace=apps/studio -- --port 4300 > studio.log 2>&1 &
+        run: nohup npm run dev:studio > studio.log 2>&1 &
       - name: Wait for the backend, Keycloak and the Studio
         run: |
           wait_for() {
@@ -123,7 +123,7 @@ jobs:
         run: |
           echo "::group::backend.log"; tail -n 200 backend.log; echo "::endgroup::"
           echo "::group::studio.log"; tail -n 200 studio.log; echo "::endgroup::"
-          echo "::group::keycloak"; docker compose --profile sso logs --tail 100 keycloak; echo "::endgroup::"
+          echo "::group::keycloak"; docker compose -f docker/docker-compose.yml --project-directory . --profile sso logs --tail 100 keycloak; echo "::endgroup::"
       - name: Playwright report
         if: failure()
         uses: actions/upload-artifact@v4
@@ -158,7 +158,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: packages/backend/Dockerfile
+          file: apps/backend/Dockerfile
           push: ${{ github.event_name == 'push' }}
           tags: |
             ${{ steps.names.outputs.backend }}:${{ github.sha }}

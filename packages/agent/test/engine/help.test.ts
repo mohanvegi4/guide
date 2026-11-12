@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { GuideEngine, HelpItem, HelpUi, LAUNCH_STORAGE_KEY, createHelpWidget, filterHelpItems } from '../src';
+import { GuideEngine, HelpItem, HelpUi, LAUNCH_STORAGE_KEY, createHelpWidget, filterHelpItems } from '../../src/engine';
 import {
   R,
   baseOptions,

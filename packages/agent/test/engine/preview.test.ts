@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { GuideEngine } from '../src/engine';
+import { GuideEngine } from '../../src/engine/engine';
 import { R, baseOptions, bodyOf, callsTo, fakeRenderer, makeGuide, mockFetch, serving } from './helpers';
 
 describe('preview mode', () => {

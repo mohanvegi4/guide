@@ -22,8 +22,8 @@ has_children: true
 | [Subprocessors](subprocessors.md) | The list the Privacy Policy and the DPA refer to. |
 
 **How the templates relate to the product.** Every factual statement in them, about what is
-stored, where, and for how long, is taken from the [Guide Engine reference](../reference/README.md)
-and the [Studio reference](../reference/studio.md). When the product changes, these templates need
+stored, where, and for how long, is taken from the [Guide Engine reference](../../README.md)
+and the [Studio reference](../../apps/studio/README.md). When the product changes, these templates need
 the same change: a new event type, a new configuration variable that sends data somewhere, or a
 new retention rule is also a legal change.
 

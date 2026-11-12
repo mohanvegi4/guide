@@ -31,7 +31,7 @@ const referencePages = [
     source: 'README.md',
     target: 'reference/README.md',
     repoDir: '',
-    frontMatter: { title: 'Guide Engine reference', nav_order: 2 },
+    frontMatter: { title: 'Getting started', nav_order: 2 },
   },
   {
     source: 'apps/studio/README.md',

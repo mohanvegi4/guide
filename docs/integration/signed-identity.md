@@ -147,13 +147,13 @@ curl -s -X POST "https://<api host>/v1/agent/<app key>/guides" \
 | `Origin` not in the app's websites | `403` `origin_not_allowed` |
 
 To compare claims with a known-good token, mint one from the Guide Engine repo with the same
-secret: `npm run sign-identity --workspace=packages/backend -- --secret ge_sk_… --visitor <id> --account <id>`
+secret: `npm run sign-identity --workspace=apps/backend -- --secret ge_sk_… --visitor <id> --account <id>`
 and decode both at the terminal (`echo <token> | cut -d. -f2 | base64 -d`).
 
 ## Where this fits
 
 - Switching the mode and generating or rotating the secret: **Install & settings → Signed
-  identity** in the Studio ([Studio reference](../reference/studio.md#install--settings-editors-the-danger-zone-needs-a-manager)).
-- The agent API and its error codes: [Agent API](../reference/README.md#agent-api-public-app-key-cors-for-the-apps-websites).
+  identity** in the Studio ([Studio reference](../../apps/studio/README.md#install--settings-editors-the-danger-zone-needs-a-manager)).
+- The agent API and its error codes: [Agent API](../reference.md#agent-api-public-app-key-cors-for-the-apps-websites).
 - The WISE staff console and OPAC endpoints built on this contract: [Signed identity for the WISE API](../wise/signed-identity.md).
-- The security model as a whole: [Identity, roles and security](../reference/README.md#identity-roles-and-security).
+- The security model as a whole: [Identity, roles and security](../security.md#identity-roles-and-security).

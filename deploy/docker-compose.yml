@@ -87,7 +87,7 @@ services:
     image: ${BACKEND_IMAGE:-ghcr.io/mohanvegi4/guide/backend:latest}
     build:
       context: ..
-      dockerfile: packages/backend/Dockerfile
+      dockerfile: apps/backend/Dockerfile
     restart: unless-stopped
     environment:
       NODE_ENV: production

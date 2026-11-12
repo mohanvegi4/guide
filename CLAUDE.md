@@ -9,27 +9,26 @@ A public, multi-tenant in-app guide product, a lightweight alternative to Pendo 
   `<head>` of its website.
 - Authors manage guides in the **Studio**.
 
-See `README.md` for setup and the full reference. `GUIDE_ENGINE_IMPLEMENTATION_PROMPT.md` is
-the original (OCLC-era) task list and rationale.
+See `README.md` for setup and `docs/` for the full reference.
 
 ## Repo layout
 ```
 packages/
-  core/              framework-agnostic engine (state machine, transport, DOM renderer)
-  agent/             the install-snippet agent: IIFE bundle served at /agent/v1/<key>/guides.js
-  backend/           Express + Postgres API (Studio API + public agent API)
+  agent/             the browser side: engine (src/engine: state machine, transport, DOM renderer)
+                     + the install-snippet runtime, bundled into the IIFE served at /agent/v1/<key>/guides.js
 apps/
+  backend/           Express + Postgres API (Studio API + public agent API)
   studio/            Authoring Studio (Angular 21)
   demo/              a plain host page that installs Guide Engine via the snippet
 ```
 This is an npm workspaces monorepo. Run commands from the repo root unless a
-task is scoped to one package (`npm run build --workspace=packages/backend`).
+task is scoped to one package (`npm run build --workspace=apps/backend`).
 
-Host apps install Guide Engine through the install snippet (`packages/agent`); the only public npm
-package is `@guide-engine/core`. There are no framework wrappers.
+Host apps install Guide Engine only through the install snippet (`packages/agent`, served by the
+backend). Nothing is published to npm, and there are no framework wrappers.
 
 This repository is GitHub `mohanvegi4/guide`, branch `main`: GitHub Actions runs CI (build,
-tests, end-to-end, images to ghcr.io), the npm release and the docs site (GitHub Pages, built by
+tests, end-to-end, images to ghcr.io) and the docs site (GitHub Pages, built by
 `scripts/build-docs.mjs`). The OCLC Bitbucket copy, `~vegim/guide-engine`, is a separate
 repository and is not kept in sync with this one.
 
@@ -88,7 +87,7 @@ deliberately for this project's scale and constraints:
 ## Conventions to follow
 - TypeScript strict mode everywhere (extend `tsconfig.base.json`, don't loosen it)
 - **Database access:** every query on a scoped table goes through `withStudioSession()` /
-  `withAgentSession()` / `withIdentity()` in `packages/backend/src/db.ts`. Never use a raw
+  `withAgentSession()` / `withIdentity()` in `apps/backend/src/db.ts`. Never use a raw
   `pool.query()` against guide / guide_version / guide_event / user_guide_state /
   organization / application / app_page / *_member / invitation / studio_user.
 - **Saved pages** (`app_page`): guide versions reference them by `page_id`, and whatever
@@ -97,7 +96,7 @@ deliberately for this project's scale and constraints:
 - **Studio routes** resolve access with `requireOrgRole` / `requireAppRole`
   (`src/routes/studio/context.ts`). Unknown or other people's ids answer 404; insufficient
   role answers 403.
-- **Migrations** are new numbered files in `packages/backend/migrations/`, after
+- **Migrations** are new numbered files in `apps/backend/migrations/`, after
   `001_schema.sql` (the whole schema; the development-era migrations were squashed into it
   before the first deployment). Never edit one that has been applied anywhere.
 - Comments explain *why*, not just *what*. Prefer explicit error handling (`HttpError`) and
@@ -124,15 +123,16 @@ deliberately for this project's scale and constraints:
 ## Common commands
 ```bash
 npm install                                    # from repo root, installs all workspaces
-npm run db:up                                  # Postgres 16 in docker on :5433 (non-superuser app role)
+npm run db:up                                  # Postgres 16 on :5433 (docker/docker-compose.yml, non-superuser app role)
 npm run idp:up                                 # optional: Keycloak on :8081 (realm guide-engine) for Studio SSO
-npm run retention --workspace=packages/backend -- --days 400   # delete old events now
-npm run encrypt-secrets --workspace=packages/backend           # after turning on SECRETS_KEY
+npm run retention --workspace=apps/backend -- --days 400   # delete old events now
+npm run encrypt-secrets --workspace=apps/backend           # after turning on SECRETS_KEY
 npm run build                                  # builds all packages (core first; agent bundle via esbuild)
 npm run migrate                                # builds backend + applies pending migrations
 npm test                                       # all workspace tests (backend needs db:up)
 npm run dev:backend                            # backend on :3000 with hot reload
-npm run seed --workspace=packages/backend      # dev org + app + demo .env.local + a Studio dev token
-npm run mint-token --workspace=packages/backend -- --sub <id> [--email <e>]   # dev Studio token
-npm run sign-identity --workspace=packages/backend -- --secret <ge_sk_…> --visitor <id> [--account <id>] [--tags a,b]
+npm run dev:studio                             # Studio on :4300 (ng serve, /api proxied to :3000)
+npm run seed --workspace=apps/backend      # dev org + app + demo .env.local + a Studio dev token
+npm run mint-token --workspace=apps/backend -- --sub <id> [--email <e>]   # dev Studio token
+npm run sign-identity --workspace=apps/backend -- --secret <ge_sk_…> --visitor <id> [--account <id>] [--tags a,b]
 ```

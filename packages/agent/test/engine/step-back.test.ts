@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createDomRenderer } from '../src';
+import { createDomRenderer } from '../../src/engine';
 import { makeGuide, makeStep } from './helpers';
 
 afterEach(() => {

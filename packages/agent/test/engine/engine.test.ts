@@ -8,7 +8,7 @@ import {
   anonymousVisitorId,
   createDomRenderer,
   matchesRoute,
-} from '../src';
+} from '../../src/engine';
 import {
   API,
   KEY,

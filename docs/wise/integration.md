@@ -31,8 +31,8 @@ Repository [`mohanvegi4/guide`](https://github.com/mohanvegi4/guide), branch `ma
 
 | Part | What it is |
 |---|---|
-| `packages/backend` | Express + Postgres 16 API: the Studio API (`/v1/…`, OIDC-authenticated) and the public agent API (`/v1/agent/<key>/…`, `/agent/v1/<key>/guides.js`). Row-level security on every tenant table. 20 migrations, applied by the backend on boot (advisory-locked) and refused in production if pending. |
-| `packages/core` + `packages/agent` | The engine and the install-snippet agent (one IIFE served by the backend, cached 5 min / ETag). Version **0.3.0** prepared (changelog, package versions), not yet tagged. |
+| `apps/backend` | Express + Postgres 16 API: the Studio API (`/v1/…`, OIDC-authenticated) and the public agent API (`/v1/agent/<key>/…`, `/agent/v1/<key>/guides.js`). Row-level security on every tenant table. 20 migrations, applied by the backend on boot (advisory-locked) and refused in production if pending. |
+| `packages/agent` | The engine and the install-snippet runtime (one IIFE served by the backend, cached 5 min / ETag). |
 | `apps/studio` | The authoring Studio (Angular 21), signed in through Keycloak. Organizations → applications → guides, pages, help center, members, analytics, platform administration. |
 | `deploy/` | Single-host production stack: Caddy (TLS, HSTS, security headers, Keycloak admin allowlist), Keycloak, Postgres, backend, Studio, nightly backups + restore script, optional Prometheus + Alertmanager profile. |
 | `docs/` | This docs site: the reference, the Studio reference, architecture, DevOps, the [signed identity contract](../integration/signed-identity.md), legal templates, and these WISE pages. |
@@ -190,8 +190,8 @@ WISE page (console / OPAC)                     Guide Engine backend
 |---|---|
 | Guide Engine DB + Keycloak | `npm run db:up` and `npm run idp:up` in the Guide Engine repository (Postgres :5433, Keycloak :8081, realm `guide-engine`; the test users are in [Studio login details](../../README.md#studio-login-details)) |
 | Backend | `npm run dev:backend` (:3000) — the Studio's login needs it: `GET /api/auth/config` must answer or SSO has nowhere to go |
-| Studio | `npm run start --workspace=apps/studio -- --port 4300` → http://localhost:4300 |
-| Demo site | `npm run dev --workspace=apps/demo` (:5174) |
+| Studio | `npm run dev:studio` → http://localhost:4300 |
+| Demo site | `npm run dev:demo` (:5174) |
 | WISE apps | the local WISE development stack (its proxy on port 10000; the console and OPAC containers mount the checkouts on `poc/guide-engine`) |
 | Agent cache | the browser caches `guides.js` for 5 minutes; after a backend change, hard-reload |
 | Seeing a guide again | automatic guides show once per visitor; open it from Help, or publish a new version |
@@ -226,11 +226,10 @@ side has.
    The [DevOps handoff](../handoff-devops.md) lists the servers and decisions.
 2. ☐ Fill `deploy/.env` from `.env.example` (DB passwords, Keycloak admin, `SECRETS_KEY`,
    `PREVIEW_TOKEN_SECRET`, `METRICS_TOKEN`, `ALERT_WEBHOOK_URL`, SMTP + `MAIL_FROM`, `SENTRY_DSN`).
-   Work through the reference's [Go-live checklist](../../README.md#go-live-checklist) (13 items).
+   Work through the reference's [Go-live checklist](../operations.md#go-live-checklist) (13 items).
 3. ☐ `deploy/render-realm.sh` for the production Keycloak realm (no demo users, brute-force protection);
    create the first Studio user and the first platform admin (`UPDATE studio_user SET platform_admin`).
-4. ☐ **(you)** Add the `NPM_TOKEN` repository secret, then `git tag v0.3.0 && git push origin main v0.3.0`
-   (publishes `@guide-engine/core`; the agent script itself is served by the backend).
+4. ☑ No npm release needed: the engine ships only inside the agent script the backend serves.
 5. ☐ Rehearse `deploy/restore.sh` once on a scratch host; set `BACKUP_COPY_CMD` for off-host copies.
 6. ☐ Point Alertmanager at a real receiver and watch the rules for a week; adjust thresholds.
 7. ☐ Run the Playwright smoke test against the deployed stack (`STUDIO_URL`, `API_URL`,
@@ -244,7 +243,7 @@ side has.
 ### B. WISE applications
 
 10. ☐ **(you)** Create the two applications in the production Studio, one per product, each with
-    the [environments](../../README.md#environments-and-releases) **Dev → Test → Accept → Production**
+    the [environments](../using-the-studio.md#environments-and-releases) **Dev → Test → Accept → Production**
     holding that stage's WISE site origins (a website belongs to one stage). Every WISE environment
     then uses the same key and signing secret per product: the page's origin tells Guide Engine
     the stage, guides are published to Dev and promoted towards Production (with revert), and

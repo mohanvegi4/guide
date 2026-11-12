@@ -10,7 +10,7 @@ First deployment? Start with the [DevOps handoff](handoff-devops.md): the server
 the decisions we need and the go-live steps.
 
 The short version of running Guide Engine on one server with the `deploy/` stack. Each task is a
-few commands. The [Guide Engine reference](../README.md#deploying) has the full detail, and
+few commands. The [Guide Engine reference](operations.md#deploying) has the full detail, and
 [How Guide Engine is built](architecture.md#14-deployment-and-operations) explains why the stack
 looks the way it does.
 

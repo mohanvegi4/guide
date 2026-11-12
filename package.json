@@ -8,15 +8,16 @@
     "e2e"
   ],
   "scripts": {
-    "build": "npm run build --workspace=packages/core && npm run build --workspaces --if-present",
+    "build": "npm run build --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
     "e2e": "npm run e2e --workspace=e2e",
-    "dev:backend": "npm run dev --workspace=packages/backend",
-    "db:up": "docker compose up -d --wait",
-    "db:down": "docker compose down",
-    "migrate": "npm run build --workspace=packages/backend && npm run migrate --workspace=packages/backend",
-    "idp:up": "docker compose --profile sso up -d --wait keycloak",
-    "version:set": "node scripts/set-version.mjs"
+    "dev:backend": "npm run dev --workspace=apps/backend",
+    "dev:studio": "npm run dev --workspace=apps/studio",
+    "dev:demo": "npm run dev --workspace=apps/demo",
+    "db:up": "docker compose -f docker/docker-compose.yml --project-directory . up -d --wait",
+    "db:down": "docker compose -f docker/docker-compose.yml --project-directory . --profile sso down",
+    "migrate": "npm run build --workspace=apps/backend && npm run migrate --workspace=apps/backend",
+    "idp:up": "docker compose -f docker/docker-compose.yml --project-directory . --profile sso up -d --wait keycloak"
   },
   "devDependencies": {
     "typescript": "^5.5.4"

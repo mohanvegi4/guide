@@ -16,7 +16,7 @@ need from you, the settings, the go-live steps and how to check it works.
 Background reading, all optional:
 
 - [DevOps quick guide](devops.md): everyday commands for the `deploy/` stack
-- [Go-live checklist](../README.md#go-live-checklist) in the reference
+- [Go-live checklist](operations.md#go-live-checklist) in the reference
 - [How Guide Engine is built](architecture.md)
 - [WISE integration](wise/index.md): the [integration and production TODO](wise/integration.md),
   the [signed identity spec for the WISE API](wise/signed-identity.md) and the
@@ -47,7 +47,7 @@ backup and restore scripts, alert rules). Use it as is, or as the reference for 
 
 **The database schema.** The backend creates and upgrades the `guide_engine` schema itself; there
 is no separate schema tool or SQL to run by hand. The schema lives in
-`packages/backend/migrations/` (inside the backend image):
+`apps/backend/migrations/` (inside the backend image):
 
 | File | What it is |
 |---|---|
@@ -56,7 +56,7 @@ is no separate schema tool or SQL to run by hand. The schema lives in
 | `003_match_site_theme.sql` | Adds the per-app "match the website's theme" setting. |
 | `004_drop_guide_type.sql` | Removes the unused guide type. |
 
-- On start (or `node packages/backend/dist/migrate.js` as a release step, with
+- On start (or `node apps/backend/dist/migrate.js` as a release step, with
   `RUN_MIGRATIONS=false` on the containers), the backend applies the files its
   `schema_migrations` table hasn't recorded, in order, each in its own transaction, under an
   advisory lock, so several replicas can start together.
@@ -198,7 +198,7 @@ values to provide per environment.
 5. **Start** PostgreSQL, Keycloak, backend, Studio and the ingress. The backend creates the schema
    in the empty `guide_engine` database on its first start (`001_schema.sql`, then the later numbered
    files; see section 1). Check with `SELECT filename FROM schema_migrations;` (one row per
-   file in `packages/backend/migrations/`).
+   file in `apps/backend/migrations/`).
 6. **First user.** In the Keycloak admin console, realm `guide-engine`: add a user, tick *Email
    verified*, set a password. Also create a permanent admin in the `master` realm and turn on its
    brute-force detection.

@@ -3,9 +3,7 @@
   "compilerOptions": {
     "noEmit": true,
     "declaration": false,
-    "lib": ["ES2020", "DOM"],
-    "baseUrl": ".",
-    "paths": { "@guide-engine/core": ["../core/src/index.ts"] }
+    "lib": ["ES2020", "DOM"]
   },
   "include": ["src"]
 }

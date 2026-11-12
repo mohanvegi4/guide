@@ -167,29 +167,24 @@ delete the whole organization.
 
 ```
 packages/
-  core/              the engine, DOM renderer and help widget (framework-agnostic TypeScript)
-  agent/             the install-snippet agent: core bundled into one IIFE file
-  backend/           Express + Postgres: Studio API, agent API, migrations, operator scripts
+  agent/             the browser side: src/engine (engine, DOM renderer, help widget) and the
+                     install-snippet runtime, bundled into one IIFE file
 apps/
+  backend/           Express + Postgres: Studio API, agent API, migrations, operator scripts
   studio/            the authoring Studio (Angular 21, zoneless)
   demo/              a plain Vite page that installs Guide Engine through the snippet
 e2e/                 Playwright smoke test against a running stack
 deploy/              single-host production stack (compose, Caddy, backups, monitoring)
-docker/              development Postgres init and the development Keycloak realm
+docker/              local dev: docker-compose.yml, Postgres init, the dev Keycloak realm
 docs/                this site
 ```
 
-It is an npm workspaces monorepo. `npm run build` builds `packages/core` first, then every
+It is an npm workspaces monorepo. `npm run build` builds every
 workspace. TypeScript runs in strict mode everywhere from `tsconfig.base.json` (ES2020, CommonJS).
 
-**How core is consumed.** The agent takes core in two ways, which matters
-when you change core:
-
-| Consumer | How it gets core |
-|---|---|
-| Agent typecheck and tests | TypeScript `paths` and a vitest alias to `packages/core/src` |
-| Agent bundle | esbuild `alias` to `packages/core/src`; core is inlined into the IIFE |
-| Demo | nothing; it uses the snippet only |
+**The engine.** The framework-agnostic engine lives in `packages/agent/src/engine` and is imported
+by the snippet runtime (`packages/agent/src/index.ts`) like any local module. It is never shipped on
+its own: esbuild bundles the two into the agent IIFE.
 
 **The agent bundle.** `packages/agent/build.mjs` runs esbuild with `bundle`, `minify`,
 `format: iife`, `target: es2018`, no sourcemap, and defines `__GUIDE_ENGINE_VERSION__` from
@@ -203,17 +198,15 @@ The second value is the first 16 hex characters of a SHA-256 of the code after t
 backend recomputes it from the bytes it serves and uses it as the ETag. The bundle is about 30 KB,
 about 10 KB gzipped. It is a build artefact and is not committed; the backend image builds it.
 
-**Versions.** The three public packages (`core`, `angular`, `vue`) share one version, set with
-`npm run version:set X.Y.Z`, which also stamps the private agent. Releases are git tags `vX.Y.Z`
-(see [section 15](#15-ci-releases-and-the-docs-site)).
+**Versions.** The agent's version is the `version` in `packages/agent/package.json`; the build
+stamps it into the bundle banner and `guideEngine.version`. Nothing is published to npm.
 
 **Tests.**
 
 | Package | Runner | Tests |
 |---|---|---|
 | backend | vitest against a real Postgres (`guide_engine_test`) | 258 |
-| core | vitest + jsdom | 102 |
-| agent | vitest + jsdom | 8 |
+| agent (engine + runtime) | vitest + jsdom | 142 |
 | studio | Angular unit-test builder (vitest) | 45 |
 | e2e | Playwright, Chromium, against Keycloak + backend + Studio | 1 end-to-end flow |
 
@@ -223,33 +216,33 @@ The demo has no tests.
 
 ## 4. The backend process
 
-Source: [`packages/backend/src`](../packages/backend/src).
+Source: [`apps/backend/src`](../apps/backend/src).
 
 ### 4.1 Boot sequence
 
-[`index.ts`](../packages/backend/src/index.ts) does this, in order. Any failure logs a fatal line
+[`index.ts`](../apps/backend/src/index.ts) does this, in order. Any failure logs a fatal line
 and exits with code 1, so a misconfigured process never serves traffic.
 
 1. Load `.env` (`dotenv`). Importing modules creates the `pg` pool from `DATABASE_URL`, the
    Prometheus registry and the root logger.
-2. **`assertProductionConfig()`** ([`production.ts`](../packages/backend/src/production.ts)). Only
+2. **`assertProductionConfig()`** ([`production.ts`](../apps/backend/src/production.ts)). Only
    when `NODE_ENV=production`. It collects every problem and refuses to start if `SECRETS_KEY` or
    `PREVIEW_TOKEN_SECRET` is unset, `RATE_LIMIT_STORE` is anything but `postgres`, or
    `PUBLIC_API_URL` is not `https://`. It warns if `TRUST_PROXY` is not `true`.
-3. **`assertRlsEnforceable()`** ([`db.ts`](../packages/backend/src/db.ts)). Reads the current
+3. **`assertRlsEnforceable()`** ([`db.ts`](../apps/backend/src/db.ts)). Reads the current
    role from `pg_roles` and refuses to start if it is a superuser or has `BYPASSRLS`, because RLS
    would silently not apply.
-4. **`assertMigrationsApplied()`** ([`migrate.ts`](../packages/backend/src/migrate.ts)). Compares
+4. **`assertMigrationsApplied()`** ([`migrate.ts`](../apps/backend/src/migrate.ts)). Compares
    the migration files with `schema_migrations`. Pending migrations stop a production boot; in
    development they only warn.
 5. **`initErrorTracking()`**. Loads Sentry lazily, only when `SENTRY_DSN` is set.
-6. **`createApp()`** ([`app.ts`](../packages/backend/src/app.ts)). Builds the Express app and
+6. **`createApp()`** ([`app.ts`](../apps/backend/src/app.ts)). Builds the Express app and
    validates the auth, preview and mail configuration, throwing on malformed values.
 7. Listen on `PORT` (default 3000), then schedule the retention job.
 
 There are no signal handlers: the process does not drain in-flight requests on `SIGTERM`.
 
-**Migrations.** The container entrypoint runs `node packages/backend/dist/migrate.js` before the
+**Migrations.** The container entrypoint runs `node apps/backend/dist/migrate.js` before the
 server when `RUN_MIGRATIONS` is `true` (the default). The runner takes a Postgres advisory lock
 (key "GUID"/"MIGR"), so several replicas starting at once apply each file exactly once: the others
 wait for the lock, then skip what is recorded. Each file runs in its own transaction and is recorded
@@ -258,7 +251,7 @@ edited; every change is a new numbered file.
 
 ### 4.2 Request pipeline
 
-Middleware runs in this order ([`app.ts`](../packages/backend/src/app.ts)):
+Middleware runs in this order ([`app.ts`](../apps/backend/src/app.ts)):
 
 | # | Middleware | What it does |
 |---|---|---|
@@ -303,7 +296,7 @@ your role is too low".
 
 ## 5. The database
 
-Source: [`packages/backend/migrations`](../packages/backend/migrations).
+Source: [`apps/backend/migrations`](../apps/backend/migrations).
 
 ### 5.1 Tables
 
@@ -385,7 +378,7 @@ live guide on it at once, with no republish.
 
 ### 5.3 How the schema got here
 
-The schema is one file, `packages/backend/migrations/001_schema.sql`: the 21 migrations written
+The schema is one file, `apps/backend/migrations/001_schema.sql`: the 21 migrations written
 during development were squashed into it before the first deployment, and a dump of the squashed
 schema matched the chain's object for object. The old files are in git history (before the commit
 "Squash the database migrations into one"). They tell the design history; in short:
@@ -442,7 +435,7 @@ nothing. Forgetting to set up a session therefore fails closed.
 ### 6.2 The session helpers
 
 Every query on a scoped table goes through one of these helpers in
-[`db.ts`](../packages/backend/src/db.ts). A raw `pool.query()` on a scoped table would see nothing.
+[`db.ts`](../apps/backend/src/db.ts). A raw `pool.query()` on a scoped table would see nothing.
 
 | Helper | Used for | Session variables it sets |
 |---|---|---|
@@ -492,7 +485,7 @@ Two details are worth understanding:
 ### 6.4 Role checks in code
 
 RLS draws the outer boundary (which orgs and apps). The finer role checks are in the route
-handlers, in [`routes/studio/context.ts`](../packages/backend/src/routes/studio/context.ts):
+handlers, in [`routes/studio/context.ts`](../apps/backend/src/routes/studio/context.ts):
 
 - `requireOrgRole(ctx, orgId, min)`: not a member → 404; below `min` → 403.
 - `requireAppRole(ctx, appId, min)`: no access to the app → 404; below `min` → 403.
@@ -629,7 +622,7 @@ shows a banner.
 
 ## 8. The agent API
 
-Source: [`routes/agent.ts`](../packages/backend/src/routes/agent.ts). Public, keyed by the app's
+Source: [`routes/agent.ts`](../apps/backend/src/routes/agent.ts). Public, keyed by the app's
 public key, and designed so that a bad or hostile page can't hurt anyone else.
 
 ### 8.1 The script
@@ -744,7 +737,7 @@ the help list and events carry (events without the tags):
 { "visitor": { "id": "…", "tags": ["…"] }, "account": { "id": "…" }, "jwt": "…" }
 ```
 
-[`auth/visitor.ts`](../packages/backend/src/auth/visitor.ts) resolves them in this order:
+[`auth/visitor.ts`](../apps/backend/src/auth/visitor.ts) resolves them in this order:
 
 1. **A `jwt` is present** (in any mode): the app must have a signing secret; the token must verify
    with HS256 and that secret (5 seconds of skew, `exp` required) and carry `visitor.id` and
@@ -818,7 +811,7 @@ error each time; tags replace it.
 
 ## 10. In the browser: agent, engine, renderer, help widget
 
-Source: [`packages/core/src`](../packages/core/src) and [`packages/agent/src`](../packages/agent/src).
+Source: [`packages/agent/src`](../packages/agent/src) (the engine is in `src/engine`).
 
 ### 10.1 The snippet and the agent
 
@@ -851,7 +844,7 @@ Every public method is wrapped in try/catch. A second `initialize` acts as `iden
 
 ### 10.2 Starting up
 
-`GuideEngine.init()` ([`engine.ts`](../packages/core/src/engine.ts)) never rejects. In order:
+`GuideEngine.init()` ([`engine.ts`](../packages/agent/src/engine/engine.ts)) never rejects. In order:
 
 1. Build the identity. A token is passed through; a visitor id is stringified; with neither, the
    anonymous id is used.
@@ -902,7 +895,7 @@ That convention keeps guides off CSS classes, which change with every refactor.
 
 ### 10.5 Drawing a step
 
-**Theme.** [`theme.ts`](../packages/core/src/theme.ts) turns the app's `{ color, matchSite }`
+**Theme.** [`theme.ts`](../packages/agent/src/engine/theme.ts) turns the app's `{ color, matchSite }`
 (sent with every `/guides`, `/help` and `/preview` answer) into CSS custom properties on each
 shadow host and the spotlight: `--ge-primary`, `--ge-font`, `--ge-text`, `--ge-bg`,
 `--ge-radius`. Custom properties inherit through a shadow boundary, so with `matchSite` each is a
@@ -911,7 +904,7 @@ script reading the page; without it, the app's color and Guide Engine's own valu
 color is ever written into a declaration. The engine passes a changed theme to the renderer
 (`setTheme`, optional for custom renderers) and the help UI.
 
-[`dom-renderer.ts`](../packages/core/src/dom-renderer.ts) creates two elements per guide, appended
+[`dom-renderer.ts`](../packages/agent/src/engine/dom-renderer.ts) creates two elements per guide, appended
 to `document.body`:
 
 - a **card host** (`data-guide-host`, `position: fixed`, `z-index: 2147483000`) with an open
@@ -976,7 +969,7 @@ stack and page URL.
 
 ### 10.7 The help center widget
 
-[`help-widget.ts`](../packages/core/src/help-widget.ts) adds one host element with its own Shadow
+[`help-widget.ts`](../packages/agent/src/engine/help-widget.ts) adds one host element with its own Shadow
 DOM: a floating button (label, colour and position from the app's settings), a panel
 (`role="dialog"`, `aria-modal`) with a search box and a list, and a confirmation dialog.
 
@@ -1009,8 +1002,8 @@ Every entry point is wrapped. Specifically:
 
 ## 11. Authoring: guides, versions, pages and preview
 
-Source: [`routes/studio/guides.ts`](../packages/backend/src/routes/studio/guides.ts) and
-[`routes/studio/pages.ts`](../packages/backend/src/routes/studio/pages.ts).
+Source: [`routes/studio/guides.ts`](../apps/backend/src/routes/studio/guides.ts) and
+[`routes/studio/pages.ts`](../apps/backend/src/routes/studio/pages.ts).
 
 ### 11.1 A guide and its versions
 
@@ -1068,8 +1061,8 @@ website: the help start path, else the exact route, else the literal start of th
 
 ### 11.5 Environments and releases
 
-Source: [`services/environments.ts`](../packages/backend/src/services/environments.ts) and
-[`routes/studio/environments.ts`](../packages/backend/src/routes/studio/environments.ts).
+Source: [`services/environments.ts`](../apps/backend/src/services/environments.ts) and
+[`routes/studio/environments.ts`](../apps/backend/src/routes/studio/environments.ts).
 
 - An app's **environments** are ordered by `position`; the last is production. Every app has at
   least one (the API refuses to delete the last), and a new app starts with *Production* holding
@@ -1203,7 +1196,7 @@ automatic guide again.
 ## 14. Deployment and operations
 
 Source: [`deploy/`](../deploy). The reference covers the steps in
-[Deploying](../README.md#deploying) and the [Go-live checklist](../README.md#go-live-checklist);
+[Deploying](operations.md#deploying) and the [Go-live checklist](operations.md#go-live-checklist);
 this section explains the shape.
 
 ### 14.1 The single-host stack
@@ -1276,7 +1269,7 @@ With the `monitoring` profile, Prometheus scrapes every backend replica (discove
 
 ### 14.4 Configuration
 
-The full table is in the [Configuration reference](../README.md#configuration-reference). The
+The full table is in the [Configuration reference](reference.md#configuration-reference). The
 settings that change behaviour in production:
 
 | Variable | Effect |
@@ -1315,10 +1308,8 @@ only change that requires customers to edit their pages.
 3. *Docker images*: builds the backend and Studio images and, on pushes, publishes them to
    `ghcr.io/mohanvegi4/guide/{backend,studio}` tagged with the commit SHA and `latest`.
 
-**Releases** (`.github/workflows/release.yml`, on tags `v*`): builds, tests the public packages,
-checks each package's version equals the tag, publishes `@guide-engine/core`, `/angular` and `/vue`
-to npm with provenance (skipping versions already published), and creates a GitHub release. It needs
-the `NPM_TOKEN` repository secret. The backend, agent and Studio ship as images, not npm packages.
+**Releases.** Everything ships as the two Docker images (backend with the agent bundle, and the
+Studio); nothing is published to npm.
 
 **Docs** (`.github/workflows/docs.yml`, on changes to the READMEs, `docs/` or the build script):
 `scripts/build-docs.mjs` assembles the site: everything in `docs/`, plus the root README and the
@@ -1391,17 +1382,17 @@ Things that are true of the code today and worth knowing before you rely on or c
 
 | If you are changing… | Start here |
 |---|---|
-| What a Studio user may do | [`routes/studio/context.ts`](../packages/backend/src/routes/studio/context.ts), [`db.ts`](../packages/backend/src/db.ts), the policies in `001_schema.sql` |
-| A database rule | A **new** numbered file in [`migrations/`](../packages/backend/migrations) after `001_schema.sql`; never edit an applied one |
-| Which guides a visitor gets | [`routes/agent.ts`](../packages/backend/src/routes/agent.ts) (`/guides`, `/help`), the `active_guide` view in `001_schema.sql` |
-| Environments, releases, promote and revert | [`services/environments.ts`](../packages/backend/src/services/environments.ts), [`routes/studio/environments.ts`](../packages/backend/src/routes/studio/environments.ts), the release routes in `routes/studio/guides.ts` |
-| Visitor identity | [`auth/visitor.ts`](../packages/backend/src/auth/visitor.ts), [Signed identity](integration/signed-identity.md) |
-| Studio sign-in | [`auth/oidc.ts`](../packages/backend/src/auth/oidc.ts), [`auth/studio.ts`](../packages/backend/src/auth/studio.ts), [`auth/config.ts`](../packages/backend/src/auth/config.ts), Studio [`core/auth.service.ts`](../apps/studio/src/app/core/auth.service.ts) |
-| Guide validation and publishing | [`routes/studio/guides.ts`](../packages/backend/src/routes/studio/guides.ts), [`sanitize.ts`](../packages/backend/src/sanitize.ts) |
-| Route matching, queueing, events in the browser | [`core/src/engine.ts`](../packages/core/src/engine.ts) |
-| How a step looks or is positioned | [`core/src/dom-renderer.ts`](../packages/core/src/dom-renderer.ts) |
-| The help center | [`core/src/help-widget.ts`](../packages/core/src/help-widget.ts), `/help` in `routes/agent.ts` |
-| Snippet loading and navigation detection | [`agent/src/index.ts`](../packages/agent/src/index.ts), `installSnippet` in [`services/orgs.ts`](../packages/backend/src/services/orgs.ts) |
-| Boot checks and production refusals | [`index.ts`](../packages/backend/src/index.ts), [`production.ts`](../packages/backend/src/production.ts), [`migrate.ts`](../packages/backend/src/migrate.ts) |
-| Logs, metrics, alerts | [`logging.ts`](../packages/backend/src/logging.ts), [`metrics.ts`](../packages/backend/src/metrics.ts), [`deploy/monitoring`](../deploy/monitoring) |
+| What a Studio user may do | [`routes/studio/context.ts`](../apps/backend/src/routes/studio/context.ts), [`db.ts`](../apps/backend/src/db.ts), the policies in `001_schema.sql` |
+| A database rule | A **new** numbered file in [`migrations/`](../apps/backend/migrations) after `001_schema.sql`; never edit an applied one |
+| Which guides a visitor gets | [`routes/agent.ts`](../apps/backend/src/routes/agent.ts) (`/guides`, `/help`), the `active_guide` view in `001_schema.sql` |
+| Environments, releases, promote and revert | [`services/environments.ts`](../apps/backend/src/services/environments.ts), [`routes/studio/environments.ts`](../apps/backend/src/routes/studio/environments.ts), the release routes in `routes/studio/guides.ts` |
+| Visitor identity | [`auth/visitor.ts`](../apps/backend/src/auth/visitor.ts), [Signed identity](integration/signed-identity.md) |
+| Studio sign-in | [`auth/oidc.ts`](../apps/backend/src/auth/oidc.ts), [`auth/studio.ts`](../apps/backend/src/auth/studio.ts), [`auth/config.ts`](../apps/backend/src/auth/config.ts), Studio [`core/auth.service.ts`](../apps/studio/src/app/core/auth.service.ts) |
+| Guide validation and publishing | [`routes/studio/guides.ts`](../apps/backend/src/routes/studio/guides.ts), [`sanitize.ts`](../apps/backend/src/sanitize.ts) |
+| Route matching, queueing, events in the browser | [`agent/src/engine/engine.ts`](../packages/agent/src/engine/engine.ts) |
+| How a step looks or is positioned | [`agent/src/engine/dom-renderer.ts`](../packages/agent/src/engine/dom-renderer.ts) |
+| The help center | [`agent/src/engine/help-widget.ts`](../packages/agent/src/engine/help-widget.ts), `/help` in `routes/agent.ts` |
+| Snippet loading and navigation detection | [`agent/src/index.ts`](../packages/agent/src/index.ts), `installSnippet` in [`services/orgs.ts`](../apps/backend/src/services/orgs.ts) |
+| Boot checks and production refusals | [`index.ts`](../apps/backend/src/index.ts), [`production.ts`](../apps/backend/src/production.ts), [`migrate.ts`](../apps/backend/src/migrate.ts) |
+| Logs, metrics, alerts | [`logging.ts`](../apps/backend/src/logging.ts), [`metrics.ts`](../apps/backend/src/metrics.ts), [`deploy/monitoring`](../deploy/monitoring) |
 | The production stack | [`deploy/docker-compose.yml`](../deploy/docker-compose.yml), [`deploy/Caddyfile`](../deploy/Caddyfile), [`deploy/.env.example`](../deploy/.env.example) |

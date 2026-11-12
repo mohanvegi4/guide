@@ -19,9 +19,8 @@ very short DevOps guide; the full one is the [DevOps quick guide](../devops.md).
 | Project | What it is | Where | Branch |
 |---|---|---|---|
 | **Guide Engine** (monorepo) | The product: API, agent, Studio, deploy stack, docs | GitHub [`mohanvegi4/guide`](https://github.com/mohanvegi4/guide) | `main` |
-| ↳ `packages/backend` | Express + Postgres API: Studio API, public agent API, migrations, operator scripts | in the monorepo | |
-| ↳ `packages/core` | The browser engine: guide selection, step rendering, help widget (npm `@guide-engine/core`) | in the monorepo | |
-| ↳ `packages/agent` | The install-snippet script, served at `/agent/v1/<key>/guides.js` | in the monorepo | |
+| ↳ `apps/backend` | Express + Postgres API: Studio API, public agent API, migrations, operator scripts | in the monorepo | |
+| ↳ `packages/agent` | The browser engine and the install-snippet script, served at `/agent/v1/<key>/guides.js` | in the monorepo | |
 | ↳ `apps/studio` | The authoring Studio (Angular) | in the monorepo | |
 | ↳ `apps/demo` | A plain page that installs the snippet, for local testing | in the monorepo | |
 | ↳ `e2e` | Playwright smoke test | in the monorepo | |
@@ -114,10 +113,10 @@ Their public keys are in each WISE app's dev environment file.
 
 | File | Purpose |
 |---|---|
-| `docker-compose.yml` | Development: Postgres on 5433, Keycloak on 8081 (profile `sso`) |
+| `docker/docker-compose.yml` | Development: Postgres on 5433, Keycloak on 8081 (profile `sso`) |
 | `docker/init.sql` | Development database roles and databases |
 | `docker/keycloak/guide-engine-realm.json` | Development Keycloak realm, client and users |
-| `packages/backend/Dockerfile`, `packages/backend/docker-entrypoint.sh` | Backend image; migrates on start |
+| `apps/backend/Dockerfile`, `apps/backend/docker-entrypoint.sh` | Backend image; migrates on start |
 | `apps/studio/Dockerfile`, `apps/studio/nginx.conf.template` | Studio image; nginx, `/api` proxy, security headers |
 | `deploy/docker-compose.yml` | Production stack |
 | `deploy/Caddyfile` | HTTPS, hostnames, Keycloak admin allowlist |
@@ -126,11 +125,11 @@ Their public keys are in each WISE app's dev environment file.
 | `deploy/render-realm.sh` | Production Keycloak realm from the dev one |
 | `deploy/backup.sh`, `deploy/restore.sh` | Nightly dumps and restore |
 | `deploy/monitoring/` | `prometheus.yml`, `alerts.yml`, `alerts.test.yml`, `alertmanager.yml` |
-| `packages/backend/.env` (from `.env.example`) | Local backend settings |
+| `apps/backend/.env` (from `.env.example`) | Local backend settings |
 | `apps/demo/.env.local` | Demo page key and API, written by `npm run seed` |
 | `apps/studio/proxy.conf.json` | Dev server `/api` → `localhost:3000` |
 | `.claude/launch.json` | Local launch definitions for backend, Studio and demo |
-| `.github/workflows/ci.yml`, `docs.yml`, `release.yml` | CI, docs site, npm release |
+| `.github/workflows/ci.yml`, `docs.yml` | CI, docs site |
 
 **WISE staff console** (paths from the `application-ng-staff` repository root)
 
@@ -174,7 +173,7 @@ npm run db:up                                       # Postgres 5433
 npm run idp:up                                      # Keycloak 8081
 npm run migrate
 npm run dev:backend                                 # 3000
-npm run start --workspace=apps/studio -- --port 4300
+npm run dev:studio                                  # 4300
 ```
 
 If your shell sets `DOCKER_DEFAULT_PLATFORM` (for example to `linux/amd64` for the WISE images),
@@ -186,7 +185,6 @@ the local WISE development stack as usual.
 
 ```bash
 npm run db:down
-docker compose --profile sso down
 ```
 
 **Release and deploy**
@@ -194,7 +192,6 @@ docker compose --profile sso down
 | Step | How |
 |---|---|
 | Build images | Automatic on every push to `main` (GitHub Actions → GHCR) |
-| Publish npm packages | `npm run version:set X.Y.Z`, commit, `git tag vX.Y.Z && git push origin main vX.Y.Z` (needs the `NPM_TOKEN` secret) |
 | Deploy | On the server in `deploy/`: `docker compose run --rm backup now`, `docker compose pull backend studio`, `docker compose up -d --wait` |
 | Roll back | Set `BACKEND_IMAGE` / `STUDIO_IMAGE` in `.env` to the previous SHA, `docker compose up -d --wait` |
 | WISE apps | Through the usual Jenkins pipelines once the branches are merged; set production `guideEngine` values in `environment.prod.ts` first |

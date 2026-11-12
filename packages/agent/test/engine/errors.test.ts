@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ERROR_SAMPLE_RATE, GuideEngine, MAX_ERROR_REPORTS_PER_PAGE } from '../src';
+import { ERROR_SAMPLE_RATE, GuideEngine, MAX_ERROR_REPORTS_PER_PAGE } from '../../src/engine';
 import {
   API,
   R,

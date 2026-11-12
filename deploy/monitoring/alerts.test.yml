@@ -160,7 +160,7 @@ tests:
                 The daily retention job (events, agent errors, spent rate-limit windows) has not
                 reported a deletion in two days. Expected on an idle instance. Otherwise check for
                 a `retention failed:` log line, that EVENT_RETENTION_DAYS is not 0, and run it by
-                hand: `npm run retention --workspace=packages/backend -- --days 400`.
+                hand: `npm run retention --workspace=apps/backend -- --days 400`.
                 See README, Operations.
 
   - interval: 1h
@@ -190,5 +190,5 @@ tests:
                 The daily retention job (events, agent errors, spent rate-limit windows) has not
                 reported a deletion in two days. Expected on an idle instance. Otherwise check for
                 a `retention failed:` log line, that EVENT_RETENTION_DAYS is not 0, and run it by
-                hand: `npm run retention --workspace=packages/backend -- --days 400`.
+                hand: `npm run retention --workspace=apps/backend -- --days 400`.
                 See README, Operations.

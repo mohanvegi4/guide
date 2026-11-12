@@ -122,5 +122,5 @@ tokens, then these WISE-specific ones:
 
 To compare claims with a known-good token, mint one from the Guide Engine repository with the same
 secret and the tags the endpoint should produce:
-`npm run sign-identity --workspace=packages/backend -- --secret ge_sk_… --visitor <id> --account <id> --tags A,B`
+`npm run sign-identity --workspace=apps/backend -- --secret ge_sk_… --visitor <id> --account <id> --tags A,B`
 and decode both at the terminal (`echo <token> | cut -d. -f2 | base64 -d`).

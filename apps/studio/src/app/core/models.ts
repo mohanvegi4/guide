@@ -1,4 +1,4 @@
-// Mirrors the backend's Studio API (packages/backend/src/routes/studio/*).
+// Mirrors the backend's Studio API (apps/backend/src/routes/studio/*).
 // Responses that are database rows use snake_case; request bodies use camelCase.
 
 export const STEP_POSITIONS = ['bottom', 'top', 'left', 'right', 'center'] as const;

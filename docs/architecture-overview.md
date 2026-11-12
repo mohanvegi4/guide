@@ -17,9 +17,8 @@ page asks the **backend** which guides apply and shows them.
 
 | Piece | Where | What it does |
 |---|---|---|
-| Engine | `packages/core` | Framework-agnostic browser engine: picks guides, follows navigation, draws cards in a Shadow DOM, runs the help center. The only public npm package (`@guide-engine/core`). |
-| Agent | `packages/agent` | The install snippet's script: core bundled into one IIFE, served as `guides.js`. Replays the calls the page queued. |
-| Backend | `packages/backend` | Express on Node 22: the public agent API, the Studio API, auth, releases, analytics, operator scripts. |
+| Agent | `packages/agent` | The browser side: the framework-agnostic engine (`src/engine`: picks guides, follows navigation, draws cards in a Shadow DOM, runs the help center) and the snippet runtime, bundled into one IIFE served as `guides.js`. Nothing is published to npm. |
+| Backend | `apps/backend` | Express on Node 22: the public agent API, the Studio API, auth, releases, analytics, operator scripts. |
 | Studio | `apps/studio` | Angular 21 authoring app behind nginx: guides, saved pages, environments, members, analytics. |
 | Database | PostgreSQL 16 | The only store. Row-level security on every tenant table; rate limits and retention live here too. |
 | Sign-in | Keycloak | OIDC identity for Studio authors only. Organizations and roles stay in Guide Engine's own tables. |
@@ -40,19 +39,19 @@ keyed by a public app key, and an authenticated **Studio surface** for authors.
 
 ## Repository layout
 
-An npm workspaces monorepo. `npm run build` builds `core` first, then every workspace; TypeScript
+An npm workspaces monorepo. `npm run build` builds every workspace; TypeScript
 runs in strict mode everywhere from `tsconfig.base.json`.
 
 ```text
 packages/
-  core/                  @guide-engine/core, the only public npm package
-    src/engine.ts          state machine: fetch → match route → wait for anchor → show → complete
-    src/dom-renderer.ts    cards in a Shadow DOM beside [data-guide-id] anchors
-    src/help-widget.ts     floating Help button and searchable guide list
-    src/theme.ts           app colours, or follow the site's Bootstrap theme
-  agent/                 private: the install-snippet runtime
-    src/index.ts           window.guideEngine, queue replay, SPA navigation hooks
-    build.mjs              esbuild → one minified IIFE (guides.js)
+  agent/                 the browser side, bundled into guides.js
+    src/engine/engine.ts         state machine: fetch → match route → wait for anchor → show → complete
+    src/engine/dom-renderer.ts   cards in a Shadow DOM beside [data-guide-id] anchors
+    src/engine/help-widget.ts    floating Help button and searchable guide list
+    src/engine/theme.ts          app colours, or follow the site's Bootstrap theme
+    src/index.ts                 window.guideEngine, queue replay, SPA navigation hooks
+    build.mjs                    esbuild → one minified IIFE (guides.js)
+apps/
   backend/               Express + Postgres API
     migrations/            001_schema.sql (schema + RLS) and numbered deltas
     src/app.ts             middleware order, routers, central error handler
@@ -63,7 +62,6 @@ packages/
                            environments, analytics, visitors, errors, platform
     src/services/          environments, versions, orgs, lifecycle
     src/scripts/           seed, mint-token, sign-identity, retention, encrypt-secrets
-apps/
   studio/                Angular 21, zoneless, signals
     src/app/core/          api.service, auth.service (oidc-client-ts), interceptor, guard
     src/app/pages/         guide-list, guide-editor, pages, app-settings, members, operator…
@@ -72,14 +70,13 @@ apps/
   demo/                  a Vite page that installs the snippet, for local testing
 e2e/                     Playwright: sign in → org and app → publish → snippet shows it
 deploy/                  production stack: compose, Caddyfile, backups, monitoring
-docker/                  local Postgres init and the dev Keycloak realm
+docker/                  local dev: docker-compose.yml (Postgres :5433, Keycloak :8081), init.sql, realm
 docs/                    architecture, DevOps, signed identity, WISE, legal templates
-docker-compose.yml       local Postgres :5433, Keycloak :8081
 ```
 
 ## Data model
 
-Defined in `packages/backend/migrations/001_schema.sql`. An **organization** owns
+Defined in `apps/backend/migrations/001_schema.sql`. An **organization** owns
 **applications**; everyone in it has one role (viewer < editor < manager < owner) for all of its
 apps.
 
@@ -143,7 +140,7 @@ console runs local → dev → test, which makes "test" its production.
 
 ## The install snippet
 
-The backend generates it (`installSnippet()` in `packages/backend/src/services/orgs.ts`) with the
+The backend generates it (`installSnippet()` in `apps/backend/src/services/orgs.ts`) with the
 app's public key and `PUBLIC_API_URL`, and the Studio shows it under **Install & settings**. It
 loads asynchronously and queues calls until the agent arrives.
 
@@ -163,7 +160,7 @@ guideEngine.initialize({
 
 The five stubbed methods are exactly the agent's API. With **Require signed identity** on, pass
 `jwt` to `initialize`; ids and tags then come from the token only. Full setup:
-[Installing Guide Engine on a website](../README.md#installing-guide-engine-on-a-website).
+[Installing Guide Engine on a website](install.md#installing-guide-engine-on-a-website).
 
 ## Build, test and deploy
 
@@ -175,10 +172,10 @@ Prometheus and Alertmanager with the rules in `deploy/monitoring/`. Operating it
 
 | Step | How |
 |---|---|
-| Build | `npm run build`: core first, the agent via esbuild, the Studio via the Angular builder |
-| Test | backend: vitest + supertest on a real Postgres · core and agent: vitest + jsdom · Studio: Angular unit tests · e2e: Playwright against the full stack |
+| Build | `npm run build`: the agent via esbuild, the Studio via the Angular builder |
+| Test | backend: vitest + supertest on a real Postgres · agent (engine + runtime): vitest + jsdom · Studio: Angular unit tests · e2e: Playwright against the full stack |
 | Images | `backend` (API + agent bundle) and `studio` (nginx + SPA) |
-| CI | GitHub Actions: build, tests, e2e, images to ghcr.io, the npm release of core and the docs site |
+| CI | GitHub Actions: build, tests, e2e, images to ghcr.io and the docs site |
 
 ## Ground rules
 

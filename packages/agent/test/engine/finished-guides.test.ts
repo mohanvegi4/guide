@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { AgentClient, EventQueue, GuideEngine } from '../src';
+import { AgentClient, EventQueue, GuideEngine } from '../../src/engine';
 import {
   API,
   KEY,

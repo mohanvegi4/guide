@@ -4,34 +4,19 @@
     {
       "name": "backend",
       "runtimeExecutable": "npm",
-      "runtimeArgs": [
-        "run",
-        "dev",
-        "--workspace=packages/backend"
-      ],
+      "runtimeArgs": ["run", "dev:backend"],
       "port": 3000
     },
     {
       "name": "studio",
       "runtimeExecutable": "npm",
-      "runtimeArgs": [
-        "run",
-        "start",
-        "--workspace=apps/studio",
-        "--",
-        "--port",
-        "4300"
-      ],
+      "runtimeArgs": ["run", "dev:studio"],
       "port": 4300
     },
     {
       "name": "demo",
       "runtimeExecutable": "npm",
-      "runtimeArgs": [
-        "run",
-        "dev",
-        "--workspace=apps/demo"
-      ],
+      "runtimeArgs": ["run", "dev:demo"],
       "port": 5174
     }
   ]

@@ -72,7 +72,7 @@ export function describeBundle(js: string): AgentBundle {
 let bundle: Promise<AgentBundle> | null = null;
 function loadBundle(): Promise<AgentBundle> {
   const path =
-    process.env.AGENT_BUNDLE_PATH ?? join(__dirname, '..', '..', '..', 'agent', 'dist', 'guide-engine.js');
+    process.env.AGENT_BUNDLE_PATH ?? join(__dirname, '..', '..', '..', '..', 'packages', 'agent', 'dist', 'guide-engine.js');
   bundle ??= readFile(path, 'utf-8')
     .then(describeBundle)
     .catch((err) => {
