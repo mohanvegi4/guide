@@ -222,6 +222,28 @@ function audienceSql(accountParam: string, tagsParam: string): string {
                 OR EXISTS (SELECT 1 FROM unnest(a.visitor_tags) AS t(tag) WHERE t.tag = ANY(${tagsParam}::text[])))`;
 }
 
+interface StoredStep {
+  id: string;
+  order: number;
+  targetSelector?: string;
+  content: string;
+  position?: string;
+  actions: Array<{ label: string; action: string }>;
+}
+
+// Steps saved before migration 004 still carry a `type` key, and published
+// versions are immutable, so only the fields the agent renders are sent.
+function agentSteps(steps: StoredStep[]): StoredStep[] {
+  return steps.map(({ id, order, targetSelector, content, position, actions }) => ({
+    id,
+    order,
+    targetSelector,
+    content,
+    position,
+    actions,
+  }));
+}
+
 function visitorFrom(req: Request, app: AgentApp): Visitor {
   const input = parseIdentityInput(req.body);
   if (!input) throw new HttpError(400, 'invalid_body');
@@ -271,7 +293,7 @@ agentApiRouter.post(
           id: r.id,
           versionId: r.version_id,
           name: r.name,
-          steps: r.steps,
+          steps: agentSteps(r.steps),
           routeMatch: r.route_match,
         })),
       };
@@ -329,7 +351,7 @@ agentApiRouter.post(
           id: r.id,
           versionId: r.version_id,
           name: r.name,
-          steps: r.steps,
+          steps: agentSteps(r.steps),
           routeMatch: r.route_match,
           help: {
             title: r.help.title,
@@ -585,7 +607,7 @@ agentApiRouter.post(
       id: guide.id,
       versionId: guide.version_id,
       name: guide.name,
-      steps: guide.steps,
+      steps: agentSteps(guide.steps),
       routeMatch: guide.route_match,
       preview: true,
       // So a preview looks like the real thing on the customer's site.

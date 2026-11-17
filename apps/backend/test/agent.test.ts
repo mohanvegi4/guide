@@ -201,6 +201,26 @@ describe('visitor identity', () => {
   });
 });
 
+describe('step payload', () => {
+  it('sends only the fields the agent renders, even for steps saved with a type before 004', async () => {
+    const { key, appId } = await signUp('owner');
+    const { versionId } = await liveGuide('owner', appId, {
+      ...sampleVersion,
+      help: { title: 'Invite your team', startPath: '/dashboard/team' },
+    });
+    await adminPool.query(
+      `UPDATE guide_version SET steps = jsonb_set(steps, '{0,type}', '"tooltip"') WHERE id = $1`,
+      [versionId],
+    );
+    const expected = [{ ...sampleStep, id: expect.any(String) }];
+
+    const guides = await agent(key, '/guides', visitor());
+    expect(guides.body.guides[0].steps).toEqual(expected);
+    const help = await agent(key, '/help', visitor());
+    expect(help.body.guides[0].steps).toEqual(expected);
+  });
+});
+
 describe('targeting and kill switches', () => {
   it('limits a guide to listed accounts', async () => {
     const { key, appId } = await signUp('owner');

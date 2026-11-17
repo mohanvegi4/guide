@@ -58,9 +58,8 @@ interface AccountRow {
 // ------------------------------------------------------------
 // Version payloads (shared by draft save + publish)
 // ------------------------------------------------------------
-// Targets must use the data-guide-id convention (set by the Angular/Vue
-// anchor directives, or by hand) rather than arbitrary CSS selectors, which
-// break on markup refactors.
+// Targets must use the data-guide-id convention rather than arbitrary CSS
+// selectors, which break on markup refactors.
 const DATA_GUIDE_ID_SELECTOR = /^\[data-guide-id="[A-Za-z0-9_-]+"\]$/;
 
 const stepSchema = z.object({
